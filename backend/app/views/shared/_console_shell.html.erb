@@ -1,0 +1,82 @@
+<%# Shared sidebar/topbar/footer chrome for both consoles (Admin, SuperAdmin) — ported from the
+    webadmin template's pages-starter.html vertical-layout variant (requirement.md §5.14; see
+    vendor/webadmin_template/pages-starter.html for the source). Only the vertical sidebar layout
+    is used; the template's alternate horizontal-topbar markup and its theme-customizer right
+    sidebar (RTL/dark-mode/layout-switcher demo controls) are intentionally not ported — this is a
+    product, not a template showcase. Sidebar collapse + MetisMenu init are Stimulus-controlled
+    (app/javascript/controllers/sidebar_controller.js) instead of loading the template's app.js
+    wholesale, which assumes demo-only DOM we don't ship.
+
+    Rendered via `render layout: "shared/console_shell", locals: { ... } do ... end` from
+    layouts/admin.html.erb and layouts/super_admin.html.erb — the block becomes `yield` below,
+    i.e. the actual page content. Locals:
+      home_path            — user_root_path / platform_staff_root_path — no bare root_path exists,
+                              every route carries its console's /admin or /platform namespace
+                              (config/routes.rb)
+      page_title_default — String, used when a view doesn't set content_for(:page_title)
+      nav_items           — Array of { path:, icon:, label: } — see app/helpers/{admin,super_admin}_helper.rb
+      footer_text          — String, e.g. "EventMeet" / "EventMeet Platform"
+      user_dropdown        — Hash of locals for shared/_user_dropdown, or nil if signed out %>
+<div id="layout-wrapper" data-controller="sidebar">
+  <header id="page-topbar">
+    <div class="navbar-header">
+      <div class="d-flex">
+        <div class="navbar-brand-box">
+          <%= link_to "EventMeet", home_path, class: "logo brand-text d-flex align-items-center h-100 ps-2" %>
+        </div>
+
+        <button type="button" class="btn btn-sm px-3 font-size-24 header-item waves-effect" data-action="sidebar#toggle">
+          <i class="bx bx-menu align-middle"></i>
+        </button>
+
+        <div class="page-title-box align-self-center d-none d-md-block">
+          <h4 class="page-title mb-0"><%= content_for(:page_title) || page_title_default %></h4>
+        </div>
+      </div>
+
+      <div class="d-flex">
+        <%= render "shared/user_dropdown", **user_dropdown if user_dropdown %>
+      </div>
+    </div>
+  </header>
+
+  <div class="vertical-menu">
+    <div class="navbar-brand-box">
+      <%= link_to "EventMeet", home_path, class: "logo brand-text d-flex align-items-center h-100 ps-2" %>
+    </div>
+
+    <div class="sidebar-menu-scroll">
+      <div id="sidebar-menu">
+        <ul class="metismenu list-unstyled" id="side-menu" data-sidebar-target="menu">
+          <li class="menu-title">Menu</li>
+          <% nav_items.each do |item| %>
+            <li>
+              <%= link_to item[:path], class: "waves-effect" do %>
+                <i class="bx <%= item[:icon] %> icon nav-icon"></i> <span class="menu-item"><%= item[:label] %></span>
+              <% end %>
+            </li>
+          <% end %>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="main-content">
+    <div class="page-content">
+      <div class="container-fluid">
+        <% if notice %><div class="alert alert-success" role="alert"><%= notice %></div><% end %>
+        <% if alert %><div class="alert alert-danger" role="alert"><%= alert %></div><% end %>
+
+        <%= yield %>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <div class="container-fluid">
+        <div class="row">
+          <div class="col-sm-6">&copy; <%= Date.current.year %> <%= footer_text %>.</div>
+        </div>
+      </div>
+    </footer>
+  </div>
+</div>

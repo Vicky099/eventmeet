@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <%= render "shared/head" %>
+  </head>
+
+  <body>
+    <%= render layout: "shared/console_shell", locals: {
+      home_path: user_root_path,
+      page_title_default: "Admin Console",
+      nav_items: admin_nav_items,
+      footer_text: "EventMeet",
+      user_dropdown: user_signed_in? ? {
+        email: current_user.email,
+        subtitle: Current.account&.name,
+        sign_out_path: destroy_user_session_path,
+        avatar_bg_class: "bg-primary-subtle",
+        avatar_text_class: "text-primary"
+      } : nil
+    } do %>
+      <%= yield %>
+    <% end %>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+<% content_for :page_title, "Foundations OK" %>
+
+<div class="bg-white rounded-lg border border-gray-200 p-6 max-w-xl">
+  <p class="text-gray-700">
+    Resolved tenant: <span class="font-mono font-semibold"><%= Current.account.subdomain_slug %></span>
+  </p>
+  <p class="text-gray-700 mt-1">
+    RLS session GUC (app.current_account_id): <span class="font-mono font-semibold" data-testid="rls-guc"><%= @current_account_id_guc %></span>
+  </p>
+  <p class="text-sm text-gray-500 mt-2">
+    Phase 0 smoke test — this page is replaced by the real dashboard in Phase 3.
+  </p>
+</div>

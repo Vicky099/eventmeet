@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <%= render "shared/head" %>
+  </head>
+
+  <body>
+    <%# Ported from the webadmin template's auth-login.html (requirement.md §5.14) — shared by every
+        unauthenticated screen (login, forced/forgotten password reset) on both hosts, since the
+        template's centered-card auth structure doesn't otherwise differ between them. %>
+    <div class="authentication-bg min-vh-100">
+      <div class="bg-overlay bg-light"></div>
+      <div class="container">
+        <div class="d-flex flex-column min-vh-100 px-3 pt-4">
+          <div class="row justify-content-center my-auto">
+            <div class="col-md-8 col-lg-6 col-xl-5">
+              <div class="mb-4 pb-2 text-center">
+                <span class="brand-text fs-2"><%= content_for(:auth_brand) || "EventMeet" %></span>
+              </div>
+
+              <div class="card">
+                <div class="card-body p-4">
+                  <% if notice %><div class="alert alert-success" role="alert"><%= notice %></div><% end %>
+                  <% if alert %><div class="alert alert-danger" role="alert"><%= alert %></div><% end %>
+
+                  <%= yield %>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-lg-12">
+              <div class="text-center p-4">
+                <p>&copy; <%= Date.current.year %> EventMeet.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

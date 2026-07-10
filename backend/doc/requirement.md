@@ -70,6 +70,9 @@
 - **Phone number for WhatsApp delivery: use the existing `contact_num` field on `User`** — no separate WhatsApp-specific field. See §8.
 - **Quotation revision limit: 3 rejections.** After a third rejection, the `Quotation` moves to a **`cancelled`** state (not just staying `rejected`/re-offerable indefinitely) — the Business-tier event request ends there rather than continuing to negotiate. See §4.6, §8.
 
+**v11 decision (corrects a v3/v8 assumption once the actual template arrived):**
+- **The admin console template supplied to the workspace ("webadmin") is built on Bootstrap 5, not Tailwind CSS.** §5.14's process (template arrives in the workspace, is the starting point for every admin screen, gets Stimulus-ized rather than pulling in a second reactive JS framework) stands unchanged — only the CSS framework it names was wrong, because it was written before any template existed to check against. Every "Tailwind" reference against the **admin console** elsewhere in this document (§4.3's UI row, §4.10, §5.14, §9's Phase 1 roadmap, §10.3/§10.4/§10.10/§10.12's decision-log entries) should be read as **Bootstrap 5** — those entries are left as-was below since they're a historical log of what was decided at the time, not a live spec. The **public Next.js site's** independent Tailwind-based design system (§4.8) is unrelated and unaffected — it was never tied to this template. Concretely: `tailwindcss-rails` is dropped from the Rails admin app; the template's own precompiled Bootstrap/CSS/JS bundle is served as vendor assets instead. See `backend/doc/implementation.md` Phase 0.4/Phase 1 for the integration record.
+
 ---
 
 ## 1. Executive Summary

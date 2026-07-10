@@ -1,0 +1,44 @@
+<% content_for :page_title, "Set a new password" %>
+<% content_for :auth_brand, Current.account&.name || "EventMeet" %>
+
+<div class="text-center mt-2">
+  <h5>Set a new password</h5>
+  <% if resource.must_reset_password? %>
+    <p class="text-muted">You're using a temporary password — set your own to continue.</p>
+  <% end %>
+</div>
+
+<div class="p-2 mt-4">
+  <%# data-turbo="false" — this also crosses the auth boundary (signed out -> signed back in on
+      success). See the equivalent comment in app/views/admin/sessions/new.html.erb. %>
+  <%= form_for(resource, as: resource_name, url: password_path(resource_name), html: { method: :put, data: { turbo: "false" } }) do |f| %>
+    <% if resource.errors.any? %>
+      <div class="alert alert-danger" role="alert">
+        <ul class="mb-0">
+          <% resource.errors.full_messages.each do |message| %>
+            <li><%= message %></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <%= f.hidden_field :reset_password_token %>
+
+    <div class="mb-3">
+      <%= f.label :password, "New password", class: "form-label" %>
+      <% if @minimum_password_length %>
+        <small class="text-muted">(<%= @minimum_password_length %> characters minimum)</small>
+      <% end %>
+      <%= render "shared/password_field", form: f, field: :password, placeholder: "New password", autocomplete: "new-password", autofocus: true %>
+    </div>
+
+    <div class="mb-3">
+      <%= f.label :password_confirmation, "Confirm new password", class: "form-label" %>
+      <%= render "shared/password_field", form: f, field: :password_confirmation, placeholder: "Confirm new password", autocomplete: "new-password", autofocus: false %>
+    </div>
+
+    <div class="mt-3">
+      <%= f.submit "Change my password", class: "btn btn-primary w-100 waves-effect waves-light" %>
+    </div>
+  <% end %>
+</div>

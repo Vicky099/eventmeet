@@ -38,3 +38,9 @@
 
 # Ignore Node packages (Playwright browser tooling only; app JS is served via importmap-rails).
 /node_modules
+
+# webadmin template reference pages (see vendor/webadmin_template/README.md) — dev-reference only,
+# never served or imported by any code. Deliberately not committed (kept local-only rather than
+# following requirement.md §5.14's "add it to the project workspace" verbatim) — get your own copy
+# from wherever this one came from before working on an admin/platform screen.
+/vendor/webadmin_template

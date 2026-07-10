@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Starts MailCatcher (https://mailcatcher.me) for local development — a local SMTP server that
+# catches every outgoing email instead of sending it, viewable at http://localhost:1080. See
+# config/environments/development.rb for the SMTP settings pointing at it.
+set -e
+
+if command -v mailcatcher >/dev/null 2>&1; then
+  exec mailcatcher --foreground "$@"
+fi
+
+# Not on the active Ruby's PATH. MailCatcher pins old eventmachine/thin versions that commonly
+# conflict with a modern Rails bundle (e.g. its `rackup` executable clashing with this project's
+# own rack/rackup install) — it's meant to be installed under some *other* rvm Ruby, standalone,
+# not this project's. Note that even finding its file path under another ruby isn't enough: rvm's
+# executable shims resolve gems against whichever Ruby is *currently active*, not the one baked
+# into the path — so it has to be invoked via `rvm <version> do`, not called directly.
+if [ -d "$HOME/.rvm/gems" ]; then
+  found=$(find "$HOME/.rvm/gems" -maxdepth 3 -name mailcatcher -path "*/bin/*" -print -quit 2>/dev/null)
+  if [ -n "$found" ]; then
+    ruby_version=$(basename "$(dirname "$(dirname "$found")")")
+    source "$HOME/.rvm/scripts/rvm"
+    exec rvm "$ruby_version" do mailcatcher --foreground "$@"
+  fi
+fi
+
+echo "MailCatcher isn't installed. Install it with:"
+echo "  gem install mailcatcher"
+echo
+echo "If that fails with a '\"rackup\" from rack conflicts with installed executable from"
+echo "rackup' error under this project's Ruby, install it under a different rvm Ruby instead"
+echo "(e.g. \`rvm use system && gem install mailcatcher\`) — this script finds and runs it from"
+echo "there automatically. MailCatcher doesn't need to share this app's Ruby/bundle; it's an"
+echo "independent local service, same as Postgres or Redis."
+exit 1

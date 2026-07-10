@@ -31,14 +31,26 @@ Rails.application.configure do
   # Store uploaded files on the local file system (see config/storage.yml for options).
   config.active_storage.service = :local
 
-  # Don't care if the mailer can't send.
-  config.action_mailer.raise_delivery_errors = false
+  # MailCatcher (https://mailcatcher.me) — a local SMTP server that catches every outgoing email
+  # instead of actually sending it, viewable at http://localhost:1080. Run `bin/mailcatcher` (or
+  # add it to your Procfile.dev runner) before triggering anything that sends mail — Devise's
+  # password-reset instructions (§4.9 item 1), later invite/notification emails (Phase 2+).
+  config.action_mailer.delivery_method = :smtp
+  config.action_mailer.smtp_settings = { address: "localhost", port: 1025 }
+
+  # Raise, now that there's a real local SMTP catcher configured to fail against if it's not
+  # running — silent failures here just look like "the app is broken," not "start MailCatcher."
+  config.action_mailer.raise_delivery_errors = true
 
   # Make template changes take effect immediately.
   config.action_mailer.perform_caching = false
 
   # Set localhost to be used by links generated in mailer templates.
   config.action_mailer.default_url_options = { host: "localhost", port: 3000 }
+
+  # requirement.md §4.3: the apex + every tenant subdomain live under *.lvh.me locally (public DNS,
+  # resolves to 127.0.0.1, no /etc/hosts editing needed) — permit it past Rails' DNS-rebinding guard.
+  config.hosts << ".lvh.me"
 
   # Print deprecation notices to the Rails logger.
   config.active_support.deprecation = :log

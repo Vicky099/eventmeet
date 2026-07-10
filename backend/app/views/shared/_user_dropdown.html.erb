@@ -1,0 +1,23 @@
+<%# Locals: email, subtitle (Account name for admin, "Super Admin" for super_admin),
+    sign_out_path, avatar_bg_class, avatar_text_class.
+    .avatar-title alone has no dimensions of its own — it fills 100% of a sized parent
+    (.avatar-sm etc, see app.min.css) — a bare span collapses to the text's own size, not a
+    circle. Matches the template's own avatar markup convention (a sized div wrapping the title
+    span) — see vendor/webadmin_template/pages-starter.html's notification-item avatars. %>
+<div class="dropdown d-inline-block">
+  <button type="button" class="btn header-item user text-start d-flex align-items-center" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+    <div class="avatar-sm">
+      <span class="avatar-title rounded-circle <%= avatar_bg_class %> <%= avatar_text_class %> font-size-16">
+        <%= email.first.upcase %>
+      </span>
+    </div>
+    <span class="d-none d-xl-inline-block ms-2 fw-medium font-size-15"><%= email %></span>
+  </button>
+  <div class="dropdown-menu dropdown-menu-end pt-0">
+    <div class="p-3 border-bottom">
+      <h6 class="mb-0"><%= subtitle %></h6>
+      <p class="mb-0 font-size-11 text-muted"><%= email %></p>
+    </div>
+    <%= button_to "Log out", sign_out_path, method: :delete, class: "dropdown-item", form: { data: { turbo: "false" } } %>
+  </div>
+</div>

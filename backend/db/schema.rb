@@ -10,8 +10,60 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 0) do
+ActiveRecord::Schema[8.0].define(version: 2026_07_10_162528) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+  enable_extension "pgcrypto"
 
+  create_table "account_memberships", id: :uuid, default: nil, force: :cascade do |t|
+    t.uuid "user_id", null: false
+    t.uuid "account_id", null: false
+    t.integer "role", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_account_memberships_on_account_id"
+    t.index ["user_id", "account_id"], name: "index_account_memberships_on_user_id_and_account_id", unique: true
+    t.index ["user_id"], name: "index_account_memberships_on_user_id"
+  end
+
+  create_table "accounts", id: :uuid, default: nil, force: :cascade do |t|
+    t.string "name", null: false
+    t.string "subdomain_slug", null: false
+    t.integer "status", default: 0, null: false
+    t.string "plan"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["subdomain_slug"], name: "index_accounts_on_subdomain_slug", unique: true
+  end
+
+  create_table "tenant_domains", id: :uuid, default: nil, force: :cascade do |t|
+    t.uuid "account_id", null: false
+    t.string "domain", null: false
+    t.integer "kind", default: 0, null: false
+    t.datetime "verified_at"
+    t.integer "tls_status", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_tenant_domains_on_account_id"
+    t.index ["domain"], name: "index_tenant_domains_on_domain", unique: true
+  end
+
+  create_table "users", id: :uuid, default: nil, force: :cascade do |t|
+    t.string "email", default: "", null: false
+    t.string "encrypted_password", default: "", null: false
+    t.string "reset_password_token"
+    t.datetime "reset_password_sent_at"
+    t.datetime "remember_created_at"
+    t.boolean "platform_staff", default: false, null: false
+    t.string "contact_num"
+    t.boolean "must_reset_password", default: false, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["email"], name: "index_users_on_email", unique: true
+    t.index ["reset_password_token"], name: "index_users_on_reset_password_token", unique: true
+  end
+
+  add_foreign_key "account_memberships", "accounts"
+  add_foreign_key "account_memberships", "users"
+  add_foreign_key "tenant_domains", "accounts"
 end

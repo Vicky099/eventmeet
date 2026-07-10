@@ -8,3 +8,13 @@
  *
  * Consider organizing styles into separate files for maintainability.
  */
+
+/* Our own overrides on top of the vendored webadmin (Bootstrap 5) template — see
+   app/views/shared/_head.html.erb. Text-based brand mark instead of the template's placeholder
+   logo images (real branding is Phase 12, §4.5); everything else is the template as delivered. */
+.brand-text {
+  font-weight: 600;
+  font-size: 1.25rem;
+  color: inherit;
+  text-decoration: none;
+}

@@ -1,0 +1,25 @@
+<title><%= content_for(:title) || "Eventmeet" %></title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<%= csrf_meta_tags %>
+<%= csp_meta_tag %>
+
+<%= yield :head %>
+
+<link rel="icon" href="/icon.png" type="image/png">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon.png">
+
+<%# webadmin template (Bootstrap 5 — requirement.md §5.14/v11), vendored under
+    app/assets/stylesheets/vendor/webadmin and served through Propshaft (fingerprinted,
+    url()-rewritten) — see vendor/webadmin_template/README.md for the source. Only the CSS/fonts/
+    images live here; its JS lives under vendor/javascript instead, pinned via config/importmap.rb
+    and imported once in app/javascript/application.js. %>
+<%= stylesheet_link_tag "vendor/webadmin/css/bootstrap.min", "vendor/webadmin/css/icons.min", "vendor/webadmin/css/app.min" %>
+
+<%# Our own overrides on top of the vendored template CSS. Deliberately "application", not the
+    :app bulk-include shorthand — :app means "every .css under app/assets/**/*", which would also
+    sweep in the vendored webadmin stylesheets a second time. %>
+<%= stylesheet_link_tag "application", "data-turbo-track": "reload" %>
+<%= javascript_importmap_tags %>

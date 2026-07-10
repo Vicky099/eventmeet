@@ -1,0 +1,39 @@
+<% content_for :page_title, "Sign in" %>
+<% content_for :auth_brand, Current.account&.name || "EventMeet" %>
+
+<div class="text-center mt-2">
+  <h5>Welcome back!</h5>
+  <p class="text-muted">Sign in to continue to <%= Current.account&.name %>.</p>
+</div>
+
+<div class="p-2 mt-4">
+  <%# data-turbo="false" — a real full-page load across the sign-in boundary, not a Turbo Drive
+      soft-navigation, so the dashboard's vendor scripts (Bootstrap dropdown, MetisMenu) always
+      run fresh rather than depending on Turbo's script re-execution rules. Same treatment the
+      logout button already gets, in layouts/admin.html.erb/super_admin.html.erb. %>
+  <%= form_for(resource, as: resource_name, url: session_path(resource_name), html: { data: { turbo: "false" } }) do |f| %>
+    <div class="mb-3">
+      <%= f.label :email, class: "form-label" %>
+      <%= f.email_field :email, autofocus: true, autocomplete: "email", class: "form-control", placeholder: "Enter email" %>
+    </div>
+
+    <div class="mb-3">
+      <div class="float-end">
+        <%= link_to "Forgot password?", new_user_password_path, class: "text-muted text-decoration-underline" %>
+      </div>
+      <%= f.label :password, class: "form-label" %>
+      <%= render "shared/password_field", form: f, field: :password, placeholder: "Enter password", autocomplete: "current-password", autofocus: false %>
+    </div>
+
+    <% if devise_mapping.rememberable? %>
+      <div class="form-check py-1">
+        <%= f.check_box :remember_me, class: "form-check-input" %>
+        <%= f.label :remember_me, class: "form-check-label" %>
+      </div>
+    <% end %>
+
+    <div class="mt-3">
+      <%= f.submit "Log In", class: "btn btn-primary w-100 waves-effect waves-light" %>
+    </div>
+  <% end %>
+</div>

@@ -14,8 +14,6 @@ gem "importmap-rails"
 gem "turbo-rails"
 # Hotwire's modest JavaScript framework [https://stimulus.hotwired.dev]
 gem "stimulus-rails"
-# Use Tailwind CSS [https://github.com/rails/tailwindcss-rails]
-gem "tailwindcss-rails"
 # Build JSON APIs with ease [https://github.com/rails/jbuilder]
 gem "jbuilder"
 
@@ -25,10 +23,14 @@ gem "jbuilder"
 # Windows does not include zoneinfo files, so bundle the tzinfo-data gem
 gem "tzinfo-data", platforms: %i[ windows jruby ]
 
-# Use the database-backed adapters for Rails.cache, Active Job, and Action Cable
+# Use the database-backed adapter for Rails.cache
 gem "solid_cache"
-gem "solid_queue"
-gem "solid_cable"
+
+# Background jobs + real-time transport (requirement.md §4.10: Sidekiq + Action Cable over Redis pub/sub,
+# replacing the Rails 8 default Solid Queue/Solid Cable so the real-time live-dashboard fan-out (Phase 9)
+# has genuine pub/sub rather than DB polling).
+gem "sidekiq"
+gem "redis"
 
 # Reduces boot times through caching; required in config/boot.rb
 gem "bootsnap", require: false
@@ -40,7 +42,22 @@ gem "kamal", require: false
 gem "thruster", require: false
 
 # Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
-# gem "image_processing", "~> 1.2"
+gem "image_processing", "~> 1.2"
+
+# --- Multi-tenant admin/platform console foundation (Phase 0) ---
+
+# Devise session auth (admin console + platform console) — requirement.md §4.9 item 1
+gem "devise"
+# Tenant-scoped OAuth2 provider (Phase 16) + Next.js BFF credential — requirement.md §4.9 item 4
+gem "doorkeeper"
+# Per-Account authorization policies — requirement.md §5.1 (configurable roles/permissions)
+gem "pundit"
+# Friendly/SEO slugs for events and tenant subdomains — requirement.md §3.2, §4.3
+gem "friendly_id"
+# Pagination for participant/event lists
+gem "pagy"
+# Default throttle on public endpoints — requirement.md §7.4, §4.9 item 2
+gem "rack-attack"
 
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
@@ -61,6 +78,9 @@ end
 group :development, :test do
   # RSpec testing framework [https://github.com/rspec/rspec-rails]
   gem "rspec-rails"
+  # Test data builders, used across model/request specs from Phase 0 onward
+  gem "factory_bot_rails"
+  gem "faker"
 end
 
 group :test do

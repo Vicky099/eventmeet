@@ -1,6 +1,5 @@
 #!/usr/bin/env ruby
 
-require_relative "../config/environment"
-require "solid_queue/cli"
+require_relative "../config/boot"
 
-SolidQueue::Cli.start(ARGV)
+exec "bundle", "exec", "sidekiq", "-r", File.expand_path("..", __dir__), *ARGV

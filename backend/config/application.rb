@@ -32,5 +32,9 @@ module Eventmeet
         routing_specs: false,
         request_specs: true
     end
+
+    # Background jobs run through Sidekiq everywhere except test (see config/environments/test.rb),
+    # per requirement.md §4.10 — replaces the Rails 8 default Solid Queue.
+    config.active_job.queue_adapter = :sidekiq
   end
 end
