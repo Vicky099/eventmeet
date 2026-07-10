@@ -1,0 +1,3 @@
+# OS/editor cruft not already covered by backend/.gitignore or frontend/.gitignore
+.DS_Store
+*.swp
