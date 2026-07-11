@@ -41,7 +41,14 @@ Rails.application.routes.draw do
       path_names: { sign_in: "login", sign_out: "logout" },
       controllers: { sessions: "admin/sessions", passwords: "admin/passwords" },
       skip: [ :registrations ]
-    use_doorkeeper
+    # requirement.md §4.9 item 2: MVP only uses the client-credentials token endpoint (the
+    # Next.js BFF's own credential exchange, config/initializers/doorkeeper.rb's grant_flows) —
+    # no interactive resource-owner flow, and applications are provisioned server-side by the
+    # Super Admin (Phase 2), never self-service — so the interactive/self-service controllers
+    # that flow needs are skipped rather than left reachable with nothing behind them.
+    use_doorkeeper do
+      skip_controllers :authorizations, :applications, :authorized_applications
+    end
 
     # Named user_root (not admin_root) deliberately: Devise's signed_in_root_path/
     # after_sign_in_path_for looks for "#{scope}_root_path" — for the :user scope that's
@@ -69,5 +76,22 @@ Rails.application.routes.draw do
     # Devise looks for platform_staff_root_path specifically.
     get "platform", to: "super_admin/smoke#show", as: :platform_staff_root # Phase 0 stub — replaced by Phase 3.
     get "platform/__smoke", to: "super_admin/smoke#show"
+
+    # Phase 2 — Tenant Provisioning (requirement.md §4.1, §4.3, §4.7). scope path/as: "platform"
+    # (not a bare `resources :accounts`) so these carry the same /platform/... URL namespace as
+    # every other Platform Console route (module comment at the top of this file) and get
+    # platform_accounts_path/platform_account_path/etc. route helpers, distinct from Devise's own
+    # platform_staff_* helpers above.
+    scope path: "platform", as: "platform" do
+      resources :accounts, controller: "super_admin/accounts", only: [ :index, :new, :create, :show, :edit, :update ] do
+        member do
+          patch :suspend
+          patch :reinstate
+        end
+        collection do
+          get :check_slug
+        end
+      end
+    end
   end
 end

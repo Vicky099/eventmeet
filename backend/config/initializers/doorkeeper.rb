@@ -382,7 +382,12 @@ Doorkeeper.configure do
   #   https://datatracker.ietf.org/doc/html/rfc6819#section-4.4.2
   #   https://datatracker.ietf.org/doc/html/rfc6819#section-4.4.3
   #
-  # grant_flows %w[authorization_code client_credentials]
+  # requirement.md §4.9 item 2: the only OAuth flow the MVP public API surface actually uses is
+  # the Next.js BFF's client-credentials exchange (and any tenant's own external tooling doing the
+  # same) — no interactive/resource-owner flow is needed, so authorization_code/implicit/password
+  # are deliberately not enabled. This also means resource_owner_authenticator above (still a
+  # raising placeholder) is never actually invoked in this phase.
+  grant_flows %w[client_credentials]
 
   # Allows to customize OAuth grant flows that +each+ application support.
   # You can configure a custom block (or use a class respond to `#call`) that must

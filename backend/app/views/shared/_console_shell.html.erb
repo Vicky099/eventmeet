@@ -13,16 +13,33 @@
       home_path            — user_root_path / platform_staff_root_path — no bare root_path exists,
                               every route carries its console's /admin or /platform namespace
                               (config/routes.rb)
-      page_title_default — String, used when a view doesn't set content_for(:page_title)
       nav_items           — Array of { path:, icon:, label: } — see app/helpers/{admin,super_admin}_helper.rb
       footer_text          — String, e.g. "EventMeet" / "EventMeet Platform"
-      user_dropdown        — Hash of locals for shared/_user_dropdown, or nil if signed out %>
-<div id="layout-wrapper" data-controller="sidebar">
-  <header id="page-topbar">
+      user_dropdown        — Hash of locals for shared/_user_dropdown, or nil if signed out
+
+    Topbar shows a static welcome message (ported from shopmate-backend's _upper_header.html.erb,
+    same template family) rather than the per-page title — that now lives in the content area
+    itself, via shared/_page_header's breadcrumb + <h4> (content_for(:page_title) still drives the
+    browser <title> tag, shared/_head.html.erb). %>
+<%# data-controller="confirm-dialog" lives here, not per-trigger, so any button anywhere in the
+    page content can use a plain data-action="click->confirm-dialog#show" (see
+    shared/_confirm_dialog.html.erb) without redeclaring it — Stimulus resolves an action to the
+    nearest ancestor carrying the matching data-controller, same as data-action="sidebar#toggle"
+    below already relies on this element for the sidebar controller. %>
+<div id="layout-wrapper" data-controller="sidebar confirm-dialog">
+  <%# class="isvertical-topbar" — load-bearing, not decorative: app.min.css positions
+      #page-topbar via `.isvertical-topbar{position:fixed;left:270px;...}` (offset past the
+      fixed-position sidebar's own width). Without it the topbar renders at its static in-flow
+      position instead, landing underneath/behind the sidebar — invisible, not just misplaced.
+      Confirmed against both the original template mockup (vendor/webadmin_template/
+      pages-starter.html) and shopmate-backend's own _header.html.erb, which both carry this
+      class; missing here since Phase 0, undetected until real topbar content (the page-title
+      text, now shared/_page_header's breadcrumb) made the occlusion visible. %>
+  <header id="page-topbar" class="isvertical-topbar">
     <div class="navbar-header">
       <div class="d-flex">
         <div class="navbar-brand-box">
-          <%= link_to "EventMeet", home_path, class: "logo brand-text d-flex align-items-center h-100 ps-2" %>
+          <%= render "shared/brand_link", home_path: home_path %>
         </div>
 
         <button type="button" class="btn btn-sm px-3 font-size-24 header-item waves-effect" data-action="sidebar#toggle">
@@ -30,7 +47,7 @@
         </button>
 
         <div class="page-title-box align-self-center d-none d-md-block">
-          <h4 class="page-title mb-0"><%= content_for(:page_title) || page_title_default %></h4>
+          <h4 class="page-title mb-0">Welcome back!</h4>
         </div>
       </div>
 
@@ -42,7 +59,7 @@
 
   <div class="vertical-menu">
     <div class="navbar-brand-box">
-      <%= link_to "EventMeet", home_path, class: "logo brand-text d-flex align-items-center h-100 ps-2" %>
+      <%= render "shared/brand_link", home_path: home_path %>
     </div>
 
     <div class="sidebar-menu-scroll">
@@ -64,9 +81,6 @@
   <div class="main-content">
     <div class="page-content">
       <div class="container-fluid">
-        <% if notice %><div class="alert alert-success" role="alert"><%= notice %></div><% end %>
-        <% if alert %><div class="alert alert-danger" role="alert"><%= alert %></div><% end %>
-
         <%= yield %>
       </div>
     </div>
@@ -80,3 +94,6 @@
     </footer>
   </div>
 </div>
+
+<%= render "shared/flash" %>
+<%= render "shared/confirm_dialog" %>

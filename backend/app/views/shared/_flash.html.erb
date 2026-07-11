@@ -1,0 +1,23 @@
+<%# Toast-style flash messages, fixed top-right below the topbar — ported from shopmate-backend's
+    layouts/_flash.html.erb (same template family), repositioned per this app's own requirement
+    (shopmate's own version sits bottom-right instead) and auto-dismissed via flash_controller.js
+    rather than shopmate's plain global script, to match this codebase's Stimulus-only convention
+    for interactive behavior (see e.g. sidebar_controller.js, confirm_dialog_controller.js).
+    Rendered once per console in shared/_console_shell — not inline in the content area, so it
+    doesn't push page content down and stays visible across a Turbo-driven navigation. %>
+<% return if flash.blank? %>
+
+<div class="flash-toast-container" data-controller="flash">
+  <% flash.each do |type, message| %>
+    <% next unless %w[notice alert].include?(type.to_s) %>
+
+    <%# data-timeout in ms — 6000 sits in the middle of the 5–7s the product asked for. %>
+    <div class="flash-toast <%= type %>" data-flash-target="toast" data-timeout="6000">
+      <i class="bx <%= type == "notice" ? "bx-check-circle" : "bx-error-circle" %> flash-toast-icon"></i>
+      <span class="flash-toast-message"><%= message %></span>
+      <button type="button" class="flash-toast-close" data-action="flash#dismiss" aria-label="Dismiss">
+        <i class="bx bx-x"></i>
+      </button>
+    </div>
+  <% end %>
+</div>

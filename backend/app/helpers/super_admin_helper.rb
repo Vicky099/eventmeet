@@ -4,7 +4,7 @@ module SuperAdminHelper
   def super_admin_nav_items
     [
       { path: platform_staff_root_path, icon: "bx-home-alt", label: "Dashboard" },
-      { path: "#", icon: "bx-buildings", label: "Tenants" },
+      { path: platform_accounts_path, icon: "bx-buildings", label: "Tenants" },
       { path: "#", icon: "bx-check-shield", label: "Event Approvals" },
       { path: "#", icon: "bx-receipt", label: "Billing" },
       { path: "#", icon: "bx-pulse", label: "Live Pulse" }

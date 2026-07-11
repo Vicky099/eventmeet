@@ -1,0 +1,14 @@
+<%# Locals: home_path.
+    logo-sm/logo-lg spans (not a bare text string) — app.min.css's collapsed/mobile states drive
+    visibility off these two class names specifically (`body[data-sidebar-size=sm] .logo
+    span.logo-lg{display:none}` / `span.logo-sm{display:block}`, plus an equivalent mobile-width
+    rule). The template's own markup fills these with a small/large logo *image*; this app uses a
+    text brand instead (Phase 0), so logo-sm is an abbreviated mark rather than a second image —
+    but the two-span structure itself is load-bearing, not decorative: a single bare-text link
+    doesn't hide/shrink at all when the sidebar collapses, and visibly overlaps the topbar's
+    hamburger button (caught after fixing the collapse toggle itself actually reaching a visibly
+    collapsed state for the first time — see sidebar_controller.js). %>
+<%= link_to home_path, class: "logo brand-text d-flex align-items-center h-100 ps-2" do %>
+  <span class="logo-sm">EM</span>
+  <span class="logo-lg">EventMeet</span>
+<% end %>

@@ -1,0 +1,48 @@
+<%# Locals: account (Account, new or persisted) — shared by new.html.erb and edit.html.erb.
+    form_with model: [:platform, account] resolves via Rails' polymorphic routing to
+    platform_accounts_path (POST) for a new record or platform_account_path(account) (PATCH) for
+    a persisted one — the "platform" prefix matches config/routes.rb's `scope ... as: "platform"`
+    the same way it would a real `namespace :platform`, even though this controller lives under
+    SuperAdmin::. %>
+<%= form_with model: [ :platform, account ], local: true do |f| %>
+  <% if account.errors.any? %>
+    <div class="alert alert-danger">
+      <ul class="mb-0">
+        <% account.errors.full_messages.each do |message| %>
+          <li><%= message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <div class="mb-3">
+    <%= f.label :name, class: "form-label" %>
+    <%= f.text_field :name, class: "form-control", autofocus: true %>
+  </div>
+
+  <%# exclude_id — only set once the account is persisted, so an edit form's own unchanged slug
+      doesn't flag itself as "taken" (SuperAdmin::AccountsController#slug_availability). %>
+  <div class="mb-3" data-controller="slug-check"
+       data-slug-check-url-value="<%= check_slug_platform_accounts_path %>"
+       <%= "data-slug-check-exclude-id-value=#{account.id}".html_safe if account.persisted? %>>
+    <%= f.label :subdomain_slug, "Subdomain", class: "form-label" %>
+    <div class="input-group">
+      <%= f.text_field :subdomain_slug, class: "form-control",
+            data: { slug_check_target: "input", action: "input->slug-check#check" } %>
+      <span class="input-group-text">.<%= Rails.application.config.x.platform_domain %></span>
+    </div>
+    <div class="mt-1">
+      <%= turbo_frame_tag "slug_availability", data: { slug_check_target: "frame" } %>
+    </div>
+  </div>
+
+  <% unless account.persisted? %>
+    <div class="mb-3">
+      <%= label_tag "account_admin_email", "Initial admin email", class: "form-label" %>
+      <%= text_field_tag "account[admin_email]", @admin_email, class: "form-control" %>
+      <small class="text-muted">They'll receive a temporary password and be forced to reset it on first login.</small>
+    </div>
+  <% end %>
+
+  <%= f.submit account.persisted? ? "Save Changes" : "Provision Account", class: "btn btn-sm btn-primary" %>
+<% end %>

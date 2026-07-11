@@ -1,0 +1,19 @@
+<% content_for :page_title, "Edit #{@account.name}" %>
+
+<%= render "shared/page_header",
+  icon: "bx-buildings",
+  crumbs: [
+    { label: "Tenants", path: platform_accounts_path },
+    { label: @account.name, path: platform_account_path(@account) },
+    { label: "Edit" }
+  ] %>
+
+<div class="row">
+  <div class="col-xl-7 col-lg-9">
+    <div class="card">
+      <div class="card-body">
+        <%= render "form", account: @account %>
+      </div>
+    </div>
+  </div>
+</div>

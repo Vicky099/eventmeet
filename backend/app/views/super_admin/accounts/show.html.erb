@@ -1,0 +1,71 @@
+<% content_for :page_title, @account.name %>
+
+<%= render "shared/page_header",
+  icon: "bx-buildings",
+  crumbs: [ { label: "Tenants", path: platform_accounts_path }, { label: @account.name } ] %>
+
+<div class="row">
+  <div class="col-lg-6">
+    <div class="card">
+      <%# Icon-only actions in the top-right corner (ported from shopmate-backend's "Tenant
+          Details" card-header convention) — breadcrumb above already covers "back to Tenants"
+          navigation, so no separate button for that. %>
+      <div class="card-header bg-white d-flex align-items-center justify-content-between">
+        <h5 class="card-title mb-0">Account Details</h5>
+        <div class="d-flex gap-2">
+          <%= link_to edit_platform_account_path(@account), class: "btn btn-sm btn-outline-secondary", title: "Edit" do %>
+            <i class="bx bx-edit"></i>
+          <% end %>
+          <% if @account.active? %>
+            <%# shared/_confirm_dialog.html.erb — Bootstrap modal, not the browser's native
+                confirm() (data-turbo-confirm renders that, unstyled and out of place here). %>
+            <%= button_to suspend_platform_account_path(@account), method: :patch,
+                  class: "btn btn-sm btn-outline-danger", title: "Suspend",
+                  data: {
+                    action: "click->confirm-dialog#show",
+                    title: "Suspend Account",
+                    message: "Suspend #{@account.name}? Its admin will no longer be able to log in.",
+                    danger: "true"
+                  } do %>
+              <i class="bx bx-pause-circle"></i>
+            <% end %>
+          <% else %>
+            <%= button_to reinstate_platform_account_path(@account), method: :patch,
+                  class: "btn btn-sm btn-outline-success", title: "Reinstate" do %>
+              <i class="bx bx-play-circle"></i>
+            <% end %>
+          <% end %>
+        </div>
+      </div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-sm-4">Name</dt>
+          <dd class="col-sm-8"><%= @account.name %></dd>
+
+          <dt class="col-sm-4">Subdomain</dt>
+          <dd class="col-sm-8"><%= @account.subdomain_slug %>.<%= Rails.application.config.x.platform_domain %></dd>
+
+          <dt class="col-sm-4">Status</dt>
+          <dd class="col-sm-8">
+            <span class="badge <%= @account.active? ? "bg-success" : "bg-secondary" %>"><%= @account.status.humanize %></span>
+          </dd>
+
+          <dt class="col-sm-4">Owner</dt>
+          <dd class="col-sm-8">
+            <% owner = @account.account_memberships.find_by(role: :owner)&.user %>
+            <%= owner&.email || "—" %>
+          </dd>
+
+          <dt class="col-sm-4">API application</dt>
+          <dd class="col-sm-8">
+            <% if @account.oauth_application %>
+              <code><%= @account.oauth_application.uid %></code>
+            <% else %>
+              <span class="text-muted">not provisioned</span>
+            <% end %>
+          </dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>

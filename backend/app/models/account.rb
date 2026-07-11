@@ -10,6 +10,10 @@ class Account < ApplicationRecord
   has_many :account_memberships, dependent: :destroy
   has_many :users, through: :account_memberships
   has_many :tenant_domains, dependent: :destroy
+  # requirement.md §4.9 item 4: one OAuth application per Account, auto-created at provisioning
+  # time (Phase 2). association extended onto Doorkeeper::Application in
+  # config/initializers/doorkeeper_application_account.rb.
+  has_one :oauth_application, class_name: "Doorkeeper::Application", dependent: :destroy
 
   validates :name, presence: true
   validates :subdomain_slug, presence: true,

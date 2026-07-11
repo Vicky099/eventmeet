@@ -13,6 +13,11 @@ if Rails.env.local?
   tenant_admin.save!
   AccountMembership.find_or_create_by!(user: tenant_admin, account: account) { |m| m.role = :owner }
 
+  # Phase 2 (requirement.md §4.9 item 4): every real Account gets one at provisioning time via
+  # AccountProvisioning — this seed predates that flow, so it's created directly here to keep the
+  # dev fixture's invariants matching what provisioning actually produces.
+  account.create_oauth_application!(name: "#{account.name} API") unless account.oauth_application
+
   platform_admin = User.find_or_initialize_by(email: "superadmin@eventmeet.example")
   platform_admin.password = "password123!" if platform_admin.new_record?
   platform_admin.platform_staff = true

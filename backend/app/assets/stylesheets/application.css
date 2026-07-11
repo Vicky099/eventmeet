@@ -18,3 +18,87 @@
   color: inherit;
   text-decoration: none;
 }
+
+/* The vendored template's own rule is `.page-content { padding: 75px 12px 60px 12px }` — flush
+   content against the sidebar/edges instead. The 75px top value is kept: #page-topbar is
+   `position: fixed` at that same height (.header-item{height:75px} in app.min.css), so content
+   would render underneath it otherwise — same class of bug as the missing isvertical-topbar
+   class (shared/_console_shell.html.erb). Only the side/bottom padding is removed. */
+.page-content {
+  padding: 75px 0 0;
+}
+
+/* Flash toasts (shared/_flash.html.erb) — fixed top-right, below the fixed topbar (75px tall,
+   see .page-content above). z-index above the topbar's own 1005 (app.min.css) so a toast never
+   renders underneath it. flash-toast-leaving's animation is what flash_controller.js's
+   `animationend` listener waits on before actually removing the element. */
+.flash-toast-container {
+  position: fixed;
+  top: calc(75px + 16px);
+  right: 16px;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 380px;
+}
+
+.flash-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  font-size: 14px;
+  animation: flash-toast-in 0.2s ease-out;
+}
+
+.flash-toast.notice {
+  background: #ecfdf3;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+}
+
+.flash-toast.alert {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
+
+.flash-toast-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.flash-toast-message {
+  flex-grow: 1;
+}
+
+.flash-toast-close {
+  background: transparent;
+  border: none;
+  color: inherit;
+  opacity: 0.6;
+  line-height: 1;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.flash-toast-close:hover {
+  opacity: 1;
+}
+
+.flash-toast-leaving {
+  animation: flash-toast-out 0.2s ease-in forwards;
+}
+
+@keyframes flash-toast-in {
+  from { transform: translateY(-8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes flash-toast-out {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(-8px); opacity: 0; }
+}

@@ -1,4 +1,6 @@
-<title><%= content_for(:title) || "Eventmeet" %></title>
+<%# :page_title — the same key every console view already sets for shared/_page_header's H4
+    (Phase 2); reused here so the browser tab reflects it too, one source of truth. %>
+<title><%= content_for(:page_title) || "Eventmeet" %></title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">

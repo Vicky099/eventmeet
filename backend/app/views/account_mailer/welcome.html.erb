@@ -1,0 +1,15 @@
+<h1>Welcome to EventMeet</h1>
+
+<p>Your account, <strong><%= @account.name %></strong>, has been created. You've been added as its owner.</p>
+
+<p>
+  Sign in at
+  <%= link_to new_user_session_url, new_user_session_url %>
+</p>
+
+<p>
+  Email: <strong><%= @user.email %></strong><br>
+  Temporary password: <strong><%= @temp_password %></strong>
+</p>
+
+<p>You'll be asked to set a new password the first time you sign in.</p>

@@ -1,0 +1,39 @@
+<%# Ported from shopmate-backend's per-page "page-header" convention (same webadmin template
+    family) — every content page composes this at the top rather than relying on a single dynamic
+    title in the topbar (see shared/_console_shell, whose topbar now shows a static welcome
+    message instead, matching shopmate's _upper_header.html.erb).
+
+    Locals:
+      icon        — optional boxicons class suffix (e.g. "bx-buildings"), rendered before the title
+      crumbs      — Array<{ label:, path: }> — trailing breadcrumb items after "Dashboard" (which
+                    this partial always prepends via console_home_path). The last crumb is
+                    rendered as the current/active page and never linked, even if it has a :path.
+      Title text comes from content_for(:page_title) — every view already sets this (also feeds
+      the <title> tag, shared/_head.html.erb) rather than being passed twice.
+
+    Optional block — a trailing action button/group, right-aligned (e.g. accounts/index.html.erb's
+    "New Account" link), same slot shopmate uses for things like its "Export CSV" button. %>
+<div class="page-header mb-4">
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <div>
+      <h4 class="mb-1">
+        <% if local_assigns[:icon] %><i class="bx <%= icon %> me-2 text-primary"></i><% end %><%= content_for(:page_title) %>
+      </h4>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+          <li class="breadcrumb-item"><%= link_to "Dashboard", console_home_path %></li>
+          <% Array(crumbs).each_with_index do |crumb, index| %>
+            <% if index == crumbs.size - 1 %>
+              <li class="breadcrumb-item active" aria-current="page"><%= crumb[:label] %></li>
+            <% else %>
+              <li class="breadcrumb-item"><%= link_to crumb[:label], crumb[:path] %></li>
+            <% end %>
+          <% end %>
+        </ol>
+      </nav>
+    </div>
+    <% if block_given? %>
+      <div><%= yield %></div>
+    <% end %>
+  </div>
+</div>
