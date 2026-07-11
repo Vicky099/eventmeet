@@ -85,7 +85,7 @@ RSpec.describe "Admin Console events", type: :request do
   describe "POST /admin/events" do
     before { sign_in_with_role(:owner) }
 
-    it "creates the event and redirects to the tabbed workspace" do
+    it "creates the event and redirects to the wizard's first step" do
       post admin_events_path, params: {
         event: {
           name: "Annual Meetup", mode: "on_site",
@@ -95,7 +95,7 @@ RSpec.describe "Admin Console events", type: :request do
       }
 
       event = Event.unscoped_across_tenants { Event.find_by!(name: "Annual Meetup") }
-      expect(response).to redirect_to(edit_admin_event_path(event))
+      expect(response).to redirect_to(edit_admin_event_path(event, step: "basic_info"))
       expect(event.account).to eq(account)
       expect(event.status).to eq("draft")
     end
@@ -109,17 +109,30 @@ RSpec.describe "Admin Console events", type: :request do
     end
   end
 
-  describe "PATCH /admin/events/:id (autosave)" do
+  describe "PATCH /admin/events/:id (wizard step save)" do
     before { sign_in_with_role(:owner) }
 
-    it "updates the event and re-renders the Basic Info tab's frame" do
+    it "saves the step and advances to the next one" do
       Current.account = account
       event = create(:event, account: account, name: "Original Name")
 
-      patch admin_event_path(event), params: { event: { name: "Renamed", mode: "on_site", starts_at: event.starts_at, ends_at: event.ends_at, address: event.address } }
+      patch admin_event_path(event), params: {
+        step: "basic_info",
+        event: { name: "Renamed", mode: "on_site", starts_at: event.starts_at, ends_at: event.ends_at, address: event.address }
+      }
 
-      expect(response).to have_http_status(:ok)
+      expect(response).to redirect_to(edit_admin_event_path(event, step: "agenda"))
       expect(event.reload.name).to eq("Renamed")
+    end
+
+    it "re-renders the same step with errors when invalid, instead of advancing" do
+      Current.account = account
+      event = create(:event, account: account)
+
+      patch admin_event_path(event), params: { step: "basic_info", event: { name: "" } }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body).to include("can&#39;t be blank")
     end
 
     it "normalizes participant_fields against the fixed catalog, defaulting unchecked fields to false" do
@@ -140,10 +153,97 @@ RSpec.describe "Admin Console events", type: :request do
     end
   end
 
+  describe "POST /admin/events/:id/publish" do
+    before { sign_in_with_role(:owner) }
+
+    it "publishes a complete event and computes its current status from the schedule" do
+      Current.account = account
+      event = create(:event, account: account, starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
+
+      post publish_admin_event_path(event)
+
+      event.reload
+      expect(event.published_at).to be_present
+      expect(event.status).to eq("live")
+      expect(response).to redirect_to(edit_admin_event_path(event, step: "review"))
+    end
+
+    it "refuses to publish an incomplete event" do
+      # basic_info_complete? mirrors the same presence/location rules the model already validates
+      # on every save, so a *persisted* Event can't normally fail it — stubbed here purely to
+      # exercise the controller's guard branch in isolation.
+      Current.account = account
+      event = create(:event, account: account)
+      allow_any_instance_of(Event).to receive(:basic_info_complete?).and_return(false)
+
+      post publish_admin_event_path(event)
+
+      expect(event.reload.published_at).to be_nil
+      expect(response).to redirect_to(edit_admin_event_path(event, step: "review"))
+    end
+
+    it "reverts a published event back to draft once any content field is edited again" do
+      Current.account = account
+      event = create(:event, account: account, starts_at: 1.day.from_now, ends_at: 2.days.from_now)
+      post publish_admin_event_path(event)
+      expect(event.reload.status).to eq("up_coming")
+
+      patch admin_event_path(event), params: {
+        step: "basic_info",
+        event: { name: "Edited After Publish", mode: event.mode, starts_at: event.starts_at, ends_at: event.ends_at, address: event.address }
+      }
+
+      event.reload
+      expect(event.published_at).to be_nil
+      expect(event.status).to eq("draft")
+    end
+  end
+
+  describe "POST /admin/events/:id/submit_for_review" do
+    before { sign_in_with_role(:owner) }
+
+    it "submits a brand-new (unsubmitted) event for review, putting it in the queue for the first time" do
+      Current.account = account
+      event = create(:event, account: account)
+      expect(event.approval_status).to eq("unsubmitted")
+
+      post submit_for_review_admin_event_path(event)
+
+      event.reload
+      expect(event.approval_status).to eq("pending")
+      expect(event.submitted_at).to be_present
+      expect(response).to redirect_to(edit_admin_event_path(event, step: "review"))
+    end
+
+    it "resubmits a rejected event back to pending and clears the previous rejection" do
+      Current.account = account
+      event = create(:event, account: account)
+      event.reject!(reason: "Fix the schedule")
+
+      post submit_for_review_admin_event_path(event)
+
+      event.reload
+      expect(event.approval_status).to eq("pending")
+      expect(event.rejection_reason).to be_nil
+      expect(response).to redirect_to(edit_admin_event_path(event, step: "review"))
+    end
+
+    it "refuses to submit an incomplete event" do
+      Current.account = account
+      event = create(:event, account: account)
+      allow_any_instance_of(Event).to receive(:basic_info_complete?).and_return(false)
+
+      post submit_for_review_admin_event_path(event)
+
+      expect(event.reload.approval_status).to eq("unsubmitted")
+      expect(response).to redirect_to(edit_admin_event_path(event, step: "review"))
+    end
+  end
+
   describe "POST /admin/events/:id/duplicate" do
     before { sign_in_with_role(:owner) }
 
-    it "clones name/mode/participant_fields/dates into a new draft, pending event" do
+    it "clones name/mode/participant_fields/dates into a new draft, unsubmitted event" do
       Current.account = account
       original = create(:event, account: account, name: "Original", participant_fields: { "email" => true })
 
@@ -155,7 +255,7 @@ RSpec.describe "Admin Console events", type: :request do
       expect(clone.mode).to eq(original.mode)
       expect(clone.participant_fields).to eq(original.participant_fields)
       expect(clone.status).to eq("draft")
-      expect(clone.approval_status).to eq("pending")
+      expect(clone.approval_status).to eq("unsubmitted")
       expect(response).to redirect_to(edit_admin_event_path(clone))
     end
   end

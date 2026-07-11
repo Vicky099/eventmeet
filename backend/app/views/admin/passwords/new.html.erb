@@ -20,7 +20,10 @@
 
     <div class="mb-3">
       <%= f.label :email, class: "form-label" %>
-      <%= f.email_field :email, autofocus: true, autocomplete: "email", class: "form-control", placeholder: "Enter email" %>
+      <div class="position-relative input-custom-icon">
+        <%= f.email_field :email, autofocus: true, autocomplete: "email", class: "form-control", placeholder: "Enter email" %>
+        <span class="bx bx-mail-send"></span>
+      </div>
     </div>
 
     <div class="mt-3">

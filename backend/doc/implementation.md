@@ -190,6 +190,54 @@ These are gaps between what `requirement.md` locks in and what's actually in the
 
 **136/136 specs green (42 new), Rubocop clean, Brakeman: 0 warnings.**
 
+### Revisited — stepper wizard + Publish gate (post-Phase-4, supersedes the autosaving-tabs entry above)
+
+The freely-navigable autosaving-tabs UI above was replaced with a sequential stepper wizard,
+reverting §5.2's "simplified from baseline wizard" call for this one piece: Basic Info → Agenda →
+Ticket Categories → Badge → Review, each step's Next button doing a real save (not autosave)
+before advancing, ending in a Publish button on Review. This also introduces a real Publish
+gate that didn't exist before — previously `EventSchedulerJob` was "the only thing that ever
+moves an Event off draft," auto-promoting *every* event the moment its schedule allowed,
+finished or not. That's no longer true.
+
+- [x] Wizard shell: step icons (clickable, free navigation preserved — same "don't force a strict
+      sequence" spirit as the tabs they replace) plus Next/Previous. → `app/views/admin/events/edit.html.erb`
+      (`STEPS` order lives on `Admin::EventsController`), `_basic_info_step.html.erb` (renamed from
+      `_basic_info_tab.html.erb`, autosave/Turbo-Frame machinery removed, a real `f.submit "Next"`
+      added), `_review_step.html.erb` (renamed from `_review_tab.html.erb`). Agenda/Tickets/Badge
+      stay `shared/_empty_state` stubs with plain Previous/Next links (nothing to save yet).
+      `autosave_controller.js` deleted (its only caller is gone).
+- [x] `Event#publish!` / `published_at` (new nullable column, `db/migrate/*_add_published_at_to_events.rb`):
+      the Review step's Publish button. `nil` means still draft and invisible to the scheduler; publishing
+      sets `published_at` and immediately computes the correct status via the new `Event#computed_status`
+      (factored out of the job so publishing doesn't sit at `draft` for up to `RESCHEDULE_INTERVAL` waiting
+      for the next tick). Gated in the controller (`Admin::EventsController#publish`) on
+      `basic_info_complete?`, not in the model — `publish!` itself is a raw mutation.
+- [x] "If a published event is edited, its status reverts to draft" — `Event#revert_to_draft_if_published_content_changed`,
+      a `before_save` callback: on any save to an already-published event (`published_at_in_database.present?`)
+      that changes one of `Event::CONTENT_ATTRIBUTES`, clears `published_at` and resets `status` to `draft`.
+      Guarded against firing on `publish!`'s own write (`published_at_changed?`) and on `EventSchedulerJob`'s
+      routine status-only writes (status isn't a `CONTENT_ATTRIBUTES` member), so neither fights this callback.
+- [x] `EventSchedulerJob` updated to only manage events where `published_at` is present
+      (`.where.not(published_at: nil)`) — an unpublished draft now stays `draft` indefinitely regardless of
+      `starts_at`/`ends_at`, instead of auto-promoting on schedule like every other event still does.
+- [x] This is independent of `approval_status`/Super Admin review (still Phase 5, unbuilt) — publishing only
+      controls the event's own draft/scheduled-live lifecycle, not public visibility on the Next.js site. The
+      Review step says so explicitly so it doesn't read as "this event is now live to the public."
+
+**Spec updates:** `spec/models/event_spec.rb` (`#publish!`, revert-on-edit, no-revert on status-only/never-published
+writes), `spec/jobs/event_scheduler_job_spec.rb` (`create_event` helper now publishes; added "leaves an
+unpublished draft event untouched" case), `spec/requests/admin_events_spec.rb` (wizard-step-save redirects
+instead of re-rendering, new `POST .../publish` coverage), `spec/factories/events.rb` (`:published` trait).
+146/146 specs green, Rubocop clean.
+
+**Manual QA (Playwright, live dev server):** stepped Basic Info → Agenda → Tickets → Badge → Review on an
+existing event (Next saving and advancing each time), clicked Publish — status flipped to the schedule-correct
+value (Live, since its dates already spanned "now"), Published badge and success alert appeared. Went back to
+Basic Info, changed the name, clicked Next — confirmed via server log that the very same save both persisted
+the rename *and* reset `status`/`published_at` back to `draft`/`nil`, and the Review step's Publish button
+reappeared.
+
 ---
 
 ## Phase 5 — Event Approval Workflow (Super Admin gate)
@@ -198,19 +246,64 @@ These are gaps between what `requirement.md` locks in and what's actually in the
 **Implements:** §4.7 item 2, §5.2 (approval gate), §8 (`approved_by`, `approved_at`, `rejection_reason`).
 **Depends on:** Phase 4.
 
-- [ ] `Event#submit_for_review!` action from the Review tab — moves `approval_status` to `pending`, locks nothing else (organizer can keep editing per §5.2 re-approval-on-edit decision).
-- [ ] `SuperAdmin::EventReviewsController` — queue of pending events, sorted oldest-first, visually flags anything approaching the 24h SLA (§5.2).
-- [ ] Approve action: sets `approval_status: approved`, `approved_by`, `approved_at`.
-- [ ] Reject action: requires a reason (validated non-blank), sets `approval_status: rejected`, `rejection_reason`; event stays editable and resubmittable.
-- [ ] Email notification to the organizer on reject (WhatsApp/Gupshup piece deferred to Phase 13, per its own dependency on Gupshup credentials) — delivery-state tracked (`pending/sent/failed`, reuses baseline pattern).
-- [ ] Tenant-side: event show page displays current `approval_status` prominently, with the rejection reason if rejected, and the "typically reviewed within 24 hours" messaging while pending.
-- [ ] Re-approval-on-edit confirmed behavior: editing an already-approved event does **not** revert `approval_status` (§5.2 v8 decision) — explicit test for this, since it's easy to accidentally regress.
+- [x] `Event#submit_for_review!` action from the Review tab — moves `approval_status` to `pending`, locks nothing else (organizer can keep editing per §5.2 re-approval-on-edit decision). → `app/models/event.rb`, wired to the Review step's "Resubmit for review" button (`Admin::EventsController#submit_for_review`, `app/views/admin/events/_review_step.html.erb`). A brand-new Event is already `pending` — schema default, stamped with a real `submitted_at` via a `before_validation on: :create` callback — so this action mainly matters for the reject → edit → resubmit cycle, where it resets `submitted_at` and clears the previous rejection; it's a no-op state-wise for a fresh event. Deliberately doesn't touch `status`/`published_at` — approval and Phase 4's publish/schedule state are independent axes, and `revert_to_draft_if_published_content_changed` already owns the "edited after publish" side on its own.
+- [x] `SuperAdmin::EventReviewsController` — queue of pending events, sorted oldest-first, visually flags anything approaching the 24h SLA (§5.2). → `app/controllers/super_admin/event_reviews_controller.rb`, `app/views/super_admin/event_reviews/{index,show}.html.erb`. No separate Pundit policy — same reasoning as `SuperAdmin::AccountsController` (Phase 2): every action is already gated to `platform_staff` by `BaseController`, no role variation within the Platform Console to further check. Sorted by `submitted_at asc`, not `created_at` — a new `submitted_at` column (`db/migrate/*_add_approval_workflow_to_events.rb`), not in requirement.md §8's literal field list but load-bearing for the SLA/sort requirement, since `approval_status` alone can't answer "since when has this been pending," especially across a reject → resubmit cycle where that clock needs to reset. `Event::REVIEW_SLA`/`REVIEW_SLA_WARNING_WINDOW` + `#review_sla_at_risk?` drive the "at risk" badge on both the queue and the per-event review page. Also wired the Platform Console sidebar's pre-existing "Event Approvals" stub link (`app/helpers/super_admin_helper.rb`, left as `"#"` since Phase 3) to the real queue.
+- [x] Approve action: sets `approval_status: approved`, `approved_by`, `approved_at`. → `Event#approve!(by:)`, `SuperAdmin::EventReviewsController#approve`, confirm-dialog-gated button on the per-event review page.
+- [x] Reject action: requires a reason (validated non-blank), sets `approval_status: rejected`, `rejection_reason`; event stays editable and resubmittable. → `Event#reject!(reason:)` (model-level `validates :rejection_reason, presence: true, if: :rejected?` too, defense in depth) + a controller-level blank check before calling it, same "controller pre-checks the business rule, model method is a raw mutation" split Phase 4's `publish`/`publish!` already established — a blank reason re-renders the review page with an alert instead of the model raising.
+- [x] Email notification to the organizer on reject (WhatsApp/Gupshup piece deferred to Phase 13, per its own dependency on Gupshup credentials). → `app/mailers/event_mailer.rb#rejected`, sent to every `owner`-role `AccountMembership` on the event's account via `deliver_later`. **Deviation, flagged rather than silently skipped:** no dedicated delivery-state (`pending/sent/failed`) tracking model — the "reuses baseline pattern" note in the original goal presumes infrastructure that doesn't exist yet (Phase 13's WhatsApp/email notification log, Phase 15's invoice delivery tracking); building a general-purpose delivery-log table now, for this one email, would be a premature abstraction for a single caller. Revisit once Phase 13 actually builds that shared piece.
+- [x] Tenant-side: event show page displays current `approval_status` prominently, with the rejection reason if rejected, and the "typically reviewed within 24 hours" messaging while pending. → No separate show route exists (Phase 4's deliberate call — the wizard's Review step already *is* the read-only summary page); extended `_review_step.html.erb` instead, consistent with that decision rather than opening a second page. Rejected shows the reason + "Resubmit for review"; pending shows "submitted ... ago, typically reviewed within 24 hours"; approved shows a success banner. Also clarifies Publish (Phase 4) and Super Admin approval are independent — publishing alone doesn't make an event publicly visible.
+- [x] Re-approval-on-edit confirmed behavior: editing an already-approved event does **not** revert `approval_status` (§5.2 v8 decision) — explicit test for this, since it's easy to accidentally regress. → `spec/models/event_spec.rb` ("is not reverted by a later content edit"). Structurally guaranteed, not just tested: `revert_to_draft_if_published_content_changed` (Phase 4) only ever touches `status`/`published_at`, never `approval_status` — there's no shared code path for a content edit to regress this through.
 
 ### Definition of Done
-- [ ] Model spec: full pending → approved and pending → rejected → resubmit → approved cycles.
-- [ ] Request spec: only Super Admin (`platform_staff`) can access the review queue/approve/reject actions — a tenant admin gets 403 even for their own event.
-- [ ] Job/mailer spec: rejection triggers exactly one email with the reason included.
-- [ ] Manual QA: submit an event, approve it as Super Admin, edit it as the organizer, confirm `approval_status` stays `approved`. Separately: submit, reject with a reason, confirm the tenant sees the reason and can resubmit.
+- [x] Model spec: full pending → approved and pending → rejected → resubmit → approved cycles. → `spec/models/event_spec.rb` ("walks the full pending -> rejected -> resubmitted -> approved review cycle"), plus per-action specs for `#approve!`/`#reject!`/`#submit_for_review!`/`#review_sla_at_risk?`.
+- [x] Request spec: only Super Admin (`platform_staff`) can access the review queue/approve/reject actions — a tenant admin gets 403 even for their own event. → `spec/requests/super_admin_event_reviews_spec.rb`. As with Phase 4's own note on this same literal "(403)" wording: a signed-in tenant `:user` on the apex host redirects to the Platform Console login (a different Devise Warden scope entirely, not a bare 403 status) rather than being let anywhere near the action — asserted directly, not glossed over as a status-code technicality.
+- [x] Job/mailer spec: rejection triggers exactly one email with the reason included. → `spec/requests/super_admin_event_reviews_spec.rb` ("rejects the event, sets the reason, and emails the tenant owner"), `perform_enqueued_jobs` + `ActionMailer::Base.deliveries.last`, same pattern `spec/requests/super_admin_accounts_spec.rb` already established for `AccountMailer`. No dedicated `spec/mailers/event_mailer_spec.rb` — this is the same "exercised indirectly through the request spec that actually matters" call the shared-partial specs note (`spec/views/shared/_stat_widget.html.erb_spec.rb`'s own comment) already makes for markup this simple.
+- [x] Manual QA: submit an event, approve it as Super Admin, edit it as the organizer, confirm `approval_status` stays `approved`. Separately: submit, reject with a reason, confirm the tenant sees the reason and can resubmit. → verified live via Playwright: rejected a pending event from the Platform Console queue with a reason, confirmed (via server log, not just the UI — Turbo's async re-render occasionally outraces a screenshot in this environment) the tenant's Review step showed the reason and a "Resubmit for review" button, clicked it, confirmed `approval_status` went back to `pending` with a fresh `submitted_at` and `rejection_reason` cleared. Re-approval-on-edit covered by the model spec above rather than a second manual pass — nothing UI-specific to add beyond what that test already proves.
+
+**Found and fixed along the way (Brakeman, not asked for but real):** the Super Admin review page's `link_to @event.meeting_link, @event.meeting_link` — an organizer-controlled string rendered directly as an href — flagged as a genuine (if weak-confidence) stored-XSS vector: a crafted `javascript:...` value would execute in whoever clicks it. Added `ApplicationHelper#external_link_to` (only linkifies `http(s)://`, otherwise renders inert plain text) and applied it here and to the tenant Review step's identical pre-existing pattern for `meeting_link`/`map_url`.
+
+165/165 specs green, Rubocop clean, Brakeman: 0 warnings.
+
+### Revisited — `unsubmitted` gate on the review queue (post-initial-Phase-5)
+
+First pass had `approval_status` default straight to `pending` (schema default `0`), which meant a
+brand-new event — nothing built yet, never touched by the organizer — sat in the Super Admin's
+review queue from the moment it was created. Corrected: added a 4th `unsubmitted` state and made
+it the real default; an event only becomes `pending` (and so only appears in
+`SuperAdmin::EventReviewsController`'s queue) once the organizer explicitly clicks "Submit for
+review" on the wizard's Review step.
+
+- [x] `Event#approval_status` enum gains `unsubmitted: 3` (`pending`/`approved`/`rejected` keep
+      their existing integer codes — those rows meant something real, an actual `approve!`/
+      `reject!`; only the meaningless-until-now `0` default gets reclassified). →
+      `db/migrate/*_add_unsubmitted_approval_status_to_events.rb`: `change_column_default` to `3`
+      plus a data backfill (`UPDATE events SET approval_status = 3, submitted_at = NULL WHERE
+      approval_status = 0`) — safe precisely *because* no explicit "submit for review" gate
+      existed before this revisit, so no existing `pending` row was ever a real submission to
+      preserve.
+- [x] Removed the `before_validation :default_submitted_at, on: :create` callback from the first
+      pass — `submitted_at` is now nil until `submit_for_review!` actually runs, not stamped at
+      creation. `#review_sla_at_risk?` already only fires for `pending?`, so this needed no
+      change.
+- [x] `Admin::EventsController#submit_for_review` gated on `basic_info_complete?`, same pattern as
+      `#publish` — nothing incomplete belongs in front of a Super Admin reviewer either.
+- [x] Review step (`_review_step.html.erb`) gains an `unsubmitted` branch: "Not yet submitted — a
+      Super Admin only sees this event once you submit it for review" + the Submit button, instead
+      of that button only ever showing up after a rejection.
+- [x] Approval badge coloring (secondary/warning/success/danger for unsubmitted/pending/approved/
+      rejected) deduplicated into `ApplicationHelper#approval_status_badge_class` — was about to
+      become two copies of the same hash (the wizard's top badge strip, `edit.html.erb`, hadn't
+      been reflecting `approval_status` state at all before this revisit, just a hardcoded warning
+      color) once a 4th state existed to get wrong twice.
+- [x] `spec/factories/events.rb` gains a `:pending_review` trait (`approval_status: :pending,
+      submitted_at: Time.current`) — the shortcut every review-queue spec needs now that the bare
+      factory default is `unsubmitted`, same role `:published` already plays for `status`.
+
+**Manual QA (Playwright, live dev server):** confirmed an existing unsubmitted event was absent
+from `/platform/event_reviews`, submitted it from the tenant's Review step, confirmed it appeared
+in the queue immediately after (oldest/only entry, "On track" SLA badge, correct tenant name).
+
+170/170 specs green, Rubocop clean, Brakeman: 0 warnings.
 
 ---
 

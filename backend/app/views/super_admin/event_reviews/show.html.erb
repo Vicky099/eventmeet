@@ -1,0 +1,75 @@
+<% content_for :page_title, @event.name %>
+
+<%= render "shared/page_header",
+  icon: "bx-check-double",
+  crumbs: [ { label: "Event Reviews", path: platform_event_reviews_path }, { label: @event.name } ] %>
+
+<div class="row">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header bg-white">
+        <h5 class="card-title mb-0">Event Details</h5>
+      </div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-sm-3">Tenant</dt>
+          <dd class="col-sm-9"><%= @event.account.name %></dd>
+
+          <dt class="col-sm-3">Name</dt>
+          <dd class="col-sm-9"><%= @event.name %></dd>
+
+          <dt class="col-sm-3">Mode</dt>
+          <dd class="col-sm-9"><%= @event.mode.humanize %></dd>
+
+          <dt class="col-sm-3">Schedule</dt>
+          <dd class="col-sm-9"><%= @event.starts_at.to_fs(:long) %> &rarr; <%= @event.ends_at.to_fs(:long) %></dd>
+
+          <dt class="col-sm-3">Location</dt>
+          <dd class="col-sm-9">
+            <% if @event.address.present? %><div><%= @event.address %></div><% end %>
+            <% if @event.meeting_link.present? %><div><%= external_link_to @event.meeting_link, @event.meeting_link %></div><% end %>
+          </dd>
+
+          <dt class="col-sm-3">Status</dt>
+          <dd class="col-sm-9"><span class="badge bg-info-subtle text-info"><%= @event.status.humanize %></span></dd>
+
+          <dt class="col-sm-3">Submitted</dt>
+          <dd class="col-sm-9">
+            <% if @event.submitted_at %>
+              <%= time_ago_in_words(@event.submitted_at) %> ago
+              <% if @event.review_sla_at_risk? %>
+                <span class="badge bg-danger-subtle text-danger ms-1"><i class="bx bx-error-circle"></i> At risk (24h SLA)</span>
+              <% end %>
+            <% else %>
+              <span class="text-muted">—</span>
+            <% end %>
+          </dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header bg-white">
+        <h5 class="card-title mb-0">Review Decision</h5>
+      </div>
+      <div class="card-body">
+        <%= button_to "Approve", approve_platform_event_review_path(@event), method: :post,
+              class: "btn btn-success w-100 mb-3",
+              data: { action: "click->confirm-dialog#show", title: "Approve Event", message: "Approve \"#{@event.name}\"? It becomes visible on the public site once approved." } %>
+
+        <hr>
+
+        <%= form_with url: reject_platform_event_review_path(@event), method: :post, local: true do |f| %>
+          <div class="mb-2">
+            <%= label_tag :rejection_reason, "Rejection reason", class: "form-label" %>
+            <%= text_area_tag :rejection_reason, nil, class: "form-control", rows: 4, placeholder: "Required — the organizer sees this." %>
+          </div>
+          <%= f.submit "Reject", class: "btn btn-outline-danger w-100",
+                data: { action: "click->confirm-dialog#show", title: "Reject Event", message: "Reject \"#{@event.name}\"? The organizer is notified by email with your reason.", danger: "true" } %>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

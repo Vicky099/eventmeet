@@ -6,70 +6,79 @@
 
 <div class="mb-3 d-flex gap-2">
   <span class="badge bg-info-subtle text-info"><%= @event.status.humanize %></span>
-  <span class="badge bg-warning-subtle text-warning"><%= @event.approval_status.humanize %></span>
+  <span class="badge <%= approval_status_badge_class(@event.approval_status) %>"><%= @event.approval_status.humanize %></span>
+  <% if @event.published? %>
+    <span class="badge bg-success-subtle text-success"><i class="bx bx-check-circle"></i> Published</span>
+  <% end %>
 </div>
 
-<%# Tabbed builder, not a linear wizard (requirement.md §5.2) — freely navigable in any order,
-    each tab autosaving independently. Bootstrap nav-tabs (client-side, data-bs-toggle="tab")
-    live outside the Basic Info tab's Turbo Frame, so switching tabs never interrupts — or is
-    interrupted by — an in-flight autosave. %>
-<ul class="nav nav-tabs mb-0" role="tablist">
-  <li class="nav-item">
-    <a class="nav-link active" data-bs-toggle="tab" href="#tab-basic-info" role="tab">
-      <i class="bx bx-info-circle me-1"></i>Basic Info
-      <% if @event.basic_info_complete? %>
-        <i class="bx bx-check-circle text-success ms-1" title="Complete"></i>
-      <% else %>
-        <i class="bx bx-error-circle text-warning ms-1" title="Incomplete"></i>
+<%# Sequential stepper wizard (requirement.md §5.2 revisited from Phase 4's freely-navigable
+    autosaving tabs): each step's Next button does a real save before advancing, and Review ends
+    in a Publish button instead of autosave-everywhere. Step icons stay clickable, same as the
+    tabs they replace — nothing here is hard-gated except Publish itself
+    (Event#basic_info_complete?). %>
+<% steps = [
+  { key: "basic_info", label: "Basic Info", icon: "bx-info-circle" },
+  { key: "agenda", label: "Agenda", icon: "bx-list-ul" },
+  { key: "tickets", label: "Ticket Categories", icon: "bx-purchase-tag-alt" },
+  { key: "badge", label: "Badge", icon: "bx-id-card" },
+  { key: "review", label: "Review", icon: "bx-check-double" },
+] %>
+
+<div class="card">
+  <div class="card-body">
+    <ul class="wizard-nav mb-4">
+      <% steps.each do |step| %>
+        <li class="wizard-list-item">
+          <%= link_to edit_admin_event_path(@event, step: step[:key]),
+                class: "list-item text-decoration-none #{'active' if @step == step[:key]}" do %>
+            <div class="step-icon" data-bs-toggle="tooltip" data-bs-placement="top" title="<%= step[:label] %>">
+              <i class="bx <%= step[:icon] %>"></i>
+            </div>
+            <div class="step-title text-muted"><%= step[:label] %></div>
+          <% end %>
+        </li>
       <% end %>
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link" data-bs-toggle="tab" href="#tab-agenda" role="tab">
-      <i class="bx bx-calendar-star me-1"></i>Agenda
-      <span class="badge bg-secondary-subtle text-secondary ms-1">Phase 11</span>
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link" data-bs-toggle="tab" href="#tab-tickets" role="tab">
-      <i class="bx bx-purchase-tag-alt me-1"></i>Ticket Categories
-      <span class="badge bg-secondary-subtle text-secondary ms-1">Phase 6</span>
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link" data-bs-toggle="tab" href="#tab-badge" role="tab">
-      <i class="bx bx-id-card me-1"></i>Badge
-      <span class="badge bg-secondary-subtle text-secondary ms-1">Phase 8</span>
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link" data-bs-toggle="tab" href="#tab-review" role="tab">
-      <i class="bx bx-check-double me-1"></i>Review
-    </a>
-  </li>
-</ul>
+    </ul>
 
-<div class="tab-content border border-top-0 rounded-bottom bg-white p-3">
-  <div class="tab-pane active" id="tab-basic-info" role="tabpanel">
-    <%= render "basic_info_tab", event: @event %>
-  </div>
-
-  <div class="tab-pane" id="tab-agenda" role="tabpanel">
-    <%= render "shared/empty_state", icon: "bx-calendar-star",
-          message: "Multi-day, multi-track agenda planning lands in Phase 11." %>
-  </div>
-
-  <div class="tab-pane" id="tab-tickets" role="tabpanel">
-    <%= render "shared/empty_state", icon: "bx-purchase-tag-alt",
-          message: "Capacity-based ticket categories land in Phase 6." %>
-  </div>
-
-  <div class="tab-pane" id="tab-badge" role="tabpanel">
-    <%= render "shared/empty_state", icon: "bx-id-card",
-          message: "The visual badge designer lands in Phase 8." %>
-  </div>
-
-  <div class="tab-pane" id="tab-review" role="tabpanel">
-    <%= render "review_tab", event: @event %>
+    <% case @step
+       when "basic_info" %>
+      <div class="text-center mb-4">
+        <h5>Basic Info</h5>
+        <% if @event.basic_info_complete? %>
+          <p class="text-success mb-0"><i class="bx bx-check-circle"></i> Complete</p>
+        <% else %>
+          <p class="text-warning mb-0"><i class="bx bx-error-circle"></i> Incomplete</p>
+        <% end %>
+      </div>
+      <%= render "basic_info_step", event: @event %>
+    <% when "agenda" %>
+      <div class="text-center mb-4"><h5>Agenda</h5></div>
+      <%= render "shared/empty_state", icon: "bx-list-ul",
+            message: "Multi-day, multi-track agenda planning lands in Phase 11." %>
+      <div class="d-flex align-items-start gap-3 mt-4">
+        <%= link_to "Previous", edit_admin_event_path(@event, step: "basic_info"), class: "btn btn-outline-secondary" %>
+        <%= link_to "Next", edit_admin_event_path(@event, step: "tickets"), class: "btn btn-primary ms-auto" %>
+      </div>
+    <% when "tickets" %>
+      <div class="text-center mb-4"><h5>Ticket Categories</h5></div>
+      <%= render "shared/empty_state", icon: "bx-purchase-tag-alt",
+            message: "Capacity-based ticket categories land in Phase 6." %>
+      <div class="d-flex align-items-start gap-3 mt-4">
+        <%= link_to "Previous", edit_admin_event_path(@event, step: "agenda"), class: "btn btn-outline-secondary" %>
+        <%= link_to "Next", edit_admin_event_path(@event, step: "badge"), class: "btn btn-primary ms-auto" %>
+      </div>
+    <% when "badge" %>
+      <div class="text-center mb-4"><h5>Badge</h5></div>
+      <%= render "shared/empty_state", icon: "bx-id-card",
+            message: "The visual badge designer lands in Phase 8." %>
+      <div class="d-flex align-items-start gap-3 mt-4">
+        <%= link_to "Previous", edit_admin_event_path(@event, step: "tickets"), class: "btn btn-outline-secondary" %>
+        <%= link_to "Next", edit_admin_event_path(@event, step: "review"), class: "btn btn-primary ms-auto" %>
+      </div>
+    <% when "review" %>
+      <div class="text-center mb-4"><h5>Review</h5></div>
+      <%= render "review_step", event: @event %>
+    <% end %>
   </div>
 </div>

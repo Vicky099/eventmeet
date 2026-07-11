@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe Event, type: :model do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:account) { create(:account) }
 
   before { Current.account = account }
@@ -108,6 +110,186 @@ RSpec.describe Event, type: :model do
 
     it "exposes the full lifecycle" do
       expect(Event.statuses.keys).to eq(%w[draft up_coming live completed])
+    end
+  end
+
+  describe "#publish!" do
+    it "sets published_at and computes status from the schedule" do
+      event = create(:event, account: account, starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
+
+      event.publish!
+
+      expect(event.published?).to be true
+      expect(event.status).to eq("live")
+    end
+
+    it "leaves an unpublished event as draft" do
+      event = create(:event, account: account)
+      expect(event.published?).to be false
+    end
+  end
+
+  describe "reverting to draft when a published event's content changes" do
+    it "clears published_at and resets status to draft on a content-field edit" do
+      event = create(:event, account: account, starts_at: 1.day.from_now, ends_at: 2.days.from_now)
+      event.publish!
+      expect(event.status).to eq("up_coming")
+
+      event.update!(name: "Renamed After Publish")
+
+      expect(event.published?).to be false
+      expect(event.status).to eq("draft")
+    end
+
+    it "does not revert on a status-only write (EventSchedulerJob's own update)" do
+      event = create(:event, account: account, starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
+      event.publish!
+
+      event.update!(status: :completed)
+
+      expect(event.published?).to be true
+      expect(event.status).to eq("completed")
+    end
+
+    it "does not revert an event that was never published" do
+      event = create(:event, account: account)
+
+      event.update!(name: "Still Draft")
+
+      expect(event.published?).to be false
+      expect(event.status).to eq("draft")
+    end
+  end
+
+  describe "approval_status enum" do
+    it "defaults to unsubmitted, with no submitted_at until explicitly submitted" do
+      event = create(:event, account: account)
+
+      expect(event.approval_status).to eq("unsubmitted")
+      expect(event.submitted_at).to be_nil
+    end
+
+    it "only enters pending (and so the review queue) via an explicit submit_for_review!" do
+      event = create(:event, account: account)
+
+      event.submit_for_review!
+
+      expect(event.approval_status).to eq("pending")
+      expect(event.submitted_at).to be_present
+    end
+  end
+
+  describe "#approve!" do
+    it "sets approval_status, approved_by, and approved_at" do
+      event = create(:event, account: account)
+      staff = create(:user, :platform_staff)
+
+      event.approve!(by: staff)
+
+      expect(event.approval_status).to eq("approved")
+      expect(event.approved_by).to eq(staff)
+      expect(event.approved_at).to be_present
+    end
+
+    it "is not reverted by a later content edit (requirement.md §5.2 v8 re-approval-on-edit)" do
+      event = create(:event, account: account)
+      event.approve!(by: create(:user, :platform_staff))
+
+      event.update!(name: "Renamed After Approval")
+
+      expect(event.reload.approval_status).to eq("approved")
+    end
+  end
+
+  describe "#reject!" do
+    it "requires a reason and sets rejection_reason" do
+      event = create(:event, account: account)
+
+      event.reject!(reason: "Missing venue details")
+
+      expect(event.approval_status).to eq("rejected")
+      expect(event.rejection_reason).to eq("Missing venue details")
+    end
+
+    it "is invalid without a rejection_reason" do
+      event = build(:event, account: account, approval_status: :rejected, rejection_reason: nil)
+      expect(event).not_to be_valid
+      expect(event.errors[:rejection_reason]).to be_present
+    end
+  end
+
+  describe "#submit_for_review!" do
+    it "resets a rejected event back to pending and clears the previous review" do
+      event = create(:event, account: account)
+      event.reject!(reason: "Fix the schedule")
+
+      event.submit_for_review!
+
+      expect(event.approval_status).to eq("pending")
+      expect(event.rejection_reason).to be_nil
+      expect(event.approved_by).to be_nil
+      expect(event.approved_at).to be_nil
+    end
+
+    it "refreshes submitted_at on a resubmit, not just the first submission" do
+      event = create(:event, account: account)
+      event.submit_for_review!
+      first_submitted_at = event.submitted_at
+      event.reject!(reason: "Fix the schedule")
+
+      travel_to(1.day.from_now) { event.submit_for_review! }
+
+      expect(event.submitted_at).to be > first_submitted_at
+    end
+  end
+
+  it "walks the full unsubmitted -> pending -> rejected -> resubmitted -> approved review cycle" do
+    event = create(:event, account: account)
+    staff = create(:user, :platform_staff)
+    expect(event.approval_status).to eq("unsubmitted")
+
+    event.submit_for_review!
+    expect(event.approval_status).to eq("pending")
+
+    event.reject!(reason: "Fix the schedule")
+    expect(event.approval_status).to eq("rejected")
+    expect(event.rejection_reason).to eq("Fix the schedule")
+
+    event.submit_for_review!
+    expect(event.approval_status).to eq("pending")
+    expect(event.rejection_reason).to be_nil
+
+    event.approve!(by: staff)
+    expect(event.approval_status).to eq("approved")
+    expect(event.approved_by).to eq(staff)
+  end
+
+  describe "#review_sla_at_risk?" do
+    it "is false well within the 24h SLA" do
+      event = create(:event, :pending_review, account: account, submitted_at: 1.hour.ago)
+      expect(event.review_sla_at_risk?).to be false
+    end
+
+    it "is true once within the warning window of the 24h SLA" do
+      event = create(:event, :pending_review, account: account, submitted_at: 21.hours.ago)
+      expect(event.review_sla_at_risk?).to be true
+    end
+
+    it "is true once the SLA has been breached outright" do
+      event = create(:event, :pending_review, account: account, submitted_at: 25.hours.ago)
+      expect(event.review_sla_at_risk?).to be true
+    end
+
+    it "is false when never submitted, regardless of how stale the record is" do
+      event = create(:event, account: account)
+      expect(event.review_sla_at_risk?).to be false
+    end
+
+    it "is false once no longer pending, regardless of how long ago it was submitted" do
+      event = create(:event, :pending_review, account: account, submitted_at: 30.hours.ago)
+      event.approve!(by: create(:user, :platform_staff))
+
+      expect(event.review_sla_at_risk?).to be false
     end
   end
 

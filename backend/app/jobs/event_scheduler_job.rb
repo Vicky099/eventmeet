@@ -5,11 +5,12 @@
 # real-time behavior — a `live` transition landing within minutes, not up to a day late, fits
 # that better than baseline's daily cadence did).
 #
-# There is no separate "publish" action anywhere in this phase — this job is the *only* thing
-# that ever moves an Event off `draft` (requirement.md §3.2's "auto-transitioned by schedule"
-# applies to the whole chain, draft included). Status is recomputed from scratch on every tick
-# purely from `starts_at`/`ends_at` vs now; the update is skipped when that doesn't actually
-# change anything, so most ticks touch zero rows.
+# Revisited for the wizard's Publish gate (requirement.md §5.2, `Event#publish!`): this job now
+# only manages events that have been published at least once (`published_at` present) — an
+# event still sitting in draft, never published, is invisible to it and stays `draft` forever
+# regardless of its schedule. Status is otherwise recomputed from scratch on every tick purely
+# from `starts_at`/`ends_at` vs now (`Event#computed_status`); the update is skipped when that
+# doesn't actually change anything, so most ticks touch zero rows.
 #
 # Bootstrapping: something needs to call `EventSchedulerJob.perform_later` once to start the
 # self-rescheduling chain (a deploy step, `bin/jobs` boot hook, etc.) — deliberately left open
@@ -24,12 +25,9 @@ class EventSchedulerJob < ApplicationJob
     now = Time.current
 
     Event.unscoped_across_tenants do
-      Event.where.not(status: :completed).find_each do |event|
-        target = target_status(event, now)
-        # event.status (the enum getter) returns a String — target is a Symbol
-        # (target_status's return values); compare by String or this never matches, updating
-        # every row on every tick regardless of whether anything actually changed.
-        next if target.to_s == event.status
+      Event.where.not(status: :completed).where.not(published_at: nil).find_each do |event|
+        target = event.computed_status(now)
+        next if target == event.status
 
         begin
           event.update!(status: target)
@@ -43,14 +41,5 @@ class EventSchedulerJob < ApplicationJob
     end
   ensure
     self.class.set(wait: RESCHEDULE_INTERVAL).perform_later
-  end
-
-  private
-
-  def target_status(event, now)
-    return :completed if now >= event.ends_at
-    return :live if now >= event.starts_at
-
-    :up_coming
   end
 end

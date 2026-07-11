@@ -8,10 +8,9 @@
   <div class="col-xl-7 col-lg-9">
     <div class="card">
       <div class="card-body">
-        <%# Deliberately a plain (non-autosaving) form, unlike the Basic Info tab it hands off to
-            — there's no Turbo Frame target to autosave into before the record exists. Once
-            created, every one of these same fields becomes editable/autosaved from the tabbed
-            workspace (edit.html.erb + _basic_info_tab.html.erb). %>
+        <%# A minimal creation form, not the full wizard — just enough to get a persisted record
+            to hand off to. Once created, every one of these same fields becomes re-editable from
+            the wizard's Basic Info step (edit.html.erb + _basic_info_step.html.erb). %>
         <%= form_with model: @event, url: admin_events_path, local: true, data: { controller: "event-mode" } do |f| %>
           <% if @event.errors.any? %>
             <div class="alert alert-danger">

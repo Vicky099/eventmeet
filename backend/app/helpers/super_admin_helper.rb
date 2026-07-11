@@ -5,7 +5,7 @@ module SuperAdminHelper
     [
       { path: platform_staff_root_path, icon: "bx-home-alt", label: "Dashboard" },
       { path: platform_accounts_path, icon: "bx-buildings", label: "Tenants" },
-      { path: "#", icon: "bx-check-shield", label: "Event Approvals" },
+      { path: platform_event_reviews_path, icon: "bx-check-shield", label: "Event Approvals" },
       { path: "#", icon: "bx-receipt", label: "Billing" },
       { path: "#", icon: "bx-pulse", label: "Live Pulse" }
     ]

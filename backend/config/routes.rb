@@ -63,11 +63,13 @@ Rails.application.routes.draw do
     # Phase 4 — Event Lifecycle (requirement.md §3.2, §5.2). scope path/as: "admin" so these carry
     # the same /admin/... URL namespace as every other Admin Console route (module comment at the
     # top of this file), same pattern Phase 2 established for /platform/accounts. No :show — the
-    # tabbed builder's `edit` action is the only workspace page (see Admin::EventsController).
+    # wizard's `edit` action is the only workspace page (see Admin::EventsController).
     scope path: "admin", as: "admin" do
       resources :events, controller: "admin/events", only: [ :index, :new, :create, :edit, :update ] do
         member do
           post :duplicate
+          post :publish
+          post :submit_for_review
         end
       end
     end
@@ -106,6 +108,15 @@ Rails.application.routes.draw do
         end
         collection do
           get :check_slug
+        end
+      end
+
+      # Phase 5 — Event Approval Workflow (requirement.md §4.7 item 2, §5.2). No :new/:create/
+      # :edit/:update/:destroy — Super Admin reviews events, it doesn't build or own them.
+      resources :event_reviews, controller: "super_admin/event_reviews", only: [ :index, :show ] do
+        member do
+          post :approve
+          post :reject
         end
       end
     end

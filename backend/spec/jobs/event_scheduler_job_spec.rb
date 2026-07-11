@@ -10,9 +10,12 @@ RSpec.describe EventSchedulerJob, type: :job do
     travel_to(Time.zone.local(2026, 1, 1, 0, 0, 0)) { example.run }
   end
 
+  # :published — this job (Event#publish!'s counterpart) only manages events that have already
+  # been published at least once; an event still sitting in draft is invisible to it regardless
+  # of schedule (see the "leaves an unpublished draft event untouched" spec below).
   def create_event(starts_at:, ends_at:)
     Current.account = account
-    create(:event, account: account, starts_at: starts_at, ends_at: ends_at)
+    create(:event, :published, account: account, starts_at: starts_at, ends_at: ends_at)
   end
 
   # perform_now doesn't run the self-rescheduled follow-up job (that's just enqueued, not
@@ -80,14 +83,23 @@ RSpec.describe EventSchedulerJob, type: :job do
   it "processes events across every tenant, not just one" do
     other_account = create(:account)
     Current.account = account
-    event_a = create(:event, account: account, starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
+    event_a = create(:event, :published, account: account, starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
     Current.account = other_account
-    event_b = create(:event, account: other_account, starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
+    event_b = create(:event, :published, account: other_account, starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
 
     EventSchedulerJob.perform_now
 
     expect(Event.unscoped_across_tenants { event_a.reload }.status).to eq("live")
     expect(Event.unscoped_across_tenants { event_b.reload }.status).to eq("live")
+  end
+
+  it "leaves an unpublished draft event untouched regardless of its schedule" do
+    Current.account = account
+    event = create(:event, account: account, starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
+
+    EventSchedulerJob.perform_now
+
+    expect(Event.unscoped_across_tenants { event.reload }.status).to eq("draft")
   end
 
   it "self-reschedules another run after completing" do
