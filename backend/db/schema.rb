@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_07_11_100510) do
+ActiveRecord::Schema[8.0].define(version: 2026_07_11_132926) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -34,6 +34,38 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_11_100510) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["subdomain_slug"], name: "index_accounts_on_subdomain_slug", unique: true
+  end
+
+  create_table "event_staff_assignments", id: :uuid, default: nil, force: :cascade do |t|
+    t.uuid "account_id", null: false
+    t.uuid "event_id", null: false
+    t.uuid "user_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_event_staff_assignments_on_account_id"
+    t.index ["event_id", "user_id"], name: "index_event_staff_assignments_on_event_id_and_user_id", unique: true
+    t.index ["event_id"], name: "index_event_staff_assignments_on_event_id"
+    t.index ["user_id"], name: "index_event_staff_assignments_on_user_id"
+  end
+
+  create_table "events", id: :uuid, default: nil, force: :cascade do |t|
+    t.uuid "account_id", null: false
+    t.string "name", null: false
+    t.string "slug", null: false
+    t.integer "mode", default: 0, null: false
+    t.integer "status", default: 0, null: false
+    t.integer "approval_status", default: 0, null: false
+    t.integer "banner_orientation", default: 0, null: false
+    t.datetime "starts_at", null: false
+    t.datetime "ends_at", null: false
+    t.text "address"
+    t.string "meeting_link"
+    t.jsonb "participant_fields", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "map_url"
+    t.index ["account_id", "slug"], name: "index_events_on_account_id_and_slug", unique: true
+    t.index ["account_id"], name: "index_events_on_account_id"
   end
 
   create_table "oauth_access_grants", force: :cascade do |t|
@@ -109,6 +141,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_11_100510) do
 
   add_foreign_key "account_memberships", "accounts"
   add_foreign_key "account_memberships", "users"
+  add_foreign_key "event_staff_assignments", "accounts"
+  add_foreign_key "event_staff_assignments", "events"
+  add_foreign_key "event_staff_assignments", "users"
+  add_foreign_key "events", "accounts"
   add_foreign_key "oauth_access_grants", "oauth_applications", column: "application_id"
   add_foreign_key "oauth_access_grants", "users", column: "resource_owner_id"
   add_foreign_key "oauth_access_tokens", "oauth_applications", column: "application_id"

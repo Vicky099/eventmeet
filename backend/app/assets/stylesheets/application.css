@@ -23,9 +23,100 @@
    content against the sidebar/edges instead. The 75px top value is kept: #page-topbar is
    `position: fixed` at that same height (.header-item{height:75px} in app.min.css), so content
    would render underneath it otherwise — same class of bug as the missing isvertical-topbar
-   class (shared/_console_shell.html.erb). Only the side/bottom padding is removed. */
+   class (shared/_console_shell.html.erb). Side padding stays removed; the 60px *bottom* value is
+   restored below, for an unrelated reason (see .main-content's own comment).
+
+   The extra `+ 1rem` on both is a deliberate visible gap on top of that required clearance —
+   Bootstrap's gap-3 spacing (`--bs-gap: 1rem` / 16px) — so the page's own content never sits
+   flush against the fixed header or footer, top or bottom. */
 .page-content {
-  padding: 75px 0 0;
+  padding: calc(75px + 1rem) 0 calc(60px + 1rem);
+}
+
+/* Without this, the gap-3 top padding above gets silently eaten on any page whose first child is
+   a gutter row (Bootstrap's `.row.g-3` sets `margin-top: calc(-1 * var(--bs-gutter-y))`, i.e.
+   -1rem/-16px) — .container-fluid has no padding/border of its own, so that negative margin
+   collapses straight through it and up against .page-content's padding edge instead of staying
+   contained within .container-fluid, silently cancelling exactly 16px of the gap regardless of
+   what padding-top is actually set to (confirmed empirically: even a blunt 200px override only
+   ever rendered as 184px). display: flow-root establishes a new block formatting context on
+   .container-fluid, which contains the row's own negative margin the way Bootstrap intends
+   (pulling the row up *within* the container, aligning grid gutters) without letting it leak out
+   and eat into the fixed-header/footer clearance above/below it. */
+.container-fluid {
+  display: flow-root;
+}
+
+/* app.min.css positions .footer with `position: absolute; bottom: 0; height: 60px` — bare
+   absolute positioning, meant to anchor against a *positioned* ancestor's own (content-sized)
+   box. The template never actually sets `position: relative` anywhere in that ancestor chain
+   (#layout-wrapper, .main-content), so with no positioned ancestor the footer's containing block
+   falls back to the initial containing block instead — which is viewport-sized, not
+   content-sized. On any page short enough to fit in one viewport this is invisible (the two
+   heights coincide); on a page taller than the viewport (a long form, e.g. /admin/events/new) it
+   isn't — the footer renders pinned near the one-viewport-height mark and overlaps the actual
+   end of the content instead of sitting below it, which is what read as "content is hidden
+   behind the header" (a scroll never reaches genuinely *below* the overlap, since the footer is
+   sitting on top of it, not after it). `position: relative` here gives the footer the correct
+   (page-content-sized, not viewport-sized) containing block; `.page-content`'s restored 60px
+   bottom padding above reserves room so the last field/button isn't still covered by the
+   60px-tall footer once it's correctly anchored. Same class of bug as the missing
+   isvertical-topbar class and the collapsed-sidebar logo overlap — the template assumes a bit of
+   supporting CSS/markup our simplified port didn't originally carry over, invisible until a page
+   long enough to actually need it existed. */
+.main-content {
+  position: relative;
+}
+
+/* Side effect of the fix above: app.min.css also hardcodes .footer{left:270px} (and left:70px
+   when the sidebar is collapsed, body[data-sidebar-size=sm] .footer) — correct *only* when the
+   footer's containing block is the viewport-wide ICB, where "270px" means "270px from the true
+   left edge of the screen, i.e. past the fixed sidebar." Now that .main-content is the
+   containing block (and .main-content's own margin-left already shifts it past the sidebar, in
+   both expanded and collapsed states), that same 270px/70px gets applied a *second* time on top
+   of the box that's already shifted — leaving a visible gap between the sidebar and the footer's
+   left edge. left:0 is correct in both sidebar states, since .main-content's margin-left is what
+   actually needs to vary, and it already does — !important because the collapsed-sidebar variant
+   (body[data-sidebar-size=sm] .footer) is a higher-specificity selector than a bare .footer and
+   otherwise still wins, reintroducing the gap only in that one state. */
+.footer {
+  left: 0 !important;
+}
+
+/* app.min.css's collapsed-sidebar rule, `body[data-sidebar-size=sm] .vertical-menu{position:
+   absolute; width:70px}`, drops the `position:fixed` (with `top:0;bottom:0`, from the base
+   `.vertical-menu` rule) that normally bounds the sidebar to the viewport — with `position:
+   absolute` and no `top` set, the box's height falls back to its own content's natural size
+   instead. That breaks `.sidebar-menu-scroll{height:calc(100% - 101px)}` too: a percentage
+   height can only resolve against a parent with a *definite* height, so once `.vertical-menu`
+   itself becomes auto-height, the calc() silently stops applying and `.sidebar-menu-scroll`
+   also grows to fit its content — around 1100px tall for this app's nav, taller than most
+   viewports. The vendor template papers over exactly this with its own
+   `body[data-sidebar-size=sm]{min-height:1200px}` rule (search app.min.css) — forcing the
+   *entire page* to be at least 1200px tall so the oversized, uncontained sidebar never looks
+   clipped. That number is sized for the original demo's much longer menu, not this app's 8
+   flat items — on any page shorter than 1200px (e.g. the dashboard), the result is exactly
+   the empty space below the footer this override fixes: the page is stretched to a floor that
+   has nothing to do with its actual content.
+
+   Restoring `position: fixed` here (matching the base rule's un-collapsed behavior) gives
+   `.vertical-menu` a real, viewport-bounded height again, which lets `.sidebar-menu-scroll`'s
+   own height:calc() resolve correctly — and `overflow-y: auto` below means if a future, longer
+   menu ever *does* exceed that height, it scrolls internally within the rail instead of
+   inflating the whole document again. */
+body[data-sidebar-size="sm"] .vertical-menu {
+  position: fixed;
+}
+
+.sidebar-menu-scroll {
+  overflow-y: auto;
+}
+
+/* Companion to the fix above: with `.vertical-menu` viewport-bounded again, the page's real
+   content height is what should drive body height — not a demo-sized floor unrelated to this
+   app's much shorter sidebar (see the .vertical-menu comment above for the full explanation). */
+body[data-sidebar-size="sm"] {
+  min-height: 0 !important;
 }
 
 /* Flash toasts (shared/_flash.html.erb) — fixed top-right, below the fixed topbar (75px tall,

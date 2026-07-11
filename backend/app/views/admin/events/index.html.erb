@@ -1,0 +1,63 @@
+<% content_for :page_title, "Events" %>
+
+<%= render layout: "shared/page_header", locals: { icon: "bx-calendar-event", crumbs: [ { label: "Events" } ] } do %>
+  <%= link_to "New Event", new_admin_event_path, class: "btn btn-sm btn-primary" %>
+<% end %>
+
+<div class="mb-3">
+  <%= form_with url: admin_events_path, method: :get, local: true, class: "d-flex gap-2" do %>
+    <%# id: "event_status_filter", not the Rails-default id="status" — see
+        super_admin/accounts/index.html.erb's comment on the vendored template's bare #status
+        CSS rule. %>
+    <%= select_tag :status,
+          options_for_select([ [ "All statuses", "" ] ] + Event.statuses.keys.map { |s| [ s.humanize, s ] }, @status_filter),
+          id: "event_status_filter", class: "form-select", onchange: "this.form.requestSubmit()" %>
+  <% end %>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Mode</th>
+            <th>Starts</th>
+            <th>Status</th>
+            <th>Approval</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @events.each do |event| %>
+            <tr>
+              <td><%= link_to event.name, edit_admin_event_path(event) %></td>
+              <td><%= event.mode.humanize %></td>
+              <td><%= event.starts_at.to_fs(:short) %></td>
+              <td><span class="badge bg-info-subtle text-info"><%= event.status.humanize %></span></td>
+              <td><span class="badge bg-warning-subtle text-warning"><%= event.approval_status.humanize %></span></td>
+              <td class="text-end">
+                <div class="d-flex justify-content-end gap-2">
+                  <%= link_to edit_admin_event_path(event), class: "btn btn-sm btn-outline-primary", title: "Edit" do %>
+                    <i class="bx bx-edit"></i>
+                  <% end %>
+                  <%# Event duplication/template action (requirement.md Phase 4) — stubbed as a
+                      menu item here as an icon button; full clone logic lives in
+                      Admin::EventsController#duplicate. %>
+                  <%= button_to duplicate_admin_event_path(event), method: :post,
+                        class: "btn btn-sm btn-outline-secondary", title: "Duplicate" do %>
+                    <i class="bx bx-copy"></i>
+                  <% end %>
+                </div>
+              </td>
+            </tr>
+          <% end %>
+          <% if @events.none? %>
+            <tr><td colspan="6" class="text-center text-muted py-4">No events yet.</td></tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

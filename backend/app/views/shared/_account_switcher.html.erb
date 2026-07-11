@@ -1,0 +1,27 @@
+<%# Account switcher stub (requirement.md §4.11/§9 — full cross-tenant relay-token SSO switching
+    is Phase 17). Rendered only on the tenant side — shared/_console_shell guards this on
+    Current.account, which is nil on the Platform Console (Super Admin has no AccountMembership
+    at all, §4.1). Reads real AccountMembership data now rather than hardcoding "no other
+    accounts": the join table already supports a User belonging to several Accounts (the agency
+    use case, §4.11) even though nothing lets a user actually acquire a second membership yet
+    (no invite-to-another-account flow exists before Phase 17 either) — today that means every
+    real user hits the "no other accounts" branch honestly, not as a hardcoded stand-in for it. %>
+<div class="px-3 py-2">
+  <div class="dropdown">
+    <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start d-flex align-items-center"
+            type="button" data-bs-toggle="dropdown" aria-expanded="false">
+      <i class="bx bx-buildings me-2 flex-shrink-0"></i>
+      <span class="text-truncate"><%= Current.account.name %></span>
+    </button>
+    <ul class="dropdown-menu w-100">
+      <% other_accounts = current_user.accounts.where.not(id: Current.account.id) %>
+      <% if other_accounts.any? %>
+        <% other_accounts.each do |account| %>
+          <li><span class="dropdown-item-text small text-muted"><%= account.name %></span></li>
+        <% end %>
+      <% else %>
+        <li><span class="dropdown-item-text small text-muted">No other accounts</span></li>
+      <% end %>
+    </ul>
+  </div>
+</div>

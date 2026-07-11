@@ -55,8 +55,22 @@ Rails.application.routes.draw do
     # user_root_path — before ever falling back to the plain root_path (which doesn't exist at
     # all here — see the module comment above on why every route carries the /admin namespace).
     # Naming it to match is what makes Devise find it automatically, no override needed.
-    get "admin", to: "admin/smoke#show", as: :user_root # Phase 0 stub — replaced by the real dashboard in Phase 3.
+    get "admin", to: "admin/dashboard#index", as: :user_root # Phase 3 — real dashboard.
+    # Kept as real, reusable smoke-test infrastructure (Phase 0 DoD), not a one-off — still
+    # exercised by spec/requests/hosting_spec.rb — distinct from user_root above since Phase 3.
     get "admin/__smoke", to: "admin/smoke#show"
+
+    # Phase 4 — Event Lifecycle (requirement.md §3.2, §5.2). scope path/as: "admin" so these carry
+    # the same /admin/... URL namespace as every other Admin Console route (module comment at the
+    # top of this file), same pattern Phase 2 established for /platform/accounts. No :show — the
+    # tabbed builder's `edit` action is the only workspace page (see Admin::EventsController).
+    scope path: "admin", as: "admin" do
+      resources :events, controller: "admin/events", only: [ :index, :new, :create, :edit, :update ] do
+        member do
+          post :duplicate
+        end
+      end
+    end
   end
 
   constraints(Hosting::ApexConstraint.new) do
@@ -74,7 +88,9 @@ Rails.application.routes.draw do
 
     # See the user_root comment above — same reasoning, this scope's name is platform_staff so
     # Devise looks for platform_staff_root_path specifically.
-    get "platform", to: "super_admin/smoke#show", as: :platform_staff_root # Phase 0 stub — replaced by Phase 3.
+    get "platform", to: "super_admin/dashboard#index", as: :platform_staff_root # Phase 3 — real dashboard.
+    # Kept as real, reusable smoke-test infrastructure (Phase 0 DoD), not a one-off — still
+    # exercised by spec/requests/hosting_spec.rb — distinct from platform_staff_root above since Phase 3.
     get "platform/__smoke", to: "super_admin/smoke#show"
 
     # Phase 2 — Tenant Provisioning (requirement.md §4.1, §4.3, §4.7). scope path/as: "platform"

@@ -14,6 +14,11 @@ class Account < ApplicationRecord
   # time (Phase 2). association extended onto Doorkeeper::Application in
   # config/initializers/doorkeeper_application_account.rb.
   has_one :oauth_application, class_name: "Doorkeeper::Application", dependent: :destroy
+  # Phase 4: Event is TenantScoped (default-scoped to Current.account) — that's orthogonal to
+  # this association, which just adds the plain `WHERE account_id = ?` regardless of which
+  # console/context is asking, same as every other has_many here.
+  has_many :events, dependent: :destroy
+  has_many :event_staff_assignments, dependent: :destroy
 
   validates :name, presence: true
   validates :subdomain_slug, presence: true,

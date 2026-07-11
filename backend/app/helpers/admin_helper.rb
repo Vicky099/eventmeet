@@ -5,7 +5,7 @@ module AdminHelper
   def admin_nav_items
     [
       { path: user_root_path, icon: "bx-home-alt", label: "Dashboard" },
-      { path: "#", icon: "bx-calendar-event", label: "Events" },
+      { path: admin_events_path, icon: "bx-calendar-event", label: "Events" },
       { path: "#", icon: "bx-group", label: "Participants" },
       { path: "#", icon: "bx-id-card", label: "Badges" },
       { path: "#", icon: "bx-barcode", label: "Check-in" },

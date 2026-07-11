@@ -1,0 +1,22 @@
+<% content_for :page_title, "Dashboard" %>
+
+<%# No shared/page_header here — the dashboard *is* "Dashboard", a "Dashboard > Dashboard"
+    breadcrumb would say nothing; shopmate-backend's own dashboard skips it the same way. %>
+<div class="row g-3 mb-4">
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Events", value: @event_count, icon: "bx-calendar-event", color: "primary" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Participants", value: @participant_count, icon: "bx-group", color: "success" %>
+  </div>
+</div>
+
+<% if @event_count.zero? %>
+  <%= render layout: "shared/card", locals: { title: "Getting Started", icon: "bx-rocket" } do %>
+    <%= render "shared/empty_state",
+          icon: "bx-calendar-plus",
+          message: "No events yet — create your first event to get started.",
+          action_label: "New Event",
+          action_path: new_admin_event_path %>
+  <% end %>
+<% end %>

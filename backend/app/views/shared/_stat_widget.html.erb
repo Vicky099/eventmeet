@@ -1,0 +1,35 @@
+<%# Shared partial library (requirement.md §5.14, Phase 3 working process) — ported from the
+    webadmin template's own dashboard-sales.html mini-stat card (vendor/webadmin_template/
+    dashboard-sales.html): label + big value (+ optional trend) on the left, a colored icon
+    avatar on the right. Every later phase's "put a KPI number on a dashboard" need should reach
+    for this rather than hand-rolling the card/avatar-title markup again.
+
+    Locals:
+      label — String (e.g. "Events")
+      value — String/Integer (e.g. 0, "1,204")
+      icon  — String, boxicons suffix (e.g. "bx-calendar-event")
+      color — String, Bootstrap color name (e.g. "primary"/"success"/"warning") — default "primary"
+      trend — Hash { direction: :up/:down, text: String }, optional (e.g. { direction: :up, text: "2.64%" }) %>
+<% color = local_assigns[:color] || "primary" %>
+<div class="card">
+  <div class="card-body">
+    <div class="d-flex justify-content-between">
+      <div>
+        <h6 class="font-size-15 text-muted mb-0"><%= label %></h6>
+        <h4 class="mt-3 pt-1 mb-0 font-size-22">
+          <%= value %>
+          <% if local_assigns[:trend] %>
+            <span class="<%= trend[:direction] == :up ? "text-success" : "text-danger" %> fw-medium font-size-14 align-middle">
+              <i class="mdi mdi-arrow-<%= trend[:direction] %>"></i><%= trend[:text] %>
+            </span>
+          <% end %>
+        </h4>
+      </div>
+      <div class="avatar">
+        <div class="avatar-title rounded bg-<%= color %>-subtle">
+          <i class="bx <%= icon %> font-size-24 mb-0 text-<%= color %>"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

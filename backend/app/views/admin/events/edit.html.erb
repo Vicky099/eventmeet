@@ -1,0 +1,75 @@
+<% content_for :page_title, @event.name %>
+
+<%= render "shared/page_header",
+  icon: "bx-calendar-event",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name } ] %>
+
+<div class="mb-3 d-flex gap-2">
+  <span class="badge bg-info-subtle text-info"><%= @event.status.humanize %></span>
+  <span class="badge bg-warning-subtle text-warning"><%= @event.approval_status.humanize %></span>
+</div>
+
+<%# Tabbed builder, not a linear wizard (requirement.md §5.2) — freely navigable in any order,
+    each tab autosaving independently. Bootstrap nav-tabs (client-side, data-bs-toggle="tab")
+    live outside the Basic Info tab's Turbo Frame, so switching tabs never interrupts — or is
+    interrupted by — an in-flight autosave. %>
+<ul class="nav nav-tabs mb-0" role="tablist">
+  <li class="nav-item">
+    <a class="nav-link active" data-bs-toggle="tab" href="#tab-basic-info" role="tab">
+      <i class="bx bx-info-circle me-1"></i>Basic Info
+      <% if @event.basic_info_complete? %>
+        <i class="bx bx-check-circle text-success ms-1" title="Complete"></i>
+      <% else %>
+        <i class="bx bx-error-circle text-warning ms-1" title="Incomplete"></i>
+      <% end %>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" data-bs-toggle="tab" href="#tab-agenda" role="tab">
+      <i class="bx bx-calendar-star me-1"></i>Agenda
+      <span class="badge bg-secondary-subtle text-secondary ms-1">Phase 11</span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" data-bs-toggle="tab" href="#tab-tickets" role="tab">
+      <i class="bx bx-purchase-tag-alt me-1"></i>Ticket Categories
+      <span class="badge bg-secondary-subtle text-secondary ms-1">Phase 6</span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" data-bs-toggle="tab" href="#tab-badge" role="tab">
+      <i class="bx bx-id-card me-1"></i>Badge
+      <span class="badge bg-secondary-subtle text-secondary ms-1">Phase 8</span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" data-bs-toggle="tab" href="#tab-review" role="tab">
+      <i class="bx bx-check-double me-1"></i>Review
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content border border-top-0 rounded-bottom bg-white p-3">
+  <div class="tab-pane active" id="tab-basic-info" role="tabpanel">
+    <%= render "basic_info_tab", event: @event %>
+  </div>
+
+  <div class="tab-pane" id="tab-agenda" role="tabpanel">
+    <%= render "shared/empty_state", icon: "bx-calendar-star",
+          message: "Multi-day, multi-track agenda planning lands in Phase 11." %>
+  </div>
+
+  <div class="tab-pane" id="tab-tickets" role="tabpanel">
+    <%= render "shared/empty_state", icon: "bx-purchase-tag-alt",
+          message: "Capacity-based ticket categories land in Phase 6." %>
+  </div>
+
+  <div class="tab-pane" id="tab-badge" role="tabpanel">
+    <%= render "shared/empty_state", icon: "bx-id-card",
+          message: "The visual badge designer lands in Phase 8." %>
+  </div>
+
+  <div class="tab-pane" id="tab-review" role="tabpanel">
+    <%= render "review_tab", event: @event %>
+  </div>
+</div>

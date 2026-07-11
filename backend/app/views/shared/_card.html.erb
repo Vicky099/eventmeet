@@ -1,0 +1,24 @@
+<%# Shared partial library (requirement.md §5.14, Phase 3 working process) — general-purpose card/
+    tile wrapper every later phase should reach for instead of hand-rolling a fresh
+    <div class="card">...</div> (as super_admin/accounts/show.html.erb's "Account Details" card
+    did, the only hand-rolled instance predating this).
+
+    Locals:
+      title    — String, optional. Omit for a plain body-only card (no header at all).
+      icon     — String, optional boxicons suffix (e.g. "bx-buildings"), only used with title.
+      actions  — String/SafeBuffer, optional — rendered top-right in the header (e.g. icon
+                 buttons); build with `capture do ... end`.
+    Block: card body content. %>
+<div class="card">
+  <% if local_assigns[:title] %>
+    <div class="card-header bg-white d-flex align-items-center justify-content-between">
+      <h5 class="card-title mb-0">
+        <% if local_assigns[:icon] %><i class="bx <%= icon %> me-2 text-primary"></i><% end %><%= title %>
+      </h5>
+      <% if local_assigns[:actions] %><div class="d-flex gap-2"><%= actions %></div><% end %>
+    </div>
+  <% end %>
+  <div class="card-body">
+    <%= yield %>
+  </div>
+</div>

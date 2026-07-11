@@ -63,6 +63,16 @@
     </div>
 
     <div class="sidebar-menu-scroll">
+      <%# Tenant side only — Current.account is nil on the Platform Console (Super Admin has no
+          AccountMembership at all, requirement.md §4.1). Lives inside .sidebar-menu-scroll, not
+          as a direct sibling of .navbar-brand-box: app.min.css offsets .sidebar-menu-scroll
+          itself by margin-top:75px to clear the *fixed-position* brand box above it (the brand
+          box is taken out of document flow, so nothing after it gets pushed down "for free" —
+          same class of bug as the missing isvertical-topbar class and the collapsed-sidebar logo
+          overlap). A sibling div here would render underneath the brand box instead, not below
+          it — caught the same way those were, by actually looking at the rendered page. %>
+      <%= render "shared/account_switcher" if Current.account %>
+
       <div id="sidebar-menu">
         <ul class="metismenu list-unstyled" id="side-menu" data-sidebar-target="menu">
           <li class="menu-title">Menu</li>

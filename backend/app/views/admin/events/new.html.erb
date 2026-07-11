@@ -1,0 +1,71 @@
+<% content_for :page_title, "New Event" %>
+
+<%= render "shared/page_header",
+  icon: "bx-calendar-event",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: "New Event" } ] %>
+
+<div class="row">
+  <div class="col-xl-7 col-lg-9">
+    <div class="card">
+      <div class="card-body">
+        <%# Deliberately a plain (non-autosaving) form, unlike the Basic Info tab it hands off to
+            — there's no Turbo Frame target to autosave into before the record exists. Once
+            created, every one of these same fields becomes editable/autosaved from the tabbed
+            workspace (edit.html.erb + _basic_info_tab.html.erb). %>
+        <%= form_with model: @event, url: admin_events_path, local: true, data: { controller: "event-mode" } do |f| %>
+          <% if @event.errors.any? %>
+            <div class="alert alert-danger">
+              <ul class="mb-0">
+                <% @event.errors.full_messages.each do |message| %>
+                  <li><%= message %></li>
+                <% end %>
+              </ul>
+            </div>
+          <% end %>
+
+          <div class="mb-3">
+            <%= f.label :name, class: "form-label" %>
+            <%= f.text_field :name, class: "form-control", autofocus: true %>
+          </div>
+
+          <div class="mb-3">
+            <%= f.label :mode, class: "form-label" %>
+            <%= f.select :mode, Event.modes.keys.map { |m| [ m.humanize, m ] }, {},
+                  class: "form-select", data: { event_mode_target: "mode", action: "change->event-mode#toggle" } %>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <%= f.label :starts_at, "Starts", class: "form-label" %>
+              <%= f.datetime_field :starts_at, class: "form-control" %>
+            </div>
+            <div class="col-md-6">
+              <%= f.label :ends_at, "Ends", class: "form-label" %>
+              <%= f.datetime_field :ends_at, class: "form-control" %>
+            </div>
+          </div>
+
+          <div class="mb-3" data-event-mode-target="onSiteField">
+            <%= f.label :address, class: "form-label" %>
+            <%= f.text_area :address, class: "form-control", rows: 2 %>
+            <small class="text-muted">Required for on-site/hybrid events.</small>
+          </div>
+
+          <div class="mb-3" data-event-mode-target="onSiteField">
+            <%= f.label :map_url, "Google Maps link", class: "form-label" %>
+            <%= f.text_field :map_url, class: "form-control", placeholder: "https://maps.google.com/?q=..." %>
+            <small class="text-muted">Paste a Google Maps location URL — used to render the map on the public event page.</small>
+          </div>
+
+          <div class="mb-3" data-event-mode-target="virtualField">
+            <%= f.label :meeting_link, class: "form-label" %>
+            <%= f.text_field :meeting_link, class: "form-control" %>
+            <small class="text-muted">Required for virtual/hybrid events.</small>
+          </div>
+
+          <%= f.submit "Create Event", class: "btn btn-sm btn-primary" %>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

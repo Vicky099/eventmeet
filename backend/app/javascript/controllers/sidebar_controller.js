@@ -15,11 +15,18 @@ export default class extends Controller {
     }
 
     // turbo:before-render fires while the outgoing body is still on screen — restoring onto the
-    // incoming body here, rather than in connect() (which only runs after Turbo has already
-    // painted), avoids a one-frame flash of an expanded sidebar on every navigation while
-    // collapsed.
+    // incoming body here, rather than only in connect(), avoids a one-frame flash of an expanded
+    // sidebar on every *Turbo-driven* navigation while collapsed.
     this.restoreSize = this.restoreSize.bind(this)
     document.addEventListener("turbo:before-render", this.restoreSize)
+
+    // turbo:before-render only fires on Turbo-driven visits (link clicks) — a hard/fresh load
+    // (typed URL, bookmark, browser refresh) never fires it at all, so connect() is the *only*
+    // hook that runs. Without this, a hard load always rendered expanded (the saved size was
+    // never applied), and the first link click afterwards would suddenly jump to "sm" — reading
+    // as "the sidebar closes when I click any link," since it visibly collapsed on that first
+    // click instead of already being collapsed from the start.
+    this.applySavedSize(document.body)
   }
 
   disconnect() {
@@ -49,6 +56,10 @@ export default class extends Controller {
   }
 
   restoreSize(event) {
+    this.applySavedSize(event.detail.newBody)
+  }
+
+  applySavedSize(body) {
     if (window.innerWidth < 992) return
     let saved
     try {
@@ -56,6 +67,6 @@ export default class extends Controller {
     } catch {
       return
     }
-    if (saved) event.detail.newBody.setAttribute("data-sidebar-size", saved)
+    if (saved) body.setAttribute("data-sidebar-size", saved)
   }
 }

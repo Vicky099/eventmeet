@@ -1,0 +1,19 @@
+<% content_for :page_title, "Dashboard" %>
+
+<%# No shared/page_header here — same reasoning as admin/dashboard/index.html.erb. %>
+<div class="row g-3 mb-4">
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Tenants", value: @tenant_count, icon: "bx-buildings", color: "primary" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Pending Approvals", value: @pending_approval_count, icon: "bx-check-shield", color: "warning" %>
+  </div>
+</div>
+
+<%# requirement.md §5.15: real-time cross-tenant live pulse is a Phase 9 flagship feature — this
+    is deliberately just the placeholder card its own dashboard slot will fill later. %>
+<%= render layout: "shared/card", locals: { title: "Cross-Tenant Live Pulse", icon: "bx-pulse" } do %>
+  <%= render "shared/empty_state",
+        icon: "bx-pulse",
+        message: "Live registration/check-in activity across all tenants lands in Phase 9." %>
+<% end %>

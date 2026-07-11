@@ -1,0 +1,18 @@
+<%# Shared partial library (requirement.md §5.14, Phase 3 working process) — ported from
+    shopmate-backend's recurring "icon + muted message (+ optional CTA)" empty-state block (same
+    template family — e.g. its tenant show page's "No active agreement for this tenant."). Used
+    wherever a later phase has nothing yet to list (0 events, 0 participants, ...) instead of a
+    bare blank card.
+
+    Locals:
+      icon         — String, boxicons suffix (e.g. "bx-calendar-plus")
+      message      — String
+      action_label — String, optional
+      action_path  — String/path, required if action_label is given %>
+<div class="text-center py-4">
+  <i class="bx <%= icon %> font-size-40 text-muted mb-2 d-block"></i>
+  <p class="text-muted mb-<%= local_assigns[:action_label] ? 2 : 0 %>"><%= message %></p>
+  <% if local_assigns[:action_label] %>
+    <%= link_to action_label, action_path, class: "btn btn-sm btn-primary" %>
+  <% end %>
+</div>
