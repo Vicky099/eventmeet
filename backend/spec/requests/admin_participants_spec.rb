@@ -67,6 +67,126 @@ RSpec.describe "Admin Console participants", type: :request do
     end
   end
 
+  # requirement.md revisit: "a participant show page where we can show the profile of
+  # participant, his in and out activity and his badge with all filled data."
+  describe "GET /admin/events/:event_id/participants/:id (show)" do
+    before { sign_in_with_role(:owner) }
+
+    it "shows the participant's own profile fields" do
+      event = create_event
+      Current.account = account
+      participant = create(:participant, account: account, event: event, first_name: "Alice", last_name: "Smith", email: "alice@example.com", company: "Acme Inc")
+
+      get admin_event_participant_path(event, participant)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("Alice Smith")
+      expect(response.body).to include("alice@example.com")
+      expect(response.body).to include("Acme Inc")
+      expect(response.body).to include(participant.hex_id)
+    end
+
+    it "labels the hex_id row 'ID', not 'Hex ID'" do
+      event = create_event
+      Current.account = account
+      participant = create(:participant, account: account, event: event)
+
+      get admin_event_participant_path(event, participant)
+
+      expect(response.body).not_to include("Hex ID")
+    end
+
+    it "shows check-in/check-out activity, newest first, but not print scans" do
+      event = create_event
+      Current.account = account
+      participant = create(:participant, account: account, event: event)
+      ScanService.call(event: event, identifier: participant.hex_id, scan_type: "check_in")
+      ScanService.call(event: event, identifier: participant.hex_id, scan_type: "check_out")
+      ScanEvent.create!(account: account, event: event, participant: participant, scan_type: :print, source: :manual, scanned_at: Time.current)
+
+      get admin_event_participant_path(event, participant)
+
+      expect(response.body).to include("Checked In")
+      expect(response.body).to include("Checked Out")
+      checked_in_index = response.body.index("Checked In")
+      checked_out_index = response.body.index("Checked Out")
+      expect(checked_out_index).to be < checked_in_index # newest (check_out) first
+    end
+
+    it "shows a session-level check-in under that session's own name, not 'Event'" do
+      event = create_event
+      Current.account = account
+      session = create(:session, account: account, event: event, name: "Keynote Hall")
+      participant = create(:participant, account: account, event: event)
+      ScanService.call(event: event, identifier: participant.hex_id, scan_type: "check_in", session: session)
+
+      get admin_event_participant_path(event, participant)
+
+      expect(response.body).to include("Keynote Hall")
+    end
+
+    it "embeds the real badge preview (participant_id, not the sample), when one is configured" do
+      event = create_event
+      Current.account = account
+      badge = create(:badge, account: account, event: event, ticket_category: nil)
+      participant = create(:participant, account: account, event: event)
+
+      get admin_event_participant_path(event, participant)
+
+      expect(response.body).to include(preview_admin_event_badge_path(event, badge, participant_id: participant.id))
+    end
+
+    it "shows a friendly message instead of an iframe when no badge is configured" do
+      event = create_event
+      Current.account = account
+      participant = create(:participant, account: account, event: event)
+
+      get admin_event_participant_path(event, participant)
+
+      expect(response.body).to include("No badge has been designed")
+    end
+
+    it "any account membership role can view (requirement.md §5.1)" do
+      event = create_event
+      Current.account = account
+      participant = create(:participant, account: account, event: event)
+      sign_in_with_role(:checkin_staff)
+
+      get admin_event_participant_path(event, participant)
+
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
+  describe "GET /admin/events/:event_id/participants/:id/document" do
+    before { sign_in_with_role(:owner) }
+
+    it "streams the participant's own attached document through CloudinaryRawFile" do
+      event = create_event
+      Current.account = account
+      participant = create(:participant, account: account, event: event)
+      participant.document.attach(io: StringIO.new("fake document bytes"), filename: "id-card.pdf", content_type: "application/pdf")
+
+      get document_admin_event_participant_path(event, participant)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to eq("fake document bytes")
+      expect(response.headers["Content-Disposition"]).to include("attachment", "id-card.pdf")
+    end
+
+    it "redirects with an alert when no document is on file" do
+      event = create_event
+      Current.account = account
+      participant = create(:participant, account: account, event: event, attach_document: false)
+
+      get document_admin_event_participant_path(event, participant)
+
+      expect(response).to redirect_to(admin_event_participant_path(event, participant))
+      follow_redirect!
+      expect(response.body).to include("No document on file")
+    end
+  end
+
   # requirement.md §5.4/§5.14 v12 revisit: "whatever fields we have enabled in [the registration
   # form] only those fields will be present while registration — the rest will be hidden." A
   # disabled catalog field doesn't just render optional — it doesn't render at all. Asserted via
@@ -240,6 +360,56 @@ RSpec.describe "Admin Console participants", type: :request do
 
       remaining = Event.unscoped_across_tenants { event.participants.pluck(:name) }
       expect(remaining).to eq([ "Keep Me" ])
+    end
+  end
+
+  # Phase 13 — Communications (requirement.md §3.10): "Resend invitation per participant and send
+  # to all pending batch job."
+  describe "POST /admin/events/:event_id/participants/:id/resend" do
+    before { sign_in_with_role(:owner) }
+
+    it "tracks and enqueues an email Notification for the participant" do
+      event = create_event
+      Current.account = account
+      participant = create(:participant, account: account, event: event, email: "alice@example.com")
+
+      expect {
+        post resend_admin_event_participant_path(event, participant)
+      }.to have_enqueued_job(NotificationDeliveryJob)
+
+      notification = Event.unscoped_across_tenants { Notification.where(notifiable: participant).last }
+      expect(notification.to).to eq("alice@example.com")
+      expect(response).to redirect_to(admin_event_participants_path(event))
+    end
+
+    it "blocks checkin_staff" do
+      event = create_event
+      Current.account = account
+      participant = create(:participant, account: account, event: event)
+      sign_in_with_role(:checkin_staff)
+
+      post resend_admin_event_participant_path(event, participant)
+
+      expect(response).to redirect_to(user_root_path)
+    end
+  end
+
+  describe "POST /admin/events/:event_id/participants/send_to_pending" do
+    before { sign_in_with_role(:owner) }
+
+    it "sends only to participants with status: pending" do
+      event = create_event
+      Current.account = account
+      pending_participant = create(:participant, account: account, event: event, email: "pending@example.com", status: :pending)
+      create(:participant, account: account, event: event, email: "confirmed@example.com", status: :confirmed)
+
+      post send_to_pending_admin_event_participants_path(event)
+
+      notifications = Event.unscoped_across_tenants { Notification.where(notifiable: pending_participant) }
+      expect(notifications.count).to eq(1)
+      expect(notifications.first.to).to eq("pending@example.com")
+      confirmed_notifications = Event.unscoped_across_tenants { Notification.where(notifiable_type: "Participant", to: "confirmed@example.com") }
+      expect(confirmed_notifications).to be_empty
     end
   end
 

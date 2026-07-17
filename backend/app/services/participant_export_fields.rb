@@ -25,7 +25,9 @@ class ParticipantExportFields
     { key: "status", label: "Status" },
     { key: "source", label: "Source" },
     { key: "ticket_category", label: "Ticket Category" },
-    { key: "hex_id", label: "Hex ID" },
+    # requirement.md revisit: "Hex ID will be ID in all places on UI" — matches admin/participants
+    # /index.html.erb's own "ID" column header for this exact value.
+    { key: "hex_id", label: "ID" },
     { key: "client_participant_id", label: "Client Participant ID" },
     { key: "govt_id", label: "Govt ID" },
     { key: "rf_id", label: "RF ID" },

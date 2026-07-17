@@ -387,15 +387,25 @@ RSpec.describe Participant, type: :model do
     end
   end
 
+  # Phase 13 — Communications (requirement.md §3.10): routes through Notifier/
+  # NotificationDeliveryJob now, not a bare `ParticipantMailer.confirmation(...).deliver_later` —
+  # have_enqueued_mail (an ActionMailer-specific matcher) no longer applies, since
+  # NotificationDeliveryJob calls `.deliver_now` synchronously *inside* itself rather than
+  # enqueueing ActionMailer's own delivery job; asserting on the tracked Notification row plus
+  # NotificationDeliveryJob directly is what actually proves a send happened.
   describe "registration confirmation email (Event Basic Info gap-fill: 'send email on registration?')" do
     include ActiveJob::TestHelper
 
-    it "enqueues ParticipantMailer#confirmation when the event's toggle is on and the participant has an email" do
+    it "tracks and enqueues an email Notification when the event's toggle is on and the participant has an email" do
       event.update!(send_registration_email: true)
 
       expect {
         create(:participant, account: account, event: event, email: "alice@example.com")
-      }.to have_enqueued_mail(ParticipantMailer, :confirmation)
+      }.to have_enqueued_job(NotificationDeliveryJob)
+
+      notification = Notification.email.last
+      expect(notification.to).to eq("alice@example.com")
+      expect(notification.status).to eq("pending")
     end
 
     it "sends nothing when the event's toggle is off (the default)" do
@@ -403,7 +413,7 @@ RSpec.describe Participant, type: :model do
 
       expect {
         create(:participant, account: account, event: event, email: "alice@example.com")
-      }.not_to have_enqueued_mail(ParticipantMailer, :confirmation)
+      }.not_to change { Notification.count }
     end
 
     it "sends nothing when the participant has no email, even with the toggle on" do
@@ -411,7 +421,7 @@ RSpec.describe Participant, type: :model do
 
       expect {
         create(:participant, account: account, event: event, email: nil)
-      }.not_to have_enqueued_mail(ParticipantMailer, :confirmation)
+      }.not_to change { Notification.count }
     end
   end
 

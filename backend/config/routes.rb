@@ -107,15 +107,27 @@ Rails.application.routes.draw do
             # form." Backs ticket_category_fields_controller.js's Turbo Frame src repoint —
             # re-renders admin/participants/_dynamic_fields against the requested category.
             get :dynamic_fields
+            # Phase 13 — Communications (requirement.md §3.10): "send to all pending batch job."
+            post :send_to_pending
           end
           member do
             patch :approve
+            # Phase 13 — Communications (requirement.md §3.10): "Resend invitation per
+            # participant."
+            post :resend
             # Phase 8 — Badge Design & Printing (requirement.md §3.6): "on-demand single-badge
             # download endpoint" — one participant, whichever Badge applies to them
             # (Event#badge_for: their own ticket category's badge, falling back to the event's
             # default). Participant-scoped, not Badge-scoped, since that's the actual unit an
             # admin downloads from the participant list/detail.
             get :badge, defaults: { format: :pdf }
+            # requirement.md revisit: "a participant show page where we can show the profile of
+            # participant" — a plain download link for their own uploaded document, on the show
+            # page. Not a raw blob URL (CloudinaryRawFile's own comment: the "raw" resource-type
+            # double-extension bug this app already hit twice for xlsx and PDF exports could just
+            # as easily hit a non-image document upload — routing through the same fix now avoids
+            # a third occurrence rather than waiting to discover it live).
+            get :document
           end
         end
         resources :import_files, controller: "admin/import_files", only: [ :new, :create, :show ] do

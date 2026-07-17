@@ -1,3 +1,14 @@
+<%# Phase 13 — Communications (requirement.md §3.10, §5.10): "registration-confirmation email
+    using Phase 12's tenant/sponsor branding layering." Phase 12 itself (Sponsor/Exhibitor model,
+    full Platform → Tenant → Event → Sponsor cascade) isn't built yet — this uses the one piece of
+    tenant branding that already exists, Account#logo (added ahead of Phase 12, alongside the
+    tenant-registration intake fields) — revisit once Phase 12 adds color palette/sponsor-tier
+    layering on top. Not image_tag(attachment) — see super_admin/accounts/show.html.erb's own
+    comment for the full "breaks against a real Cloudinary attachment" story. %>
+<% if @tenant_account.logo.attached? %>
+  <%= tag.img src: @tenant_account.logo.url, style: "max-height: 60px; margin-bottom: 16px;", alt: @tenant_account.name %>
+<% end %>
+
 <h1>You're registered for <%= @event.name %></h1>
 
 <p>Hi <%= @participant.first_name %>,</p>

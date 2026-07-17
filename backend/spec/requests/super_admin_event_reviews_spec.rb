@@ -148,6 +148,30 @@ RSpec.describe "Platform Console event reviews", type: :request do
       expect(ActionMailer::Base.deliveries.last.subject).to include("Needs Work")
     end
 
+    # Phase 13 — Communications (requirement.md §5.2, §5.10): "the organizer is notified by email
+    # and WhatsApp." Two owners → four Notification rows (one per owner per channel), each tracked
+    # independently — the WhatsApp send fails in this test environment (no Gupshup credential
+    # configured at all), which must NOT prevent either owner's email from still going out.
+    it "tracks an email and a WhatsApp Notification per owner, and the WhatsApp failure doesn't block email" do
+      event = create_event(name: "Needs Work")
+      owner_a = create(:user, email: "owner-a@acme.example", contact_num: "+15550100")
+      owner_b = create(:user, email: "owner-b@acme.example", contact_num: "+15550101")
+      create(:account_membership, user: owner_a, account: account, role: :owner)
+      create(:account_membership, user: owner_b, account: account, role: :owner)
+
+      perform_enqueued_jobs do
+        post reject_platform_event_review_path(event), params: { rejection_reason: "Missing venue address" }
+      end
+
+      notifications = Notification.unscoped_across_tenants { Notification.where(notifiable: event) }
+      expect(notifications.count).to eq(4)
+      expect(notifications.email.pluck(:to)).to contain_exactly("owner-a@acme.example", "owner-b@acme.example")
+      expect(notifications.email.pluck(:status)).to all(eq("sent"))
+      expect(notifications.whatsapp.pluck(:to)).to contain_exactly("+15550100", "+15550101")
+      expect(notifications.whatsapp.pluck(:status)).to all(eq("failed")) # no Gupshup credential in test
+      expect(ActionMailer::Base.deliveries.map(&:to).flatten).to include("owner-a@acme.example", "owner-b@acme.example")
+    end
+
     it "refuses to reject without a reason, and sends no email" do
       event = create_event
 

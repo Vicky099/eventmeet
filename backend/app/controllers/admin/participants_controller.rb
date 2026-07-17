@@ -1,12 +1,14 @@
 module Admin
   # Phase 7 — Participant Lifecycle (requirement.md §3.4, §5.4). Nested under Event — every
   # Participant belongs to exactly one, and dedupe/custom-fields/document-requiredness are all
-  # scoped to it. No dedicated "show" page (mirrors Admin::EventsController's own "no separate
-  # show" call) — the index row + edit form is the whole workspace, there's nothing a read-only
-  # detail page would add that the edit form doesn't already have.
+  # scoped to it.
+  #
+  # requirement.md revisit: "a participant show page where we can show the profile of
+  # participant, his in and out activity and his badge with all filled data." #show is that page
+  # — a read-only profile/activity/badge view, distinct from #edit (the manual-entry form).
   class ParticipantsController < BaseController
     include EventScoped
-    before_action :set_participant, only: [ :edit, :update, :destroy, :approve, :badge ]
+    before_action :set_participant, only: [ :show, :edit, :update, :destroy, :approve, :badge, :resend, :document ]
 
     # requirement.md §5.4: "Admin search/filter across identifier fields; paginated listing."
     def index
@@ -21,6 +23,21 @@ module Admin
         )
       end
       @pagy, @participants = pagy(scope, limit: 25)
+    end
+
+    # requirement.md revisit: "a participant show page where we can show the profile of
+    # participant, his in and out activity and his badge with all filled data." Every
+    # AccountMembership role can view (authorize @participant's own :show?, same as the
+    # participant list itself) — a read-only detail page, not a config surface.
+    def show
+      authorize @participant
+      # scan_type: check_in/check_out only — :print/:lead_retrieval/:triggered_content aren't
+      # "in and out activity" the way the requirement means it; a participant scanned for a badge
+      # reprint shouldn't show up in their own arrival/departure timeline. Newest first, same as
+      # every other activity-style list in this app (Admin::ScanEventsController's own "recent
+      # scans").
+      @scan_events = @participant.scan_events.where(scan_type: [ :check_in, :check_out ]).includes(:session).order(scanned_at: :desc)
+      @badge = @event.badge_for(@participant)
     end
 
     def new
@@ -87,6 +104,28 @@ module Admin
       redirect_to admin_event_participants_path(@event), notice: "#{count} participant(s) removed."
     end
 
+    # Phase 13 — Communications (requirement.md §3.10): "Resend invitation per participant."
+    # Bypasses Event#send_registration_email? deliberately — see Participant
+    # #deliver_confirmation_email's own comment. A participant with no email on file is a no-op
+    # (nothing to resend to), not an error — same as the original send.
+    def resend
+      authorize @participant, :update?
+      @participant.deliver_confirmation_email
+      redirect_to admin_event_participants_path(@event), notice: "Invitation resent to #{@participant.name}."
+    end
+
+    # Phase 13 — Communications (requirement.md §3.10): "send to all pending batch job." Pending
+    # here is Participant#status (awaiting the organizer's own approval, requirement.md §5.4), not
+    # a notification-delivery state — the batch nudges everyone still waiting on that, same send
+    # as an individual #resend.
+    def send_to_pending
+      authorize Participant, :update?
+
+      pending_participants = @event.participants.pending
+      pending_participants.find_each(&:deliver_confirmation_email)
+      redirect_to admin_event_participants_path(@event), notice: "Invitation sent to #{pending_participants.count} pending participant(s)."
+    end
+
     # requirement.md §5.4: "Approval-based registration toggle... organizer must approve before a
     # participant is considered confirmed." Only meaningful when Event#participant_approval_required?
     # is on — harmless no-op otherwise (an already-confirmed participant just stays confirmed).
@@ -118,6 +157,21 @@ module Admin
 
       pdf = BadgePdfService.render(badge: badge, participant: @participant)
       send_data pdf, filename: "badge-#{@participant.hex_id}.pdf", type: "application/pdf", disposition: "inline"
+    end
+
+    # requirement.md revisit: "a participant show page where we can show the profile of
+    # participant" — a plain download for their own uploaded document. CloudinaryRawFile.download,
+    # not a raw blob URL/rails_blob_path — same real Cloudinary "raw" resource-type bug this app
+    # already hit for xlsx/PDF exports (CloudinaryRawFile's own comment); a non-image document
+    # upload (e.g. a .docx ID scan) would 404 exactly the same way without this.
+    def document
+      authorize @participant, :show?
+      if @participant.document.attached?
+        send_data CloudinaryRawFile.download(@participant.document.blob), filename: @participant.document.filename.to_s,
+          type: @participant.document.content_type, disposition: "attachment"
+      else
+        redirect_to admin_event_participant_path(@event, @participant), alert: "No document on file for #{@participant.name}."
+      end
     end
 
     private

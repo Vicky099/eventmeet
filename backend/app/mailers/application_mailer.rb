@@ -49,6 +49,14 @@ class ApplicationMailer < ActionMailer::Base
   # request's, so nothing else would apply Account#time_zone here the way TenantResolvable does
   # for a real web request).
   def mail(headers = {}, &block)
+    # ActiveStorage::Blob#url (any template rendering `tag.img src: some_attachment.url` — Phase
+    # 13's own tenant-logo branding is the first mailer to do this) raises
+    # "please set ActiveStorage::Current.url_options" outside a real web request: Rails sets that
+    # automatically per-request via a Railtie-installed controller callback, but mail rendering
+    # here happens in Sidekiq's own process, same reason #default_url_options above exists at all
+    # — reusing that exact same resolved host/protocol keeps both URL kinds consistent.
+    ActiveStorage::Current.url_options = default_url_options
+
     return super unless @tenant_account
 
     # `headers[:from] ||= value` (not a guarded `if value.present?`) would set the :from key to a

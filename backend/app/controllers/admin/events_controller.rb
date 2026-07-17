@@ -67,6 +67,21 @@ module Admin
       # import), so it under-counts real registrations on precisely the path this overview is meant
       # to reflect.
       @category_participant_counts = @event.participants.group(:ticket_category_id).count
+
+      # Phase 14 — Reporting, Import/Export & Analytics (requirement.md §5.11): "registrations-
+      # over-time ... check-in rate, session popularity, engagement funnel" — merged onto this
+      # same landing page (renamed "Analytics" in the sidebar, AdminHelper#event_nav_items)
+      # rather than a second, separate dashboard page; this workspace already *was* the event's
+      # analytics/reporting home, just missing these specific views. Revenue and sponsor ROI are
+      # deliberately not here — see the view's own comment for why (no payment gateway anywhere
+      # in this app; Sponsor/Exhibitor is Phase 12, not built yet).
+      @registrations_by_day = @event.daily_registration_counts
+      @session_popularity = @event.sessions.includes(:session_live_stats)
+        .map { |session| { name: session.name, checked_in_count: session.session_live_stats&.checked_in_count || 0 } }
+        .sort_by { |row| -row[:checked_in_count] }
+      @session_attended_count = @event.session_attended_participant_count
+      registered_count = @event.participants.count
+      @check_in_rate = registered_count.positive? ? ((@event.checked_in_participant_count.to_f / registered_count) * 100).round(1) : 0
     end
 
     def edit
@@ -179,6 +194,7 @@ module Admin
       params.require(:event).permit(
         :name, :description, :mode, :starts_at, :ends_at, :address, :meeting_link, :map_url, :banner_orientation,
         :has_seat_limit, :seat_limit, :participant_approval_required, :is_paid, :send_registration_email,
+        :scheduled_report_frequency,
         ticket_categories_attributes: [ :id, :name, :total_count, :document_required, :_destroy ]
       )
     end

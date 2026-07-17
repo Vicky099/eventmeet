@@ -1,14 +1,17 @@
-# Phase 5 — Event Approval Workflow (requirement.md §5.2, §5.10). WhatsApp/Gupshup piece for the
-# same notification is deferred to Phase 13, per its own dependency on Gupshup credentials —
-# email-only for now, same "pending/sent/failed" delivery semantics ActionMailer's deliver_later
-# already gives every mailer in this app (a dedicated delivery-log model is Phase 13/15's
-# concern, once there's more than one notification type to track).
+# Phase 5 — Event Approval Workflow (requirement.md §5.2, §5.10). Phase 13 added the WhatsApp
+# companion send (SuperAdmin::EventReviewsController#notify_rejection) and routed this mailer
+# through Notifier/NotificationDeliveryJob for tracked pending/sent/failed delivery-state.
+#
+# Takes an explicit `to:` (one owner's email), not "every owner" derived internally — Notifier
+# creates one Notification row per recipient per channel so each owner's delivery is tracked
+# independently; deriving the full recipient list *inside* the mailer action would mean every
+# owner gets emailed again on every other owner's own Notifier.email call (Notifier invokes this
+# action once per intended recipient).
 class EventMailer < ApplicationMailer
-  def rejected(event)
+  def rejected(event, to)
     @event = event
     @tenant_account = event.account
 
-    recipients = event.account.account_memberships.owner.includes(:user).map { |m| m.user.email }
-    mail(to: recipients, subject: "#{event.name} needs changes before it can be approved")
+    mail(to: to, subject: "#{event.name} needs changes before it can be approved")
   end
 end

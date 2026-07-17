@@ -30,8 +30,8 @@
               _controller.js (requirement.md revisit: "download will open modal and show the
               progress bar...") intercepts the click, so this never actually navigates the page
               at all; no target="_blank" needed anymore for that reason. %>
-          <%= link_to "Download .xlsx", download_admin_event_export_file_path(@event, @export_file),
-                class: "btn btn-primary", data: { action: "click->download-progress#start", download_progress_filename_param: "participants.xlsx" } %>
+          <%= link_to "Download .#{@export_file.format}", download_admin_event_export_file_path(@event, @export_file),
+                class: "btn btn-primary", data: { action: "click->download-progress#start", download_progress_filename_param: "participants.#{@export_file.format}" } %>
         <% when "failed" %>
           <div class="alert alert-danger mb-0">
             <i class="bx bx-error-circle me-1"></i> Export failed — try again from the Participants list.

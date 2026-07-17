@@ -125,6 +125,20 @@ RSpec.describe "Admin Console events", type: :request do
       expect(event.reload.name).to eq("Renamed")
     end
 
+    # Phase 14 — Reporting, Import/Export & Analytics (requirement.md §5.11): "Scheduled report
+    # delivery (emailed weekly/daily summary to organizers)" — organizer opt-in.
+    it "saves the scheduled_report_frequency setting" do
+      Current.account = account
+      event = create(:event, account: account, name: "Original Name")
+
+      patch admin_event_path(event), params: {
+        step: "basic_info",
+        event: { name: "Original Name", mode: "on_site", starts_at: event.starts_at, ends_at: event.ends_at, address: event.address, scheduled_report_frequency: "weekly" }
+      }
+
+      expect(event.reload.scheduled_report_frequency).to eq("weekly")
+    end
+
     it "re-renders the same step with errors when invalid, instead of advancing" do
       Current.account = account
       event = create(:event, account: account)
@@ -408,6 +422,48 @@ RSpec.describe "Admin Console events", type: :request do
 
       expect(category.reload.sold_count).to eq(0) # unaffected by manual participant creation
       expect(response.body).to include("2 / 10")
+    end
+
+    # Phase 14 — Reporting, Import/Export & Analytics (requirement.md §5.11): "registrations-over-
+    # time ... check-in rate, session popularity, engagement funnel" — merged onto this same
+    # landing page (renamed "Analytics" below) rather than a second, separate dashboard page.
+    it "labels the event-scoped nav's own landing-page link 'Analytics', not 'Dashboard'" do
+      Current.account = account
+      event = create(:event, account: account)
+
+      get admin_event_path(event)
+
+      sidebar = Nokogiri::HTML(response.body).at_css(".vertical-menu").text
+      expect(sidebar).to include("Analytics")
+      expect(sidebar).not_to include("Dashboard")
+    end
+
+    it "shows registrations-over-time, an engagement funnel, and session popularity" do
+      Current.account = account
+      event = create(:event, account: account)
+      session = create(:session, account: account, event: event, name: "Keynote Hall")
+      participant = create(:participant, account: account, event: event)
+      ScanService.call(event: event, identifier: participant.hex_id, scan_type: "check_in", session: session)
+
+      get admin_event_path(event)
+
+      expect(response.body).to include("Registrations Over Time")
+      expect(response.body).to include("Engagement Funnel")
+      expect(response.body).to include("Attended a Session")
+      expect(response.body).to include("Session Popularity")
+      expect(response.body).to include("Keynote Hall")
+      expect(response.body).to include("100") # check-in rate: 1 of 1 registered
+    end
+
+    it "handles an event with no participants or sessions gracefully" do
+      Current.account = account
+      event = create(:event, account: account)
+
+      get admin_event_path(event)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("No registrations yet")
+      expect(response.body).to include("No sessions configured yet")
     end
   end
 

@@ -1,7 +1,9 @@
 <%# Phase 7.5 — Dynamic Registration Form Builder (requirement.md §5.14 v12). The event workspace's
-    own landing page ("Dashboard" in the event-scoped sidebar, AdminHelper#event_nav_items) — a
-    read-only overview plus a way back into the wizard (#edit) to keep configuring, distinct from
-    every wizard step itself (see Admin::EventsController's own class comment). %>
+    own landing page ("Analytics" in the event-scoped sidebar, AdminHelper#event_nav_items — Phase
+    14 renamed it from "Dashboard" once this page grew real historical/trend reporting alongside
+    its original live KPIs) — a read-only overview plus a way back into the wizard (#edit) to keep
+    configuring, distinct from every wizard step itself (see Admin::EventsController's own class
+    comment). %>
 <% content_for :page_title, @event.name %>
 
 <%= render "shared/page_header",
@@ -130,6 +132,93 @@
   </div>
   <div class="col-lg-8">
     <%= render "admin/scan_events/arrivals_chart", event: @event %>
+  </div>
+</div>
+
+<%# Phase 14 — Reporting, Import/Export & Analytics (requirement.md §5.11): "registrations-over-
+    time ... check-in rate, session popularity, engagement funnel" — merged onto this same
+    landing page (renamed "Analytics" in the sidebar) rather than a second, separate dashboard.
+    Revenue and sponsor ROI are deliberately not here: no payment gateway anywhere in this app
+    (requirement.md's own unchanged v2 scope decision), and Sponsor/Exhibitor is Phase 12, not
+    built yet — both are additive once their owning phase actually lands. %>
+<div class="row g-3 mb-3">
+  <div class="col-lg-4">
+    <%# Deeper than the Check-in Funnel above (which stops at "currently in venue," a real-time
+        presence question) — this one asks "how many registrants actually engaged with the
+        agenda," ending at a session check-in instead. Same .bar-track/.bar-fill mark as every
+        other single-quantity-narrowing chart on this page, so a reader who's already read the
+        Check-in Funnel above already knows how to read this one too. %>
+    <div class="card h-100 mb-0">
+      <div class="card-header"><span class="fw-semibold">Engagement Funnel</span></div>
+      <div class="card-body">
+        <% registered = @event.participants.count %>
+        <% if registered.zero? %>
+          <p class="text-muted mb-0">No participants registered yet.</p>
+        <% else %>
+          <p class="text-muted font-size-13 mb-3"><strong><%= @check_in_rate %>%</strong> check-in rate</p>
+          <% [ [ "Registered", registered ], [ "Checked In", @event.checked_in_participant_count ], [ "Attended a Session", @session_attended_count ] ].each do |label, value| %>
+            <% percent = (value.to_f / registered * 100).clamp(0, 100) %>
+            <div class="mb-3">
+              <div class="d-flex justify-content-between font-size-13 mb-1">
+                <span><%= label %></span>
+                <span class="text-muted"><%= value %> &middot; <%= percent.round %>%</span>
+              </div>
+              <div class="bar-track" title="<%= label %>: <%= value %> of <%= registered %> registered (<%= percent.round %>%)">
+                <div class="bar-fill" style="width: <%= percent.round(2) %>%;"></div>
+              </div>
+            </div>
+          <% end %>
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card h-100 mb-0">
+      <div class="card-header"><span class="fw-semibold">Registrations Over Time</span></div>
+      <div class="card-body">
+        <% if @registrations_by_day.blank? %>
+          <p class="text-muted mb-0">No registrations yet.</p>
+        <% else %>
+          <% max_count = [ @registrations_by_day.values.max.to_i, 1 ].max %>
+          <div class="arrival-bars">
+            <% @registrations_by_day.sort.each do |date, count| %>
+              <div class="arrival-bar-col" tabindex="0"
+                   data-tooltip="<%= date.strftime("%B %-d") %>: <%= count %> registration<%= count == 1 ? "" : "s" %>">
+                <span class="arrival-bar-value"><%= count if count.positive? %></span>
+                <div class="arrival-bar" style="height: <%= (count.to_f / max_count * 100).clamp(0, 100).round(2) %>%;"></div>
+                <span class="arrival-bar-label"><%= date.strftime("%b %-d") %></span>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card h-100 mb-0">
+      <div class="card-header"><span class="fw-semibold">Session Popularity</span></div>
+      <div class="card-body">
+        <% if @session_popularity.blank? %>
+          <p class="text-muted mb-0">No sessions configured yet.</p>
+        <% else %>
+          <% max_checked_in = [ @session_popularity.map { |row| row[:checked_in_count] }.max.to_i, 1 ].max %>
+          <% @session_popularity.each do |row| %>
+            <% percent = (row[:checked_in_count].to_f / max_checked_in * 100).clamp(0, 100) %>
+            <div class="mb-3">
+              <div class="d-flex justify-content-between font-size-13 mb-1">
+                <span><%= row[:name] %></span>
+                <span class="text-muted"><%= row[:checked_in_count] %> checked in</span>
+              </div>
+              <div class="bar-track" title="<%= row[:name] %>: <%= row[:checked_in_count] %> checked in">
+                <div class="bar-fill" style="width: <%= percent.round(2) %>%;"></div>
+              </div>
+            </div>
+          <% end %>
+        <% end %>
+      </div>
+    </div>
   </div>
 </div>
 

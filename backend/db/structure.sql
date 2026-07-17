@@ -334,7 +334,9 @@ CREATE TABLE public.events (
     has_seat_limit boolean DEFAULT false NOT NULL,
     description text,
     is_paid boolean DEFAULT false NOT NULL,
-    send_registration_email boolean DEFAULT false NOT NULL
+    send_registration_email boolean DEFAULT false NOT NULL,
+    scheduled_report_frequency integer DEFAULT 0 NOT NULL,
+    last_report_sent_at timestamp(6) without time zone
 );
 
 
@@ -350,7 +352,8 @@ CREATE TABLE public.export_files (
     status integer DEFAULT 0 NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    fields jsonb DEFAULT '[]'::jsonb NOT NULL
+    fields jsonb DEFAULT '[]'::jsonb NOT NULL,
+    format integer DEFAULT 0 NOT NULL
 );
 
 
@@ -423,6 +426,27 @@ CREATE TABLE public.live_metric_buckets (
     metric integer NOT NULL,
     bucket_at timestamp(6) without time zone NOT NULL,
     count integer DEFAULT 0 NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: notifications; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.notifications (
+    id uuid NOT NULL,
+    account_id uuid NOT NULL,
+    notifiable_type character varying NOT NULL,
+    notifiable_id uuid NOT NULL,
+    channel integer NOT NULL,
+    status integer DEFAULT 0 NOT NULL,
+    "to" character varying NOT NULL,
+    subject character varying,
+    body text,
+    error_message text,
+    sent_at timestamp(6) without time zone,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL
 );
@@ -1088,6 +1112,14 @@ ALTER TABLE ONLY public.import_files
 
 ALTER TABLE ONLY public.live_metric_buckets
     ADD CONSTRAINT live_metric_buckets_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: notifications notifications_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.notifications
+    ADD CONSTRAINT notifications_pkey PRIMARY KEY (id);
 
 
 --
@@ -1828,6 +1860,20 @@ CREATE INDEX index_live_metric_buckets_on_event_id ON public.live_metric_buckets
 --
 
 CREATE UNIQUE INDEX index_live_metric_buckets_on_event_metric_bucket ON public.live_metric_buckets USING btree (event_id, metric, bucket_at);
+
+
+--
+-- Name: index_notifications_on_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_notifications_on_account_id ON public.notifications USING btree (account_id);
+
+
+--
+-- Name: index_notifications_on_notifiable; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_notifications_on_notifiable ON public.notifications USING btree (notifiable_type, notifiable_id);
 
 
 --
@@ -2903,6 +2949,14 @@ ALTER TABLE ONLY public.import_files
 
 
 --
+-- Name: notifications fk_rails_1c0a19e3ee; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.notifications
+    ADD CONSTRAINT fk_rails_1c0a19e3ee FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
 -- Name: oauth_applications fk_rails_211c1cecac; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3455,6 +3509,12 @@ ALTER TABLE public.import_files ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.live_metric_buckets ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: notifications; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: participants; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -3581,6 +3641,13 @@ CREATE POLICY tenant_isolation ON public.live_metric_buckets USING ((account_id 
 
 
 --
+-- Name: notifications tenant_isolation; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY tenant_isolation ON public.notifications USING ((account_id = (current_setting('app.current_account_id'::text, true))::uuid));
+
+
+--
 -- Name: participants tenant_isolation; Type: POLICY; Schema: public; Owner: -
 --
 
@@ -3662,6 +3729,9 @@ ALTER TABLE public.ticket_reservations ENABLE ROW LEVEL SECURITY;
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260717182828'),
+('20260717182827'),
+('20260717175558'),
 ('20260717170635'),
 ('20260717160019'),
 ('20260717160018'),

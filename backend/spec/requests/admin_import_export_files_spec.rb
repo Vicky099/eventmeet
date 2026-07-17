@@ -170,6 +170,26 @@ RSpec.describe "Admin Console participant import/export", type: :request do
       expect(export_file.fields).to eq([ "first_name" ])
     end
 
+    # Phase 14 — Reporting, Import/Export & Analytics (requirement.md §5.11): "organizer picks
+    # columns/format, including CSV/PDF, not just the fixed XLSX layout used today."
+    it "creates an ExportFile with the chosen format" do
+      event = create_event
+
+      post admin_event_export_files_path(event), params: { fields: [ "first_name" ], file_format: "csv" }
+
+      export_file = Event.unscoped_across_tenants { event.export_files.last }
+      expect(export_file.format).to eq("csv")
+    end
+
+    it "falls back to xlsx for an unrecognized format value" do
+      event = create_event
+
+      post admin_event_export_files_path(event), params: { fields: [ "first_name" ], file_format: "not_a_real_format" }
+
+      export_file = Event.unscoped_across_tenants { event.export_files.last }
+      expect(export_file.format).to eq("xlsx")
+    end
+
     it "rejects the request (no job enqueued) when nothing is selected" do
       event = create_event
 

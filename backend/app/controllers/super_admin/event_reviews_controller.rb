@@ -38,14 +38,36 @@ module SuperAdmin
       end
 
       @event.reject!(reason: reason)
-      EventMailer.rejected(@event).deliver_later
-      redirect_to platform_event_reviews_path, notice: "#{@event.name} rejected — organizer notified by email."
+      notify_rejection(@event)
+      redirect_to platform_event_reviews_path, notice: "#{@event.name} rejected — organizer notified by email and WhatsApp."
     end
 
     private
 
     def set_event
       @event = Event.friendly.find(params[:id])
+    end
+
+    # Phase 13 — Communications (requirement.md §3.10, §5.2, §5.10): "the organizer is notified by
+    # email and WhatsApp." Both channels go to every owner-role AccountMembership on the event's
+    # own account (same recipient set EventMailer#rejected already used email-only) — WhatsApp
+    # additionally requires that owner to actually have a contact_num on file (Notifier.whatsapp's
+    # own comment covers the "no number on file" case, tracked as `failed` rather than silently
+    # skipped). One Notification row per owner per channel — a rejection to an account with two
+    # owners produces four rows, each independently pending/sent/failed, matching this phase's own
+    # "one failing doesn't block the other" requirement at the individual-recipient level too.
+    def notify_rejection(event)
+      event.account.owner_users.each do |owner|
+        Notifier.email(
+          mailer_class: EventMailer, mailer_method: :rejected, mailer_args: [ event, owner.email ],
+          notifiable: event, to: owner.email, subject: "#{event.name} needs changes before it can be approved"
+        )
+        Notifier.whatsapp(notifiable: event, to: owner.contact_num, body: rejection_whatsapp_body(event))
+      end
+    end
+
+    def rejection_whatsapp_body(event)
+      "#{event.name} was not approved: #{event.rejection_reason} — sign in to make changes and resubmit."
     end
   end
 end

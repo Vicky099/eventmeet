@@ -1,3 +1,5 @@
+require "csv"
+
 # Phase 7 — Participant Lifecycle (requirement.md §3.11, §5.4), revisited: "bulk XLSX export...
 # generated async and delivered via a signed cloud URL, with progress polling," now with a real
 # field picker (Admin::ExportFilesController#new/#create, ParticipantExportFields) in front of it
@@ -6,6 +8,11 @@
 # time-spent columns were explicitly stubbed here through Phase 7 (those tables didn't exist yet);
 # Phase 9/11 backfilled them, and this is that backfill — #build_context below is what actually
 # reads them now.
+#
+# Phase 14 revisit (requirement.md §5.11): "organizer picks columns/format, including CSV/PDF."
+# #build_rows (header + one row per participant, a plain 2D array of strings) is the one
+# format-agnostic step every field-value computation above already was; only the final
+# serialize-to-bytes step branches on ExportFile#format now, in #attach_file.
 class ParticipantExportJob < ApplicationJob
   queue_as :default
 
@@ -14,7 +21,7 @@ class ParticipantExportJob < ApplicationJob
     Current.account = export_file.account
     export_file.update!(status: :processing)
 
-    attach_workbook(export_file)
+    attach_file(export_file)
     export_file.update!(status: :completed)
   rescue StandardError => e
     Rails.logger.error("[ParticipantExportJob] failed for ExportFile #{export_file_id}: #{e.message}")
@@ -23,37 +30,90 @@ class ParticipantExportJob < ApplicationJob
 
   private
 
-  def attach_workbook(export_file)
-    package = build_package(export_file)
+  def attach_file(export_file)
+    rows = build_rows(export_file)
+    basename = "participants-#{export_file.event.slug}-#{Date.current.iso8601}"
+
+    case export_file.format
+    when "xlsx" then attach_xlsx(export_file, rows, basename)
+    when "csv" then attach_csv(export_file, rows, basename)
+    when "pdf" then attach_pdf(export_file, rows, basename)
+    end
+  end
+
+  def attach_xlsx(export_file, rows, basename)
+    package = Axlsx::Package.new
+    package.workbook.add_worksheet(name: "Participants") { |sheet| rows.each { |row| sheet.add_row(row) } }
 
     Tempfile.create([ "participants", ".xlsx" ]) do |tempfile|
       tempfile.binmode
       package.serialize(tempfile.path)
       tempfile.rewind
       export_file.attach_tenant_scoped(
-        io: tempfile,
-        filename: "participants-#{export_file.event.slug}-#{Date.current.iso8601}.xlsx",
+        io: tempfile, filename: "#{basename}.xlsx",
         content_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       )
     end
   end
 
-  def build_package(export_file)
+  def attach_csv(export_file, rows, basename)
+    csv = CSV.generate { |output| rows.each { |row| output << row } }
+    export_file.attach_tenant_scoped(io: StringIO.new(csv), filename: "#{basename}.csv", content_type: "text/csv")
+  end
+
+  # Grover (already used for Badge PDFs, app/services/badge_pdf_service.rb), not Prawn — one PDF
+  # engine in the app rather than two, and a plain HTML table is far less code than building the
+  # same layout in Prawn's own drawing API. `format: "A4"` explicit on this call (never a global
+  # Grover.configure default, per that initializer's own comment) — a tabular report is a normal
+  # multi-page document, unlike a badge's fixed physical size.
+  def attach_pdf(export_file, rows, basename)
+    pdf = Grover.new(wrap_html_table(rows), format: "A4", print_background: true).to_pdf
+
+    Tempfile.create([ "participants", ".pdf" ]) do |tempfile|
+      tempfile.binmode
+      tempfile.write(pdf)
+      tempfile.rewind
+      export_file.attach_tenant_scoped(io: tempfile, filename: "#{basename}.pdf", content_type: "application/pdf")
+    end
+  end
+
+  def wrap_html_table(rows)
+    header, *data_rows = rows
+    <<~HTML
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: -apple-system, Helvetica, Arial, sans-serif; font-size: 9px; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; }
+            th { background: #f2f2f2; }
+          </style>
+        </head>
+        <body>
+          <table>
+            <thead><tr>#{header.map { |cell| "<th>#{ERB::Util.html_escape(cell)}</th>" }.join}</tr></thead>
+            <tbody>
+              #{data_rows.map { |row| "<tr>#{row.map { |cell| "<td>#{ERB::Util.html_escape(cell.to_s)}</td>" }.join}</tr>" }.join}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    HTML
+  end
+
+  def build_rows(export_file)
     event = export_file.event
     # Falls back to the same defaults the picker itself pre-checks — belt-and-suspenders for any
-    # ExportFile row that predates this field, rather than shipping a header-only, empty workbook.
+    # ExportFile row that predates this field, rather than shipping a header-only, empty file.
     fields = export_file.fields.presence || ParticipantExportFields.default_keys
     export_fields = ParticipantExportFields.new(event)
     context = build_context(event)
 
-    Axlsx::Package.new.tap do |package|
-      package.workbook.add_worksheet(name: "Participants") do |sheet|
-        sheet.add_row fields.map { |key| export_fields.label_for(key) }
-        event.participants.find_each do |participant|
-          sheet.add_row fields.map { |key| field_value(key, participant, context) }
-        end
-      end
-    end
+    rows = [ fields.map { |key| export_fields.label_for(key) } ]
+    event.participants.find_each { |participant| rows << fields.map { |key| field_value(key, participant, context) } }
+    rows
   end
 
   # Every value below is read out of one of these four hashes (or a plain participant column) —

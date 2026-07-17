@@ -51,5 +51,26 @@ RSpec.describe ParticipantMailer, type: :mailer do
       account.update_columns(sender_email: nil) # the factory sets one by default — this test is specifically about its absence
       expect(mail.from).to eq([ "no-reply@eventmeet.example" ])
     end
+
+    # Phase 13 — Communications (requirement.md §3.10, §5.10): "registration-confirmation email
+    # using Phase 12's tenant/sponsor branding layering" — the one piece of tenant branding that
+    # exists ahead of Phase 12 itself, Account#logo.
+    describe "tenant branding" do
+      it "shows the tenant's own logo when one is attached" do
+        Tempfile.create([ "logo", ".png" ]) do |tempfile|
+          tempfile.binmode
+          tempfile.write("fake logo bytes")
+          tempfile.rewind
+          account.attach_logo(Rack::Test::UploadedFile.new(tempfile.path, "image/png"))
+        end
+
+        expect(mail.html_part.body.to_s).to include("<img")
+      end
+
+      it "renders nothing extra when the tenant has no logo" do
+        expect(account.logo).not_to be_attached
+        expect(mail.html_part.body.to_s).not_to include("<img")
+      end
+    end
   end
 end

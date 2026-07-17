@@ -1,0 +1,17 @@
+<h1><%= @event.scheduled_report_frequency.capitalize %> report — <%= @event.name %></h1>
+
+<p>Here's how <strong><%= @event.name %></strong> is doing:</p>
+
+<ul>
+  <li><strong>Total registrations:</strong> <%= @stats[:registered_count] %></li>
+  <li><strong>New since last report:</strong> <%= @stats[:new_registrations] %></li>
+  <li><strong>Checked in:</strong> <%= @stats[:checked_in_count] %> (<%= @stats[:check_in_rate] %>%)</li>
+  <li><strong>Currently in venue:</strong> <%= @stats[:currently_in_venue_count] %></li>
+  <% if @stats[:top_session] %>
+    <li><strong>Most attended session:</strong> <%= @stats[:top_session] %></li>
+  <% end %>
+</ul>
+
+<p>
+  <%= link_to "View live dashboard", admin_event_url(@event) %>
+</p>

@@ -117,6 +117,19 @@
           </div>
         </div>
 
+        <%# Phase 14 — Reporting, Import/Export & Analytics (requirement.md §5.11): "Scheduled
+            report delivery (emailed weekly/daily summary to organizers)." Not in
+            Event::CONTENT_ATTRIBUTES — a purely internal reporting-cadence preference, no
+            attendee-facing/public-visibility implications, so changing it doesn't revert an
+            already-published event back to draft the way toggling send_registration_email above
+            deliberately still does. %>
+        <div class="col-md-6">
+          <%= f.label :scheduled_report_frequency, "Scheduled report emails", class: "form-label" %>
+          <%= f.select :scheduled_report_frequency, options_for_select(
+                [ [ "Off", "none" ], [ "Daily", "daily" ], [ "Weekly", "weekly" ] ], event.scheduled_report_frequency),
+                {}, class: "form-select" %>
+        </div>
+
       </div>
     </div>
   </div>

@@ -1,13 +1,25 @@
 <% content_for :page_title, "Dashboard" %>
 
 <%# No shared/page_header here — the dashboard *is* "Dashboard", a "Dashboard > Dashboard"
-    breadcrumb would say nothing; shopmate-backend's own dashboard skips it the same way. %>
-<div class="row g-3 mb-4">
+    breadcrumb would say nothing; shopmate-backend's own dashboard skips it the same way.
+
+    requirement.md revisit: "design the best Analytics for main dashboard" — this page's own
+    job, one level up from a single event's own Analytics page (admin/events#show, Phase 14):
+    what's live right now, what's coming up, and account-wide trends across every event. Never a
+    second copy of one event's own detail. %>
+
+<div class="row g-3 mb-3">
   <div class="col-md-6 col-xl-3">
     <%= render "shared/stat_widget", label: "Events", value: @event_count, icon: "bx-calendar-event", color: "primary" %>
   </div>
   <div class="col-md-6 col-xl-3">
-    <%= render "shared/stat_widget", label: "Participants", value: @participant_count, icon: "bx-group", color: "success" %>
+    <%= render "shared/stat_widget", label: "Live Now", value: @live_events.size, icon: "bx-broadcast", color: @live_events.any? ? "success" : "secondary" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Participants", value: @participant_count, icon: "bx-group", color: "info" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Checked In", value: @checked_in_count, icon: "bx-barcode", color: "warning" %>
   </div>
 </div>
 
@@ -18,5 +30,161 @@
           message: "No events yet — create your first event to get started.",
           action_label: "New Event",
           action_path: new_admin_event_path %>
+  <% end %>
+<% else %>
+  <% if @live_events.any? %>
+    <%# requirement.md revisit: "design the best Analytics for main dashboard" — this app's own
+        flagship differentiator is real-time check-in reporting (Event's own Analytics page,
+        admin/events/show.html.erb); an account running several events at once has nowhere today
+        to see "what's happening right now" without opening each one individually. Real distinct-
+        participant counts (Event#checked_in_participant_count et al), not EventLiveStats' own
+        cumulative scan counters — same rule as everywhere else on this page and on the per-event
+        Analytics page this links out to. %>
+    <div class="card mb-3">
+      <div class="card-header d-flex align-items-center gap-2">
+        <span class="legend-dot" style="background: #0ca30c;"></span>
+        <span class="fw-semibold">Live Now</span>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Event</th>
+                <th>Registered</th>
+                <th>Checked In</th>
+                <th>In Venue</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @live_events.each do |event| %>
+                <tr>
+                  <td><%= link_to event.name, admin_event_path(event) %></td>
+                  <td><%= event.participants.count %></td>
+                  <td><%= event.checked_in_participant_count %></td>
+                  <td><%= event.currently_in_venue_count %></td>
+                  <td class="text-end"><%= link_to "View Analytics", admin_event_path(event), class: "btn btn-sm btn-outline-success" %></td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  <% end %>
+
+  <div class="row g-3 mb-3">
+    <div class="col-lg-6">
+      <div class="card h-100 mb-0">
+        <div class="card-header"><span class="fw-semibold">Upcoming Events</span></div>
+        <div class="card-body">
+          <% if @upcoming_events.none? %>
+            <p class="text-muted mb-0">No upcoming events scheduled.</p>
+          <% else %>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Event</th>
+                    <th>Starts</th>
+                    <th>Registered</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% @upcoming_events.each do |event| %>
+                    <tr>
+                      <td><%= link_to event.name, admin_event_path(event) %></td>
+                      <td><%= event.starts_at&.to_fs(:long) %></td>
+                      <td><%= event.participants.count %></td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+
+    <%# Single series (one number per status) — one hue (categorical slot 1 blue), same
+        .bar-track/.bar-fill mark and reasoning as admin/events/show.html.erb's own "Registrations
+        by Ticket Category" chart: identity already comes from the row's own label, magnitude is
+        the only thing being compared. Fixed status order (not @status_counts' own Postgres
+        GROUP BY order, which is arbitrary) so the list reads draft -> upcoming -> live ->
+        completed every time. %>
+    <div class="col-lg-6">
+      <div class="card h-100 mb-0">
+        <div class="card-header"><span class="fw-semibold">Events by Status</span></div>
+        <div class="card-body">
+          <% max_status_count = [ @status_counts.values.max.to_i, 1 ].max %>
+          <% Event.statuses.keys.each do |status| %>
+            <% count = @status_counts[status] || 0 %>
+            <div class="mb-3">
+              <div class="d-flex justify-content-between font-size-13 mb-1">
+                <span><%= status.humanize %></span>
+                <span class="text-muted"><%= count %></span>
+              </div>
+              <div class="bar-track" title="<%= status.humanize %>: <%= count %>">
+                <div class="bar-fill" style="width: <%= (count.to_f / max_status_count * 100).round(2) %>%;"></div>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header"><span class="fw-semibold">Registrations Over Time</span></div>
+    <div class="card-body">
+      <% if @registrations_by_day.blank? %>
+        <p class="text-muted mb-0">No registrations in the last 30 days.</p>
+      <% else %>
+        <% max_count = [ @registrations_by_day.values.max.to_i, 1 ].max %>
+        <div class="arrival-bars">
+          <% @registrations_by_day.sort.each do |date, count| %>
+            <div class="arrival-bar-col" tabindex="0"
+                 data-tooltip="<%= date.strftime("%B %-d") %>: <%= count %> registration<%= count == 1 ? "" : "s" %>">
+              <span class="arrival-bar-value"><%= count if count.positive? %></span>
+              <div class="arrival-bar" style="height: <%= (count.to_f / max_count * 100).clamp(0, 100).round(2) %>%;"></div>
+              <span class="arrival-bar-label"><%= date.strftime("%b %-d") %></span>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+  </div>
+
+  <% if @attention_events.any? %>
+    <%# Actionable, not just informational — a pending event is waiting on the Super Admin, a
+        rejected one needs the organizer to see why and fix it (rejection_reason). %>
+    <div class="card mb-0">
+      <div class="card-header"><span class="fw-semibold">Needs Attention</span></div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Event</th>
+                <th>Status</th>
+                <th>Details</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @attention_events.each do |event| %>
+                <tr>
+                  <td><%= link_to event.name, admin_event_path(event) %></td>
+                  <td><span class="badge <%= approval_status_badge_class(event.approval_status) %>"><%= event.approval_status.humanize %></span></td>
+                  <td class="text-muted"><%= event.rejected? ? event.rejection_reason : "Awaiting Super Admin review." %></td>
+                  <td class="text-end"><%= link_to "View", admin_event_path(event), class: "btn btn-sm btn-outline-secondary" %></td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   <% end %>
 <% end %>

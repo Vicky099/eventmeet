@@ -30,7 +30,15 @@ module Admin
         return
       end
 
-      export_file = @event.export_files.create!(created_by: current_user, fields: fields)
+      # Phase 14 — Reporting, Import/Export & Analytics (requirement.md §5.11): "organizer picks
+      # columns/format, including CSV/PDF." `file_format`, not `format` — see ExportFile's own
+      # comment on why the form field can't be named `format` (a reserved Rails routing/params
+      # concept). Falls back to xlsx for anything not a recognized ExportFile#format value, same
+      # "never trust a bare submitted value" reasoning as `fields` above.
+      export_file = @event.export_files.create!(
+        created_by: current_user, fields: fields,
+        format: ExportFile.formats.key?(params[:file_format]) ? params[:file_format] : "xlsx"
+      )
       ParticipantExportJob.perform_later(export_file.id)
       redirect_to admin_event_export_file_path(@event, export_file)
     end

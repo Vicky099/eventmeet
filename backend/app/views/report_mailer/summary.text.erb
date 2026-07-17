@@ -1,0 +1,11 @@
+<%= @event.scheduled_report_frequency.capitalize %> report — <%= @event.name %>
+
+Total registrations: <%= @stats[:registered_count] %>
+New since last report: <%= @stats[:new_registrations] %>
+Checked in: <%= @stats[:checked_in_count] %> (<%= @stats[:check_in_rate] %>%)
+Currently in venue: <%= @stats[:currently_in_venue_count] %>
+<% if @stats[:top_session] -%>
+Most attended session: <%= @stats[:top_session] %>
+<% end -%>
+
+View live dashboard: <%= admin_event_url(@event) %>

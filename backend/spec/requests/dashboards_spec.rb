@@ -29,6 +29,39 @@ RSpec.describe "Dashboards", type: :request do
       expect(response.body).to include("Participants")
       expect(response.body).to include("No events yet")
     end
+
+    # requirement.md revisit: "design the best Analytics for main dashboard" — the account-wide
+    # portfolio overview one level up from a single event's own Analytics page (admin/events#show).
+    it "shows account-wide analytics — Live Now, Upcoming Events, status breakdown, registrations trend, and Needs Attention" do
+      account = create(:account, subdomain_slug: "acme")
+      user = create(:user, email: "owner@acme.example")
+      create(:account_membership, user: user, account: account, role: :owner)
+      Current.account = account
+
+      live_event = create(:event, account: account, name: "Live Expo", status: :live)
+      create(:participant, account: account, event: live_event)
+      checked_in = create(:participant, account: account, event: live_event)
+      create(:scan_event, account: account, event: live_event, participant: checked_in, scan_type: :check_in, session: nil)
+
+      upcoming_event = create(:event, account: account, name: "Future Summit", status: :up_coming, starts_at: 3.days.from_now, ends_at: 4.days.from_now)
+      rejected_event = create(:event, account: account, name: "Rejected Meetup", approval_status: :rejected, rejection_reason: "Missing venue details")
+
+      Current.account = nil
+      sign_in user, scope: :user
+
+      get user_root_path
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("Live Now")
+      expect(response.body).to include(live_event.name)
+      expect(response.body).to include("Upcoming Events")
+      expect(response.body).to include(upcoming_event.name)
+      expect(response.body).to include("Events by Status")
+      expect(response.body).to include("Registrations Over Time")
+      expect(response.body).to include("Needs Attention")
+      expect(response.body).to include(rejected_event.name)
+      expect(response.body).to include("Missing venue details")
+    end
   end
 
   describe "Platform Console dashboard" do

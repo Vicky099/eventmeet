@@ -91,4 +91,49 @@ RSpec.describe ParticipantExportJob, type: :job do
 
     expect(export_file.reload.status).to eq("failed")
   end
+
+  # Phase 14 — Reporting, Import/Export & Analytics (requirement.md §5.11): "organizer picks
+  # columns/format, including CSV/PDF, not just the fixed XLSX layout used today."
+  describe "format: csv" do
+    it "builds a real CSV with exactly the columns the ExportFile was given, in order" do
+      create(:participant, account: account, event: event, first_name: "Alice", last_name: "Smith", email: "alice@example.com")
+      export_file = event.export_files.create!(
+        account: account, created_by: create(:user), fields: %w[first_name last_name email], format: :csv
+      )
+
+      described_class.perform_now(export_file.id)
+      export_file.reload
+
+      expect(export_file.status).to eq("completed")
+      expect(export_file.file.filename.to_s).to end_with(".csv")
+      expect(export_file.file.content_type).to eq("text/csv")
+
+      rows = CSV.parse(export_file.file.download)
+      expect(rows[0]).to eq([ "First Name", "Last Name", "Email" ])
+      expect(rows[1]).to eq([ "Alice", "Smith", "alice@example.com" ])
+    end
+  end
+
+  # Real Grover/headless-Chrome rendering, not mocked — same convention
+  # spec/services/badge_pdf_service_spec.rb already established for this app's one other PDF
+  # generator.
+  describe "format: pdf" do
+    it "builds a real, valid PDF with a row per participant" do
+      create(:participant, account: account, event: event, first_name: "Alice", last_name: "Smith", email: "alice@example.com")
+      export_file = event.export_files.create!(
+        account: account, created_by: create(:user), fields: %w[first_name last_name email], format: :pdf
+      )
+
+      described_class.perform_now(export_file.id)
+      export_file.reload
+
+      expect(export_file.status).to eq("completed")
+      expect(export_file.file.filename.to_s).to end_with(".pdf")
+      expect(export_file.file.content_type).to eq("application/pdf")
+
+      reader = PDF::Reader.new(StringIO.new(export_file.file.download))
+      text = reader.pages.first.text
+      expect(text).to include("First Name", "Alice", "alice@example.com")
+    end
+  end
 end

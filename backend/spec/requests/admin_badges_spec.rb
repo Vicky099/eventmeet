@@ -214,4 +214,49 @@ RSpec.describe "Admin Console badges", type: :request do
       expect(response.body).to include("No badge has been designed")
     end
   end
+
+  # requirement.md revisit: "a participant show page where we can show ... his badge with all
+  # filled data." participant_id repoints this at that real participant's own data instead of
+  # the sample one — Admin::ParticipantsController#show's own iframe.
+  describe "GET /admin/events/:event_id/badges/:id/preview" do
+    it "renders sample data by default, and requires owner/event_manager (design-time preview)" do
+      event = create_event
+      Current.account = account
+      badge = create(:badge, account: account, event: event, ticket_category: nil, content: "<div>$NAME$</div>")
+      sign_in_with_role(:checkin_staff)
+
+      get preview_admin_event_badge_path(event, badge)
+
+      expect(response).to redirect_to(user_root_path)
+    end
+
+    it "renders the given participant's own real data when participant_id is given" do
+      event = create_event
+      Current.account = account
+      badge = create(:badge, account: account, event: event, ticket_category: nil, content: "<div>$NAME$</div>")
+      participant = create(:participant, account: account, event: event, first_name: "Alice", last_name: "Smith")
+      sign_in_with_role(:owner)
+
+      get preview_admin_event_badge_path(event, badge, participant_id: participant.id)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("Alice Smith")
+    end
+
+    # requirement.md revisit: any AccountMembership role can view a participant's own show page —
+    # the real-participant badge preview it embeds must be reachable by the same roles, even
+    # though the sample/design-time preview above stays owner/event_manager-only.
+    it "allows checkin_staff to preview a real participant's own badge" do
+      event = create_event
+      Current.account = account
+      badge = create(:badge, account: account, event: event, ticket_category: nil, content: "<div>$NAME$</div>")
+      participant = create(:participant, account: account, event: event, first_name: "Bob")
+      sign_in_with_role(:checkin_staff)
+
+      get preview_admin_event_badge_path(event, badge, participant_id: participant.id)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("Bob")
+    end
+  end
 end

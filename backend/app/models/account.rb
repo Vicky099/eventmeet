@@ -74,6 +74,13 @@ class Account < ApplicationRecord
 
   before_validation { self.subdomain_slug = subdomain_slug&.downcase }
 
+  # Phase 13/14 — Communications/Reporting (requirement.md §3.10, §5.10, §5.11): "the organizer is
+  # notified" recurs across event rejection (Phase 13), and now scheduled report delivery (Phase
+  # 14) — same recipient set both times, previously inlined separately at each call site.
+  def owner_users
+    account_memberships.owner.includes(:user).map(&:user)
+  end
+
   def attach_logo(uploaded_file)
     return if uploaded_file.blank?
 

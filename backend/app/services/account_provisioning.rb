@@ -46,7 +46,19 @@ class AccountProvisioning
       success = true
     end
 
-    AccountMailer.welcome(admin_user, account, temp_password).deliver_later if success
+    # Current.set(account:), not relying on the caller (normally SuperAdmin::AccountsController,
+    # already running under Current.platform_request via its own BaseController) having set any
+    # tenant context of its own — Notification includes TenantScoped, whose default_scope runs
+    # even for a plain #create! (it pre-populates scope-derived attributes on `.new`), so this
+    # service needs to be correct on its own regardless of who's calling it.
+    if success
+      Current.set(account: account) do
+        Notifier.email(
+          mailer_class: AccountMailer, mailer_method: :welcome, mailer_args: [ admin_user, account, temp_password ],
+          notifiable: account, account: account, to: admin_user.email, subject: "Welcome to EventMeet — #{account.name} is ready"
+        )
+      end
+    end
 
     Result.new(account: account, admin_user: admin_user, temp_password: temp_password, success: success)
   end

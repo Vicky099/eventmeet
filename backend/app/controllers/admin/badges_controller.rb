@@ -117,9 +117,19 @@ module Admin
     # the ERB-view form: an earlier version of this action rendered a `preview.html.erb` view with
     # `<%= raw @content %>`, which tripped it; this controller-only version, structured the same
     # way `BadgePdfService#wrap_html` already is, doesn't).
+    # requirement.md revisit: "participant show page ... his badge with all filled data." An
+    # optional participant_id repoints this at that *real* participant's own data instead of the
+    # sample one (Admin::ParticipantsController#show's own iframe, mirroring the badge design
+    # workflow's existing iframe-onto-#preview pattern, admin/badges/_badges_table.html.erb) — same
+    # endpoint, same wrap_preview_html/background_style, no separate rendering path to keep in
+    # sync. authorize relaxes to :show? only for that real-participant case — viewing one
+    # participant's own actual badge is the same read-only concern
+    # Admin::ParticipantsController#badge (PDF download) already gates that way; previewing the
+    # *design* (sample data, no participant_id) stays owner/event_manager-only.
     def preview
-      authorize @event, :update?
-      content = BadgeReformService.render(badge: @badge, participant: sample_participant, sample: true)
+      participant = @event.participants.find_by(id: params[:participant_id]) if params[:participant_id].present?
+      authorize @event, participant ? :show? : :update?
+      content = BadgeReformService.render(badge: @badge, participant: participant || sample_participant, sample: participant.nil?)
       render html: wrap_preview_html(content).html_safe
     end
 

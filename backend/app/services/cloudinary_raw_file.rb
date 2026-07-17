@@ -30,6 +30,32 @@ class CloudinaryRawFile
   def self.private_download_url(blob)
     folder = blob.service.instance_variable_get(:@options)[:folder]
     public_id = [ folder, blob.key ].compact.join("/")
-    Cloudinary::Utils.private_download_url(public_id, nil, resource_type: "raw", type: "upload", attachment: true)
+    Cloudinary::Utils.private_download_url(public_id, nil, resource_type: resource_type_for(blob), type: "upload", attachment: true)
+  end
+
+  # **Bug fix**: hardcoding resource_type: "raw" here 404s ("Resource not found") for a real,
+  # correctly-uploaded file whenever Cloudinary itself filed it under a *different* resource_type
+  # bucket — confirmed live for a PDF export (Phase 14, ParticipantExportJob's own PDF format):
+  # the file genuinely exists, just not where a hardcoded "raw" lookup was told to find it. This
+  # must exactly mirror the cloudinary gem's own upload-time decision
+  # (ActiveStorage::Service::CloudinaryService#content_type_to_resource_type,
+  # lib/active_storage/service/cloudinary_service.rb in the `cloudinary` gem) — whatever
+  # resource_type THAT function picked when the file was written is the only one Cloudinary will
+  # ever have it filed under. `application/pdf` is "image" there (Cloudinary can render/transform
+  # PDF pages), not "raw" like every xlsx/csv export this class was originally written for.
+  def self.resource_type_for(blob)
+    type, subtype = blob.content_type.to_s.split("/")
+    case type
+    when "video", "audio" then "video"
+    when "text", "message" then "raw"
+    when "application"
+      case subtype
+      when "pdf", "postscript" then "image"
+      when "vnd.apple.mpegurl", "x-mpegurl", "mpegurl" then "video"
+      else "raw"
+      end
+    else
+      "image"
+    end
   end
 end

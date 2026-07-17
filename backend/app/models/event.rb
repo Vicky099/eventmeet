@@ -49,6 +49,10 @@ class Event < ApplicationRecord
   # resubmit cycle back into `pending`.
   enum :approval_status, { pending: 0, approved: 1, rejected: 2, unsubmitted: 3 }
   enum :banner_orientation, { landscape: 0, portrait: 1 }
+  # Phase 14 — Reporting, Import/Export & Analytics (requirement.md §5.11): "Scheduled report
+  # delivery (emailed weekly/daily summary to organizers)." Organizer opt-in, off (`none`) by
+  # default — see ScheduledReportJob for what actually reads this.
+  enum :scheduled_report_frequency, { none: 0, daily: 1, weekly: 2 }, prefix: :report
 
   # requirement.md §5.2: "typically reviewed within 24 hours" — the review queue's own SLA
   # target, plus how far out from breaching it the queue starts visually flagging an item.
@@ -99,6 +103,9 @@ class Event < ApplicationRecord
   # not an association here — see db/migrate/20260717160017_create_govt_ids.rb.
   has_many :govt_ids, dependent: :destroy
   has_many :govt_id_import_files, dependent: :destroy
+  # Phase 13 — Communications (requirement.md §3.10, §5.10). Rejection notifications (both
+  # channels) are "about" the Event they reject.
+  has_many :notifications, as: :notifiable, dependent: :destroy
   # Phase 8 — Badge Design & Printing (requirement.md §3.6, §5.5). At most one default (no
   # ticket_category) plus at most one per TicketCategory — see Badge's own uniqueness validation
   # and the partial unique indexes backing it.
@@ -296,6 +303,24 @@ class Event < ApplicationRecord
 
   def daily_checkin_counts
     scan_events.check_in.where(session_id: nil).pluck(:scanned_at).map(&:to_date).tally
+  end
+
+  # Phase 14 — Reporting, Import/Export & Analytics (requirement.md §5.11): "registrations-over-
+  # time" — same "pluck + Ruby-side .to_date grouping, not raw SQL DATE()" reasoning as
+  # #daily_checkin_counts immediately above (this app's configured Time.zone, not the stored
+  # value's own UTC zone).
+  def daily_registration_counts
+    participants.pluck(:created_at).map(&:to_date).tally
+  end
+
+  # Phase 14 — Reporting, Import/Export & Analytics (requirement.md §5.11): "engagement funnel" —
+  # a deeper stage than the existing Registered → Checked In → Currently In Venue funnel (already
+  # on this event's own live dashboard, admin/events/_checkin_funnel.html.erb): distinct
+  # participants who checked into at least one *session*, not just the event itself. Distinct
+  # participants, not a raw Attendance row count, for the same reason #checked_in_participant_count
+  # isn't a raw ScanEvent count — a participant attending three sessions counts once here.
+  def session_attended_participant_count
+    participants.joins(:attendances).merge(Attendance.where(from: :session, status: :check_in)).distinct.count
   end
 
   # #currently_in_venue_count's own building block — each participant's most recent event-level

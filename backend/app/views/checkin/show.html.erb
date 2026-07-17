@@ -48,7 +48,8 @@
 
     <div class="checkin-scan-input-wrap">
       <i class="bx bx-barcode-reader checkin-scan-icon"></i>
-      <%= text_field_tag :identifier, nil, placeholder: "Scan or type hex ID / govt ID / RFID / client ID",
+      <%# requirement.md revisit: "Hex ID will be ID in all places on UI." %>
+      <%= text_field_tag :identifier, nil, placeholder: "Scan or type ID / govt ID / RFID / client ID",
             class: "checkin-scan-input", autocomplete: "off", data: { scan_input_target: "input" } %>
     </div>
 

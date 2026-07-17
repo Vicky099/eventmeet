@@ -27,7 +27,13 @@ module AdminHelper
   # that "which event" is unambiguous once you're actually inside one.
   def event_nav_items(event)
     [
-      { path: admin_event_path(event), icon: "bx-home-alt", label: "Dashboard" },
+      # Phase 14 — Reporting, Import/Export & Analytics (requirement.md §5.11): "there is no
+      # reporting UI at all." This landing page already *was* the event's real-time/analytics
+      # home (live KPIs, funnels, arrivals) even before this phase — Phase 14 just filled in the
+      # remaining views (registrations-over-time, session popularity, a deeper engagement funnel)
+      # on the same page rather than splitting a second one off, so the nav label now says what
+      # the page has always actually been.
+      { path: admin_event_path(event), icon: "bx-line-chart", label: "Analytics" },
       { path: admin_event_registration_forms_path(event), icon: "bx-list-check", label: "Design Registration Form" },
       { path: admin_event_participants_path(event), icon: "bx-group", label: "Participants" },
       # requirement.md revisit: "Export sidebar button will provide a UI where admin can select

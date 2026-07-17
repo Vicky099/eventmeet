@@ -16,6 +16,9 @@ class Participant < ApplicationRecord
   # TicketCategory's own has_many :participants already uses) rather than silently discard it.
   has_many :scan_events, dependent: :restrict_with_error
   has_many :attendances, dependent: :restrict_with_error
+  # Phase 13 — Communications (requirement.md §3.10, §5.10). Registration-confirmation sends
+  # (initial + "resend"/"send to all pending") are "about" the Participant they're for.
+  has_many :notifications, as: :notifiable, dependent: :destroy
 
   has_one_attached :photo
   has_one_attached :document
@@ -155,6 +158,21 @@ class Participant < ApplicationRecord
     custom_field_values[field_id.to_s] = blob.signed_id
   end
 
+  # Phase 13 — Communications (requirement.md §3.10): "Resend invitation per participant" — the
+  # same send this participant's own initial registration triggers via
+  # #send_registration_confirmation! (private, below), just callable directly and unconditionally
+  # — an explicit admin-triggered resend is deliberate intent, not the automatic on-create send
+  # that method's own event.send_registration_email? toggle gates. Admin::ParticipantsController
+  # #resend/#send_to_pending call this directly.
+  def deliver_confirmation_email
+    return if email.blank?
+
+    Notifier.email(
+      mailer_class: ParticipantMailer, mailer_method: :confirmation, mailer_args: [ self ],
+      notifiable: self, to: email, subject: "You're registered for #{event.name}"
+    )
+  end
+
   private
 
   def tenant_scoped_blob_attributes(attachment_name, uploaded_file)
@@ -191,7 +209,7 @@ class Participant < ApplicationRecord
   def send_registration_confirmation!
     return unless event.send_registration_email? && email.present?
 
-    ParticipantMailer.confirmation(self).deliver_later
+    deliver_confirmation_email
   end
 
   # requirement.md revisit — see GovtId's own comment for the full two-directions story. Already

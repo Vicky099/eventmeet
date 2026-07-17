@@ -12,6 +12,9 @@ class ExportFile < ApplicationRecord
   has_one_attached :file
 
   enum :status, { pending: 0, processing: 1, completed: 2, failed: 3 }
+  # Phase 14 — Reporting, Import/Export & Analytics (requirement.md §3.11, §5.11): "organizer
+  # picks columns/format, including CSV/PDF, not just the fixed XLSX layout used today."
+  enum :format, { xlsx: 0, csv: 1, pdf: 2 }
 
   def attach_tenant_scoped(io:, filename:, content_type:)
     file.attach(
