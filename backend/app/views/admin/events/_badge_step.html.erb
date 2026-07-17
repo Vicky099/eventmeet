@@ -1,0 +1,27 @@
+<%# Locals: event.
+    Phase 8 — Badge Design & Printing (requirement.md §3.6, §5.5). Designing/editing a badge still
+    happens on Admin::BadgesController#edit's own full page — a GrapesJS canvas genuinely doesn't
+    fit in a wizard step panel — but any badge *already* designed for this event shows right here
+    now (the same table admin/badges/index.html.erb itself renders, extracted to
+    admin/badges/_badges_table), not just a "go look elsewhere" button. A tenant who's already
+    designed a badge shouldn't have to leave the wizard to find out whether they have — that gap
+    (leaving this step to just check) was the actual reported problem, not the editor itself
+    needing to move. %>
+<% badges = event.badges.includes(:ticket_category).order(:ticket_category_id) %>
+
+<div class="card">
+  <%# "New Badge" moved into the card header, next to the section's own name, rather than a
+      separate row above the card — same shape admin/badges/index.html.erb's own page header
+      already uses for this exact button. Still only shown once there's at least one badge already
+      (the empty-state's own "Design a badge" CTA inside the table partial covers the zero-badges
+      case — a second button for the same action would be redundant). %>
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold">Badges</span>
+    <% if badges.any? %>
+      <%= link_to "New Badge", new_admin_event_badge_path(event), class: "btn btn-sm btn-primary" %>
+    <% end %>
+  </div>
+  <div class="card-body">
+    <%= render "admin/badges/badges_table", event: event, badges: badges %>
+  </div>
+</div>

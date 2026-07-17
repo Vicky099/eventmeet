@@ -16,6 +16,21 @@
       nav_items           — Array of { path:, icon:, label: } — see app/helpers/{admin,super_admin}_helper.rb
       footer_text          — String, e.g. "EventMeet" / "EventMeet Platform"
       user_dropdown        — Hash of locals for shared/_user_dropdown, or nil if signed out
+      back_link            — optional Hash { label:, path:, context:, context_subtitle: } —
+                              currently only layouts/admin.html.erb, whenever the event-scoped
+                              sidebar is showing (AdminHelper#event_nav_items, requirement.md
+                              §5.14 v12). Mirrors shopmate-backend's own tenant-context sidebar
+                              (app/views/layouts/_sidebar.html.erb in that repo) exactly, both
+                              pieces of it: an identity card (`context:`/`context_subtitle:` —
+                              here, the selected event's name/status) directly above the nav <ul>,
+                              then `label:`/`path:` rendered as the first item *inside* that <ul>
+                              (a real menu <li>, bx-arrow-back icon, not a separate muted-text
+                              element bolted on above the menu) — so the card answers "what am I
+                              looking at" and the very next thing below it is "leave." `context:`
+                              is optional independently of `label:`/`path:` — nil skips just the
+                              card, keeping the back link on its own if a future caller ever wants
+                              that. Omit `back_link` itself entirely elsewhere; no default "back to
+                              X" makes sense for the account-level sidebar.
 
     Topbar shows a static welcome message (ported from shopmate-backend's _upper_header.html.erb,
     same template family) rather than the per-page title — that now lives in the content area
@@ -25,8 +40,9 @@
     page content can use a plain data-action="click->confirm-dialog#show" (see
     shared/_confirm_dialog.html.erb) without redeclaring it — Stimulus resolves an action to the
     nearest ancestor carrying the matching data-controller, same as data-action="sidebar#toggle"
-    below already relies on this element for the sidebar controller. %>
-<div id="layout-wrapper" data-controller="sidebar confirm-dialog">
+    below already relies on this element for the sidebar controller. download-progress (shared/
+    _download_progress_modal.html.erb) lives here for the same reason. %>
+<div id="layout-wrapper" data-controller="sidebar confirm-dialog download-progress">
   <%# class="isvertical-topbar" — load-bearing, not decorative: app.min.css positions
       #page-topbar via `.isvertical-topbar{position:fixed;left:270px;...}` (offset past the
       fixed-position sidebar's own width). Without it the topbar renders at its static in-flow
@@ -73,8 +89,44 @@
           it — caught the same way those were, by actually looking at the rendered page. %>
       <%= render "shared/account_switcher" if Current.account %>
 
+      <%# Identity card for whatever back_link[:context] names (here, the selected event) — same
+          avatar-circle-initial + bold-name(+muted-subtitle) shape as shopmate-backend's own
+          tenant identity card, directly above the nav <ul> whose first item is the back link
+          below (see that local's own doc comment above). Background color (rgba(31,88,199,0.06)
+          — a faint tint of the template's own primary blue) copied verbatim from that same
+          shopmate-backend partial, not approximated from this app's own Bootstrap palette. %>
+      <% if local_assigns[:back_link] && back_link[:context] %>
+        <div class="px-3 py-3 border-bottom" style="background: rgba(31,88,199,0.06);">
+          <div class="d-flex align-items-center gap-2">
+            <div class="avatar-xs flex-shrink-0">
+              <span class="avatar-title rounded-circle bg-primary text-white font-size-14 fw-bold">
+                <%= back_link[:context].first.upcase %>
+              </span>
+            </div>
+            <div class="overflow-hidden">
+              <p class="mb-0 fw-semibold text-truncate" style="font-size: 13px;"><%= back_link[:context] %></p>
+              <% if back_link[:context_subtitle] %>
+                <p class="mb-0 text-muted" style="font-size: 11px;"><%= back_link[:context_subtitle] %></p>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      <% end %>
+
       <div id="sidebar-menu">
         <ul class="metismenu list-unstyled" id="side-menu" data-sidebar-target="menu">
+          <%# "Back to X" — same markup/placement as shopmate-backend's own back-to-tenant-list
+              link (app/views/layouts/_sidebar.html.erb in that repo, same template family):
+              first item in the list, ahead of the "Menu" title, a real <li> using the list's own
+              icon/label markup (bx-arrow-back, not a differently-styled element bolted on above
+              the menu) so it reads as part of the same list, not a separate widget. %>
+          <% if local_assigns[:back_link] %>
+            <li>
+              <%= link_to back_link[:path], class: "waves-effect" do %>
+                <i class="bx bx-arrow-back icon nav-icon"></i> <span class="menu-item"><%= back_link[:label] %></span>
+              <% end %>
+            </li>
+          <% end %>
           <li class="menu-title">Menu</li>
           <% nav_items.each do |item| %>
             <li>
@@ -103,6 +155,11 @@
       </div>
     </footer>
   </div>
+
+  <%# Inside #layout-wrapper (unlike shared/confirm_dialog just below, a plain document
+      .getElementById lookup that doesn't care where it lives) — download_progress_controller.js
+      uses real Stimulus targets, which only resolve within the declaring element's own subtree. %>
+  <%= render "shared/download_progress_modal" %>
 </div>
 
 <%= render "shared/flash" %>

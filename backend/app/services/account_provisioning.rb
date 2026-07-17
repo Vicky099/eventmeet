@@ -13,8 +13,12 @@ class AccountProvisioning
     new(...).call
   end
 
-  def initialize(account_attributes:, admin_email:)
+  # requirement.md revisit: "While registering the Tenant, we should capture ... Logo." logo: is
+  # the raw uploaded file (or nil) — Account#attach_logo itself already no-ops on blank, so this
+  # never needs its own presence check either.
+  def initialize(account_attributes:, admin_email:, logo: nil)
     @account = Account.new(account_attributes)
+    @logo = logo
     @temp_password = SecureRandom.base58(16)
     @admin_user = User.new(email: admin_email, password: @temp_password, must_reset_password: true)
   end
@@ -29,6 +33,8 @@ class AccountProvisioning
     # rolled-back provision as real.
     ActiveRecord::Base.transaction do
       raise ActiveRecord::Rollback unless account.save
+
+      account.attach_logo(logo)
 
       unless admin_user.save
         admin_user.errors.each { |error| account.errors.add(:admin_email, error.message) }
@@ -47,5 +53,5 @@ class AccountProvisioning
 
   private
 
-  attr_reader :account, :admin_user, :temp_password
+  attr_reader :account, :admin_user, :temp_password, :logo
 end

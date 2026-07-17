@@ -1,0 +1,61 @@
+<%# Locals: event.
+    Sessions step (requirement.md §3.8, §5.6) — the step's content *is* the management UI
+    (list + New Session), not a summary card linking out to a separate page. New/Edit/Delete are
+    still their own pages (Admin::EventSessionsController), but every one of them redirects back
+    to this same wizard step on save/cancel. %>
+<% sessions = event.sessions.order(:starts_at) %>
+
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold">Sessions</span>
+    <%= link_to "New Session", new_admin_event_session_path(event), class: "btn btn-sm btn-primary" %>
+  </div>
+  <div class="card-body">
+    <% if sessions.none? %>
+      <%= render "shared/empty_state", icon: "bx-grid-alt",
+            message: "No sessions yet — add a breakout room/track with its own seat capacity.",
+            action_label: "New Session", action_path: new_admin_event_session_path(event) %>
+    <% else %>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Track</th>
+              <th>Room</th>
+              <th>Time</th>
+              <th>Capacity</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% sessions.each do |session| %>
+              <tr>
+                <td><%= session.name %></td>
+                <td><%= session.track.presence || "—" %></td>
+                <td><%= session.room.presence || "—" %></td>
+                <td><%= session.starts_at.strftime("%b %-d, %H:%M") %>&ndash;<%= session.ends_at.strftime("%H:%M") %></td>
+                <td>
+                  <%= render "admin/scan_events/session_live_stats", session: session, stats: session.live_stats! %>
+                </td>
+                <td class="text-end">
+                  <div class="d-flex justify-content-end gap-2">
+                    <%= link_to edit_admin_event_session_path(event, session), class: "btn btn-sm btn-outline-primary", title: "Edit" do %>
+                      <i class="bx bx-edit"></i>
+                    <% end %>
+                    <%= button_to admin_event_session_path(event, session), method: :delete,
+                          class: "btn btn-sm btn-outline-danger", title: "Remove",
+                          data: { action: "click->confirm-dialog#show", title: "Remove Session",
+                                  message: "Remove #{session.name}?", danger: "true" } do %>
+                      <i class="bx bx-trash"></i>
+                    <% end %>
+                  </div>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  </div>
+</div>

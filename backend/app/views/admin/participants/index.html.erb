@@ -1,0 +1,113 @@
+<% content_for :page_title, "Participants — #{@event.name}" %>
+
+<%= render layout: "shared/page_header",
+  locals: { icon: "bx-group", crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) }, { label: "Participants" } ] } do %>
+  <div class="d-flex gap-2">
+    <%= link_to "New Participant", new_admin_event_participant_path(@event), class: "btn btn-sm btn-primary" %>
+  </div>
+<% end %>
+
+<div class="mb-3 d-flex gap-2 flex-wrap">
+  <%# Every Participant belongs to one Event (nested route) — this just jumps the page to a
+      different event's own participants list; a plain navigating <select>, not a form post. %>
+  <% path_template = admin_event_participants_path("EVENT_SLUG_PLACEHOLDER") %>
+  <%= select_tag :event_id, options_for_select(Current.account.events.order(created_at: :desc).pluck(:name, :slug), @event.slug),
+        id: "participants_event_switcher", class: "form-select", style: "max-width: 260px;",
+        data: { path_template: path_template },
+        onchange: "if (this.value) window.location = this.dataset.pathTemplate.replace('EVENT_SLUG_PLACEHOLDER', this.value)" %>
+
+  <%= form_with url: admin_event_participants_path(@event), method: :get, local: true, class: "d-flex gap-2 flex-grow-1" do %>
+    <%= text_field_tag :q, @query, class: "form-control", placeholder: "Search name, email, phone, govt ID, RFID, hex/client ID" %>
+    <%= submit_tag "Search", class: "btn btn-sm btn-outline-secondary" %>
+  <% end %>
+</div>
+
+<%# Bulk-destroy is a standalone form containing only the submit button — the checkboxes below
+    live in the table (outside this form, alongside each row's own button_to, which renders its
+    own <form> and so can't be nested inside another) and point back into it via the HTML5
+    form="..." attribute instead of DOM nesting. %>
+<%= form_with url: bulk_destroy_admin_event_participants_path(@event), method: :post, local: true, id: "participants-bulk-form" do %><% end %>
+
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold">Participants</span>
+    <button type="submit" form="participants-bulk-form" class="btn btn-sm btn-outline-danger"
+      data-action="click->confirm-dialog#show" data-title="Remove Selected Participants"
+      data-message="Remove every selected participant? This can't be undone." data-danger="true">
+      <i class="bx bx-trash"></i> Remove selected
+    </button>
+  </div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th><%= check_box_tag "select_all", "1", false, id: "participants_select_all" %></th>
+            <th>Name</th>
+            <th>ID</th>
+            <th>Email</th>
+            <th>Ticket Category</th>
+            <th>Status</th>
+            <th>Source</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @participants.each do |participant| %>
+            <tr>
+              <td>
+                <%= check_box_tag "participant_ids[]", participant.id, false,
+                      class: "participant-row-checkbox", form: "participants-bulk-form" %>
+              </td>
+              <td><%= link_to participant.name, edit_admin_event_participant_path(@event, participant) %></td>
+              <td><%= participant.hex_id %></td>
+              <td><%= participant.email %></td>
+              <td><%= participant.ticket_category&.name || "—" %></td>
+              <td>
+                <span class="badge <%= participant.confirmed? ? "bg-success-subtle text-success" : "bg-warning-subtle text-warning" %>">
+                  <%= participant.status.humanize %>
+                </span>
+              </td>
+              <td><%= participant.source.humanize %></td>
+              <td class="text-end">
+                <div class="d-flex justify-content-end gap-2">
+                  <% if participant.pending? %>
+                    <%= button_to "Approve", approve_admin_event_participant_path(@event, participant), method: :patch, class: "btn btn-sm btn-outline-success" %>
+                  <% end %>
+                  <%# Phase 8 — requirement.md §3.6 "on-demand single-badge download endpoint."
+                      target: "_blank" — a PDF opening in a new tab, not navigating away from the
+                      participant list an admin is actively working through. %>
+                  <%= link_to badge_admin_event_participant_path(@event, participant), class: "btn btn-sm btn-outline-secondary", title: "Download badge", target: "_blank", rel: "noopener" do %>
+                    <i class="bx bx-id-card"></i>
+                  <% end %>
+                  <%= link_to edit_admin_event_participant_path(@event, participant), class: "btn btn-sm btn-outline-primary", title: "Edit" do %>
+                    <i class="bx bx-edit"></i>
+                  <% end %>
+                  <%= button_to admin_event_participant_path(@event, participant), method: :delete,
+                        class: "btn btn-sm btn-outline-danger", title: "Remove",
+                        data: { action: "click->confirm-dialog#show", title: "Remove Participant",
+                                message: "Remove #{participant.name}?", danger: "true" } do %>
+                    <i class="bx bx-trash"></i>
+                  <% end %>
+                </div>
+              </td>
+            </tr>
+          <% end %>
+          <% if @participants.none? %>
+            <tr><td colspan="8" class="text-center text-muted py-4">No participants yet.</td></tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="d-flex justify-content-end mt-3">
+  <%== pagy_nav(@pagy) if @participants.any? %>
+</div>
+
+<script>
+  document.getElementById("participants_select_all")?.addEventListener("change", (e) => {
+    document.querySelectorAll(".participant-row-checkbox").forEach((cb) => { cb.checked = e.target.checked; });
+  });
+</script>

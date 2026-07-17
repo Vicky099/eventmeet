@@ -10,10 +10,10 @@
   </div>
 </div>
 
-<%# requirement.md §5.15: real-time cross-tenant live pulse is a Phase 9 flagship feature — this
-    is deliberately just the placeholder card its own dashboard slot will fill later. %>
-<%= render layout: "shared/card", locals: { title: "Cross-Tenant Live Pulse", icon: "bx-pulse" } do %>
-  <%= render "shared/empty_state",
-        icon: "bx-pulse",
-        message: "Live registration/check-in activity across all tenants lands in Phase 9." %>
-<% end %>
+<%# Phase 9 (requirement.md §5.15, §6 item 17): "aggregate registrations/check-ins across all
+    currently-live events platform-wide" — subscribed to LiveDashboard::PLATFORM_STREAM, the same
+    static cross-tenant stream every ScanService/Participant write broadcasts to when its event is
+    live. %>
+<%= turbo_stream_from LiveDashboard::PLATFORM_STREAM %>
+
+<%= render "live_pulse", pulse: @live_pulse %>

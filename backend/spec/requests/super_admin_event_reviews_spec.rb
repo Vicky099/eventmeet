@@ -60,6 +60,48 @@ RSpec.describe "Platform Console event reviews", type: :request do
     end
   end
 
+  describe "GET /platform/event_reviews/:id (full event detail for the approval decision)" do
+    before { sign_in staff, scope: :platform_staff }
+
+    it "shows ticket categories, badges, speakers, and agenda alongside the basic event summary" do
+      event = create_event(name: "Detail Check")
+      Current.account = account
+      category = create(:ticket_category, account: account, event: event, name: "VIP", total_count: 50)
+      badge = create(:badge, account: account, event: event, ticket_category: nil, name: "Default Badge")
+      speaker = create(:speaker, account: account, event: event, name: "Ada Lovelace", company: "Analytical Engines")
+      session = create(:session, account: account, event: event, name: "Keynote Hall")
+      create(:schedule, account: account, event: event, session: session, speaker: speaker, title: "Opening Talk")
+
+      get platform_event_review_path(event)
+
+      expect(response.body).to include("VIP")
+      expect(response.body).to include(category.total_count.to_s)
+      expect(response.body).to include(badge.name)
+      expect(response.body).to include("Ada Lovelace")
+      expect(response.body).to include("Analytical Engines")
+      expect(response.body).to include("Keynote Hall")
+      expect(response.body).to include("Opening Talk")
+    end
+
+    # Regression: `image_tag(attachment)` 500s the moment it's exercised against a real attached
+    # photo ("no implicit conversion of ActiveStorage::Attached::One into String"), compounded by
+    # this app's config/cloudinary.yml `enhance_image_tag: true` mangling any URL string fed to
+    # image_tag instead — this speaker roster's own photo thumbnail was never exercised against a
+    # real attached photo in any spec until now. super_admin/event_reviews/show.html.erb renders a
+    # plain <img> via `tag.img src: speaker.photo.url` instead.
+    it "renders a speaker's photo thumbnail without error" do
+      event = create_event
+      Current.account = account
+      speaker = create(:speaker, account: account, event: event)
+      speaker.photo.attach(io: StringIO.new("fake photo"), filename: "photo.png", content_type: "image/png")
+
+      get platform_event_review_path(event)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("<img")
+    end
+  end
+
   describe "POST /platform/event_reviews/:id/approve" do
     before { sign_in staff, scope: :platform_staff }
 
@@ -72,6 +114,18 @@ RSpec.describe "Platform Console event reviews", type: :request do
       expect(event.approval_status).to eq("approved")
       expect(event.approved_by).to eq(staff)
       expect(response).to redirect_to(platform_event_reviews_path)
+    end
+
+    it "does not publish the event — that's the tenant's own subsequent manual step" do
+      event = create_event
+      expect(event.published?).to be false
+
+      post approve_platform_event_review_path(event)
+
+      event = Event.unscoped_across_tenants { event.reload }
+      expect(event.published?).to be false
+      follow_redirect!
+      expect(response.body).not_to include("published")
     end
   end
 

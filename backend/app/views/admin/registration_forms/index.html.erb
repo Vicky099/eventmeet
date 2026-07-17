@@ -1,0 +1,77 @@
+<%# Phase 7.5 — Dynamic Registration Form Builder (requirement.md §5.4/§5.14 v12). Standalone
+    forms: build one, then assign it to whichever ticket categories should use it — this index is
+    the list of what's been built so far, not a per-category editor. %>
+<% content_for :page_title, "Registration Forms" %>
+
+<%= render layout: "shared/page_header",
+  locals: { icon: "bx-list-check", crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) }, { label: "Registration Forms" } ] } do %>
+  <%= link_to "New Form", new_admin_event_registration_form_path(@event), class: "btn btn-sm btn-primary" %>
+<% end %>
+
+<div class="card">
+  <div class="card-body">
+    <% if @registration_forms.none? %>
+      <p class="text-muted mb-0">
+        No registration forms yet — every ticket category uses the built-in default fields until
+        you create one.
+      </p>
+    <% else %>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Applies to</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @registration_forms.each do |form| %>
+              <% categories = form.ticket_categories.order(:created_at) %>
+              <tr>
+                <td><%= link_to form.name, edit_admin_event_registration_form_path(@event, form) %></td>
+                <td>
+                  <%# A form with nothing assigned is almost always a mistake, not a deliberate
+                      choice — it silently means every category keeps using the built-in default
+                      fields instead of this form, which is easy to miss as plain muted text (a
+                      real report: an organizer created and configured a form, believed it was
+                      "assigned to all," and it wasn't — nothing had actually been checked on the
+                      Assign step). A warning badge, not muted gray, is the whole fix. %>
+                  <% if categories.none? %>
+                    <span class="badge bg-warning-subtle text-warning">
+                      <i class="bx bx-error-circle"></i> Not assigned to any category
+                    </span>
+                  <% elsif categories.count == @event.ticket_categories.count %>
+                    <span class="badge bg-info-subtle text-info">All categories</span>
+                  <% else %>
+                    <%= categories.map(&:name).join(", ") %>
+                  <% end %>
+                </td>
+                <td class="text-end">
+                  <div class="d-flex justify-content-end gap-2">
+                    <%= link_to edit_admin_event_registration_form_path(@event, form), class: "btn btn-sm btn-outline-primary", title: "Edit" do %>
+                      <i class="bx bx-edit"></i>
+                    <% end %>
+                    <%= button_to admin_event_registration_form_path(@event, form), method: :delete,
+                          class: "btn btn-sm btn-outline-danger", title: "Delete",
+                          data: { action: "click->confirm-dialog#show", title: "Delete Form",
+                                  message: "Delete \"#{form.name}\"? Any ticket category using it falls back to the built-in default fields.",
+                                  danger: "true" } do %>
+                      <i class="bx bx-trash"></i>
+                    <% end %>
+                  </div>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  </div>
+</div>
+
+<% if @unassigned_categories.any? %>
+  <p class="text-muted mt-3 mb-0">
+    Using the built-in default fields (no form assigned): <%= @unassigned_categories.map(&:name).join(", ") %>
+  </p>
+<% end %>

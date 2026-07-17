@@ -61,7 +61,7 @@ RSpec.describe "Admin Console events", type: :request do
 
       expect {
         post admin_events_path, params: {
-          event: { name: "Manager Event", mode: "on_site", starts_at: 1.day.from_now, ends_at: 2.days.from_now, address: "123 Main St" }
+          event: { name: "Manager Event", mode: "on_site", starts_at: 1.day.from_now, ends_at: 2.days.from_now, address: "123 Main St", map_url: "https://maps.google.com/?q=123" }
         }
       }.to change { event_count }.by(1)
 
@@ -75,7 +75,7 @@ RSpec.describe "Admin Console events", type: :request do
       sign_in_with_role(:owner)
 
       post admin_events_path, params: {
-        event: { name: "Owner Event", mode: "on_site", starts_at: 1.day.from_now, ends_at: 2.days.from_now, address: "123 Main St" }
+        event: { name: "Owner Event", mode: "on_site", starts_at: 1.day.from_now, ends_at: 2.days.from_now, address: "123 Main St", map_url: "https://maps.google.com/?q=123" }
       }
 
       expect(response).to redirect_to(%r{/admin/events/owner-event/edit})
@@ -90,7 +90,7 @@ RSpec.describe "Admin Console events", type: :request do
         event: {
           name: "Annual Meetup", mode: "on_site",
           starts_at: "2026-08-01T09:00", ends_at: "2026-08-01T17:00",
-          address: "123 Main St"
+          address: "123 Main St", map_url: "https://maps.google.com/?q=123"
         }
       }
 
@@ -121,7 +121,7 @@ RSpec.describe "Admin Console events", type: :request do
         event: { name: "Renamed", mode: "on_site", starts_at: event.starts_at, ends_at: event.ends_at, address: event.address }
       }
 
-      expect(response).to redirect_to(edit_admin_event_path(event, step: "agenda"))
+      expect(response).to redirect_to(edit_admin_event_path(event, step: "sessions"))
       expect(event.reload.name).to eq("Renamed")
     end
 
@@ -135,30 +135,80 @@ RSpec.describe "Admin Console events", type: :request do
       expect(response.body).to include("can&#39;t be blank")
     end
 
-    it "normalizes participant_fields against the fixed catalog, defaulting unchecked fields to false" do
+    # UI note: "error should show below field in red color" — inline per-field errors
+    # (Bootstrap's is-invalid/invalid-feedback pair, ApplicationHelper#field_error_class/
+    # #field_error_feedback), not just the form's top-of-page summary list.
+    it "shows an inline invalid-feedback message directly below each field that failed validation", :aggregate_failures do
+      Current.account = account
+      event = create(:event, account: account, mode: :on_site)
+
+      patch admin_event_path(event), params: {
+        step: "basic_info", event: { name: "", starts_at: "", ends_at: "", mode: "on_site", address: "", map_url: "" }
+      }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body.scan("is-invalid").size).to be >= 5
+      expect(response.body.scan("invalid-feedback").size).to be >= 5
+    end
+
+    # No top-of-form error summary at all (user preference) — every field shows its own error
+    # inline instead.
+    it "has no top-of-form error summary" do
+      Current.account = account
+      event = create(:event, account: account, mode: :on_site)
+
+      patch admin_event_path(event), params: {
+        step: "basic_info",
+        event: { name: "", mode: "on_site" }
+      }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body).not_to include("alert-danger")
+      expect(response.body.scan("invalid-feedback").size).to eq(1)
+    end
+
+    # participant_fields/custom_fields_attributes are no longer writable from this step (pending
+    # the ticket-category-scoped registration-form builder, Phase 7.5) — a request that still
+    # sends them is simply ignored, not applied. custom_fields_attributes doesn't even refer to
+    # anything on Event anymore (CustomField was rescoped onto RegistrationForm) — this proves a
+    # stale client payload carrying it is silently dropped by strong params, not a 500.
+    it "ignores participant_fields and custom_fields_attributes if still sent" do
       Current.account = account
       event = create(:event, account: account, participant_fields: { "email" => true })
 
       patch admin_event_path(event), params: {
         event: {
           name: event.name, mode: event.mode, starts_at: event.starts_at, ends_at: event.ends_at, address: event.address,
-          participant_fields: { "company" => "true" }
+          participant_fields: [ "company" ],
+          custom_fields_attributes: { "0" => { label: "Dietary Needs", field_type: "text" } }
         }
       }
 
-      expect(event.reload.participant_fields).to eq(
-        "email" => false, "contact_num" => false, "company" => true,
-        "department" => false, "position" => false, "nationality" => false, "country" => false
-      )
+      expect(response).to redirect_to(edit_admin_event_path(event, step: "sessions"))
+      expect(event.reload.participant_fields).to eq("email" => true)
+      expect(RegistrationForm.unscoped_across_tenants { RegistrationForm.count }).to eq(0)
     end
   end
 
   describe "POST /admin/events/:id/publish" do
     before { sign_in_with_role(:owner) }
 
-    it "publishes a complete event and computes its current status from the schedule" do
+    it "refuses to publish an event that hasn't been approved yet" do
+      Current.account = account
+      event = create(:event, account: account)
+
+      post publish_admin_event_path(event)
+
+      expect(event.reload.published_at).to be_nil
+      expect(response).to redirect_to(edit_admin_event_path(event, step: "review"))
+      follow_redirect!
+      expect(response.body).to include("must be approved")
+    end
+
+    it "publishes a complete, approved event and computes its current status from the schedule" do
       Current.account = account
       event = create(:event, account: account, starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
+      event.approve!(by: create(:user, :platform_staff))
 
       post publish_admin_event_path(event)
 
@@ -168,12 +218,13 @@ RSpec.describe "Admin Console events", type: :request do
       expect(response).to redirect_to(edit_admin_event_path(event, step: "review"))
     end
 
-    it "refuses to publish an incomplete event" do
+    it "refuses to publish an incomplete event, even if approved" do
       # basic_info_complete? mirrors the same presence/location rules the model already validates
       # on every save, so a *persisted* Event can't normally fail it — stubbed here purely to
       # exercise the controller's guard branch in isolation.
       Current.account = account
       event = create(:event, account: account)
+      event.approve!(by: create(:user, :platform_staff))
       allow_any_instance_of(Event).to receive(:basic_info_complete?).and_return(false)
 
       post publish_admin_event_path(event)
@@ -185,6 +236,7 @@ RSpec.describe "Admin Console events", type: :request do
     it "reverts a published event back to draft once any content field is edited again" do
       Current.account = account
       event = create(:event, account: account, starts_at: 1.day.from_now, ends_at: 2.days.from_now)
+      event.approve!(by: create(:user, :platform_staff))
       post publish_admin_event_path(event)
       expect(event.reload.status).to eq("up_coming")
 
@@ -196,6 +248,23 @@ RSpec.describe "Admin Console events", type: :request do
       event.reload
       expect(event.published_at).to be_nil
       expect(event.status).to eq("draft")
+    end
+
+    it "can be re-published without a new approval after an edit reverted it (re-approval-on-edit, §5.2 v8)" do
+      Current.account = account
+      event = create(:event, account: account, starts_at: 1.day.from_now, ends_at: 2.days.from_now)
+      event.approve!(by: create(:user, :platform_staff))
+      post publish_admin_event_path(event)
+      patch admin_event_path(event), params: {
+        step: "basic_info",
+        event: { name: "Edited Again", mode: event.mode, starts_at: event.starts_at, ends_at: event.ends_at, address: event.address }
+      }
+      expect(event.reload.approval_status).to eq("approved")
+      expect(event.published_at).to be_nil
+
+      post publish_admin_event_path(event)
+
+      expect(event.reload.published_at).to be_present
     end
   end
 
@@ -260,6 +329,124 @@ RSpec.describe "Admin Console events", type: :request do
     end
   end
 
+  # Phase 7.5 — the event-workspace landing page (requirement.md §5.14 v12): distinct from #edit
+  # (the creation wizard), a read-only overview reachable from the Events index and every
+  # event-scoped nav entry.
+  describe "GET /admin/events/:id (show)" do
+    before { sign_in_with_role(:owner) }
+
+    it "renders the event's own overview" do
+      Current.account = account
+      event = create(:event, account: account, name: "Annual Meetup")
+      create(:ticket_category, account: account, event: event)
+
+      get admin_event_path(event)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("Annual Meetup")
+      expect(response.body).to include(event.status.humanize)
+    end
+
+    # requirement.md §5.14 v12: "once inside an event's own workspace, the sidebar switches to
+    # that event's context" — Dashboard/Design Registration Form/Participants/Export/Import/Check
+    # In, every link carrying the real event_id, replacing the account-level sidebar entirely.
+    it "switches the sidebar to the event-scoped nav" do
+      Current.account = account
+      event = create(:event, account: account)
+
+      get admin_event_path(event)
+
+      expect(response.body).to include("Design Registration Form")
+      expect(response.body).to include(admin_event_registration_forms_path(event))
+      expect(response.body).to include(admin_event_participants_path(event))
+      expect(response.body).to include(admin_event_scan_events_path(event))
+    end
+
+    # Same "back to the list" pattern shopmate-backend's own sidebar uses once a tenant is
+    # selected (shared/_console_shell's back_link local) — a real link back to the Events index,
+    # not just the breadcrumb.
+    it "shows a back-to-Events link in the sidebar" do
+      Current.account = account
+      event = create(:event, account: account)
+
+      get admin_event_path(event)
+
+      expect(response.body).to include("Back to Events")
+      expect(response.body).to include(admin_events_path)
+    end
+
+    # Same tenant-identity-card shape shopmate-backend's own sidebar shows above its back link —
+    # the selected event's own name/status, not just the back link on its own. Scoped to the
+    # sidebar container specifically (Nokogiri), not a bare response.body match — the event name
+    # legitimately appears elsewhere on the page too (the <title> tag, the page header), so a
+    # plain string-ordering check against the whole body would pass even if the sidebar card
+    # itself were missing entirely.
+    it "shows the selected event's name and status as an identity card above the back link" do
+      Current.account = account
+      event = create(:event, account: account, name: "Annual Meetup")
+
+      get admin_event_path(event)
+
+      sidebar = Nokogiri::HTML(response.body).at_css(".vertical-menu").text
+      expect(sidebar).to include("Annual Meetup")
+      expect(sidebar).to include(event.status.humanize)
+      expect(sidebar.index("Annual Meetup")).to be < sidebar.index("Back to Events")
+    end
+
+    # Regression: "Registrations by Ticket Category" must reflect real Participant rows, not
+    # TicketCategory#sold_count — that column is derived solely from ticket_reservations (the
+    # public self-registration hold/checkout flow) and never moves for a participant added
+    # straight from the admin console's own "Add Participant" form, so a category with real
+    # manually-added registrations previously still showed 0.
+    it "counts manually-added participants toward the ticket-category registration chart" do
+      Current.account = account
+      event = create(:event, account: account)
+      category = create(:ticket_category, account: account, event: event, total_count: 10)
+      create_list(:participant, 2, account: account, event: event, ticket_category: category)
+
+      get admin_event_path(event)
+
+      expect(category.reload.sold_count).to eq(0) # unaffected by manual participant creation
+      expect(response.body).to include("2 / 10")
+    end
+  end
+
+  describe "GET /admin/events/:id/edit (wizard step rendering)" do
+    before { sign_in_with_role(:owner) }
+
+    # Regression: `image_tag(attachment)` 500s the moment it's exercised against a real attached
+    # photo ("no implicit conversion of ActiveStorage::Attached::One into String"), compounded by
+    # this app's config/cloudinary.yml `enhance_image_tag: true` mangling any URL string fed to
+    # image_tag instead — the Speaker step's roster table never exercised its own photo thumbnail
+    # against a real attached photo in any spec until now. admin/events/_speaker_step.html.erb
+    # renders a plain <img> via `tag.img src: speaker.photo.url` instead.
+    it "renders a speaker's photo thumbnail on the Speaker step without error" do
+      Current.account = account
+      event = create(:event, account: account)
+      speaker = create(:speaker, account: account, event: event)
+      speaker.photo.attach(io: StringIO.new("fake photo"), filename: "photo.png", content_type: "image/png")
+
+      get edit_admin_event_path(event, step: "speaker")
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("<img")
+    end
+
+    # Same regression, the Review step's own read-only copy of the speaker roster
+    # (admin/events/_review_step.html.erb).
+    it "renders a speaker's photo thumbnail on the Review step without error" do
+      Current.account = account
+      event = create(:event, account: account)
+      speaker = create(:speaker, account: account, event: event)
+      speaker.photo.attach(io: StringIO.new("fake photo"), filename: "photo.png", content_type: "image/png")
+
+      get edit_admin_event_path(event, step: "review")
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("<img")
+    end
+  end
+
   describe "GET /admin/events (index)" do
     before { sign_in_with_role(:owner) }
 
@@ -273,6 +460,14 @@ RSpec.describe "Admin Console events", type: :request do
 
       expect(response.body).to include("Live Event")
       expect(response.body).not_to include("Draft Event")
+    end
+
+    it "shows the account-level sidebar (no event in context yet)" do
+      get admin_events_path
+
+      expect(response.body).not_to include("Design Registration Form")
+      expect(response.body).not_to include("Back to Events")
+      expect(response.body).to include(admin_events_path)
     end
   end
 
@@ -288,6 +483,18 @@ RSpec.describe "Admin Console events", type: :request do
       # — ActiveRecord::RecordNotFound is one of Rails' own "rescuable" exceptions, rendered as a
       # real 404 response rather than propagating as a Ruby exception.
       get edit_admin_event_path(other_event.slug)
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "404s when Account A requests Account B's event's show page by slug" do
+      other_account = create(:account, subdomain_slug: "other")
+      Current.account = other_account
+      other_event = create(:event, account: other_account, name: "Other Tenant Event")
+
+      sign_in_with_role(:owner)
+
+      get admin_event_path(other_event.slug)
 
       expect(response).to have_http_status(:not_found)
     end

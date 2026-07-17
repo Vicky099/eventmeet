@@ -38,7 +38,11 @@ export default class extends Controller {
 
     freshBtn.addEventListener("click", () => {
       bootstrap.Modal.getInstance(modal).hide()
-      const form = trigger.closest("form")
+      // `.form` (not `.closest("form")`) — this trigger may be associated to a form via the
+      // HTML5 form="..." attribute rather than DOM nesting (e.g. the participants bulk-destroy
+      // button, which lives in a card header alongside the table, not inside its own <form>).
+      // The `.form` IDL property resolves both cases; `.closest` only finds a DOM ancestor.
+      const form = trigger.form || trigger.closest("form")
       if (form) {
         form.submit()
       } else if (trigger.href) {

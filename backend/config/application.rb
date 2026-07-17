@@ -36,5 +36,11 @@ module Eventmeet
     # Background jobs run through Sidekiq everywhere except test (see config/environments/test.rb),
     # per requirement.md §4.10 — replaces the Rails 8 default Solid Queue.
     config.active_job.queue_adapter = :sidekiq
+
+    # Phase 9 (requirement.md §4.10): ScanEvent/Attendance are natively partitioned Postgres
+    # tables (see lib/monthly_range_partitioning.rb) — the Ruby schema.rb dumper can't represent
+    # `PARTITION BY`/child partitions at all, so db/schema.rb is replaced by a raw pg_dump
+    # (db/structure.sql) as the source of truth for `db:schema:load`/test-DB setup.
+    config.active_record.schema_format = :sql
   end
 end

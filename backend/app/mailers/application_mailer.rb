@@ -1,5 +1,10 @@
 class ApplicationMailer < ActionMailer::Base
-  default from: "from@example.com"
+  # Brevo requires the From: address to be a verified sender on the account — same MAILER_FROM
+  # env var shopmate-backend uses for its own platform-level fallback address. `.presence` (not
+  # `ENV.fetch`'s default-only-if-*absent* semantics) — Figaro's config/application.yml always
+  # sets the key, just to an empty string until a real value is filled in, so `ENV.fetch` would
+  # never actually reach its own fallback.
+  default from: -> { ENV["MAILER_FROM"].presence || "EventMeet <no-reply@eventmeet.example>" }
   layout "mailer"
 
   # requirement.md §4.3: mail generated during a tenant request (e.g. Devise's reset-password
@@ -31,5 +36,27 @@ class ApplicationMailer < ActionMailer::Base
     else
       base
     end
+  end
+
+  # requirement.md revisit: "we should capture ... sender email" / "all the dates which are
+  # display in the UI should abey the tenant timezone." Same @tenant_account convention
+  # #default_url_options above already relies on (set explicitly, before `mail(...)` is called, by
+  # every tenant-scoped mailer method — see that method's own comment for why Current.account
+  # isn't reliable here) — reused for two more things a tenant-scoped email should get right:
+  # the From: address (an explicit header always wins over the class-level `default from:`, so
+  # this only applies when the tenant actually configured one) and the zone every date/time in the
+  # rendered body appears in (mail rendering happens in Sidekiq's own process, not the original
+  # request's, so nothing else would apply Account#time_zone here the way TenantResolvable does
+  # for a real web request).
+  def mail(headers = {}, &block)
+    return super unless @tenant_account
+
+    # `headers[:from] ||= value` (not a guarded `if value.present?`) would set the :from key to a
+    # literal nil whenever the tenant hasn't configured a sender_email yet — and once :from is a
+    # *present key* at all (even nil), ActionMailer treats it as explicitly provided and never
+    # falls back to the class-level `default from:` above, silently sending headerless mail
+    # instead of falling back the way the comment above promises.
+    headers[:from] ||= @tenant_account.sender_email if @tenant_account.sender_email.present?
+    Time.use_zone(@tenant_account.time_zone) { super(headers, &block) }
   end
 end

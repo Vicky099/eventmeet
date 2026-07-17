@@ -1,0 +1,8 @@
+<% content_for :page_title, "Edit #{@badge_template.name}" %>
+
+<%= render "shared/page_header",
+  icon: "bx-id-card", crumbs: [ { label: "Badge Templates", path: admin_badge_templates_path }, { label: @badge_template.name } ] %>
+
+<%= render "admin/shared/badge_editor", object: @badge_template,
+      url: admin_badge_template_path(@badge_template), method: :patch,
+      back_path: admin_badge_templates_path %>

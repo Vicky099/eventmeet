@@ -3,6 +3,7 @@
   "private": true,
   "description": "JS tooling only — app JavaScript is served via importmap-rails, not this package.json. Playwright is required here so its browser binaries can be installed for capybara-playwright-driver system specs.",
   "devDependencies": {
-    "playwright": "1.61.1"
+    "playwright": "1.61.1",
+    "puppeteer-core": "^25.3.0"
   }
 }

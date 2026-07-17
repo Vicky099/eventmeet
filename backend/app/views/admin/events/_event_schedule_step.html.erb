@@ -1,0 +1,82 @@
+<%# Locals: event.
+    Event Schedule step (requirement.md §3.8, §5.2 multi-day/multi-track) — the full timetable:
+    sessions grouped by day then track, each showing its own talks, sorted by real start/end
+    times (the "time-grid editor" this app uses in place of drag-to-reorder — no sortable JS
+    dependency exists in the app). The step's content *is* the management UI (list + New Talk),
+    not a link out to a separate page. %>
+<% sessions = event.sessions.includes(schedules: :speaker).order(:starts_at)
+   days = sessions.group_by { |session| session.starts_at.to_date }
+   unscheduled_talks = event.schedules.where(session_id: nil).includes(:speaker).order(:starts_at) %>
+
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold">Event Schedule</span>
+    <%= link_to "New Talk", new_admin_event_schedule_path(event), class: "btn btn-sm btn-primary" %>
+  </div>
+  <div class="card-body">
+    <% if days.empty? && unscheduled_talks.none? %>
+      <%= render "shared/empty_state", icon: "bx-calendar-check",
+            message: "No talks scheduled yet.",
+            action_label: "New Talk", action_path: new_admin_event_schedule_path(event) %>
+    <% else %>
+      <% days.sort.each do |day, sessions_for_day| %>
+        <% tracks = sessions_for_day.group_by { |session| session.track.presence || "General" } %>
+        <h6 class="text-muted text-uppercase font-size-12 mt-2"><%= day.strftime("%A, %B %-d") %></h6>
+        <div class="row g-3 mb-3">
+          <% tracks.sort.each do |track, sessions_for_track| %>
+            <div class="col-md-<%= [ 12 / tracks.size, 3 ].max %>">
+              <h6 class="text-muted font-size-11 text-uppercase"><%= track %></h6>
+              <% sessions_for_track.sort_by(&:starts_at).each do |session| %>
+                <div class="border rounded p-2 mb-2">
+                  <div class="fw-semibold font-size-13"><%= session.name %></div>
+                  <div class="text-muted font-size-12">
+                    <%= session.starts_at.strftime("%H:%M") %>&ndash;<%= session.ends_at.strftime("%H:%M") %>
+                  </div>
+                  <% if session.schedules.any? %>
+                    <ul class="list-unstyled mt-2 mb-1 font-size-13">
+                      <% session.schedules.sort_by(&:starts_at).each do |schedule| %>
+                        <li class="d-flex justify-content-between align-items-start gap-1">
+                          <span>
+                            <%= link_to schedule.title, edit_admin_event_schedule_path(event, schedule) %>
+                            &mdash; <%= schedule.speaker.name %> (<%= schedule.starts_at.strftime("%H:%M") %>)
+                          </span>
+                          <%= button_to admin_event_schedule_path(event, schedule), method: :delete,
+                                class: "btn btn-sm btn-link text-danger p-0", title: "Remove talk",
+                                data: { action: "click->confirm-dialog#show", title: "Remove Talk",
+                                        message: "Remove #{schedule.title}?", danger: "true" } do %>
+                            <i class="bx bx-trash"></i>
+                          <% end %>
+                        </li>
+                      <% end %>
+                    </ul>
+                  <% end %>
+                  <%= link_to "Add talk", new_admin_event_schedule_path(event, session_id: session.id), class: "font-size-12" %>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+
+      <% if unscheduled_talks.any? %>
+        <h6 class="text-muted text-uppercase font-size-12 mt-3">Other Talks (no session)</h6>
+        <ul class="list-unstyled mb-0">
+          <% unscheduled_talks.each do |schedule| %>
+            <li class="d-flex justify-content-between align-items-start gap-1 mb-1">
+              <span>
+                <%= link_to schedule.title, edit_admin_event_schedule_path(event, schedule) %>
+                &mdash; <%= schedule.speaker.name %> (<%= schedule.starts_at.strftime("%b %-d, %H:%M") %>)
+              </span>
+              <%= button_to admin_event_schedule_path(event, schedule), method: :delete,
+                    class: "btn btn-sm btn-link text-danger p-0", title: "Remove talk",
+                    data: { action: "click->confirm-dialog#show", title: "Remove Talk",
+                            message: "Remove #{schedule.title}?", danger: "true" } do %>
+                <i class="bx bx-trash"></i>
+              <% end %>
+            </li>
+          <% end %>
+        </ul>
+      <% end %>
+    <% end %>
+  </div>
+</div>

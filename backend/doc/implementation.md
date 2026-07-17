@@ -305,6 +305,64 @@ in the queue immediately after (oldest/only entry, "On track" SLA badge, correct
 
 170/170 specs green, Rubocop clean, Brakeman: 0 warnings.
 
+### Revisited — approval auto-publishes
+
+Requested: approving an event should publish it too — the organizer's job is just submitting for
+review, not a separate "and now also click Publish" step afterward.
+
+- [x] `Event#approve!` now sets `published_at`/`status` (same values `publish!` itself would
+      compute) alongside `approval_status`/`approved_by`/`approved_at`, but *only* when the event
+      isn't already published — an already-published event's `published_at`/`status` are left
+      exactly as they are rather than recomputing them a second time for no reason. This is a
+      one-time effect at the moment of approval, not a standing "approved implies published"
+      invariant: an edit *after* approval still un-publishes the event via Phase 4's
+      `revert_to_draft_if_published_content_changed` same as always (approval_status itself
+      still doesn't revert, per the existing re-approval-on-edit rule) — the Publish button on the
+      Review step reappears in that case, same mechanism, no special-casing needed.
+      `SuperAdmin::EventReviewsController#approve`'s flash distinguishes "approved." from
+      "approved and published." based on whether this actually changed anything.
+- [x] Tenant Review step copy updated to match: the "Approved" banner now says "visible on the
+      public site" when currently published, or explicitly flags "not currently published
+      (something was edited since approval)" with a pointer back to the Publish button when not
+      (the edit-after-approval edge case above).
+
+**Manual QA (Playwright, live dev server):** submitted an event for review *without* publishing it
+first, approved it from the Platform Console (flash: "... approved and published."), confirmed on
+the tenant side — with no manual Publish click at any point — the event showed `Live` / `Approved`
+/ `Published` all at once.
+
+208/208 specs green, Rubocop clean, Brakeman: 0 warnings.
+
+### Revisited again — publish gated on approval instead of automatic
+
+Corrected: the previous revisit's auto-publish-on-approve was the wrong shape. What was actually
+wanted: approving unlocks the tenant's own Publish button (which the tenant doesn't even see until
+then) — approving still doesn't publish it *for* them.
+
+- [x] `Event#approve!` reverted to a raw approval only — no more touching `published_at`/`status`.
+      `SuperAdmin::EventReviewsController#approve`'s flash is back to a plain "... approved."
+- [x] `Admin::EventsController#publish` now requires `@event.approved?` first (checked before
+      `basic_info_complete?`, which is effectively always true by the time an event reaches
+      `approved` anyway — `submit_for_review` already required it, and nothing un-completes those
+      fields afterward): `alert: "This event must be approved by a Super Admin before it can be
+      published."` otherwise. Publish is the last step in the chain now: submit for review → Super
+      Admin approves → tenant publishes.
+- [x] `_review_step.html.erb` reordered — Approval section now comes *before* Publish (it's the
+      prerequisite) — and the Publish section itself gained an `!event.approved?` branch ("Publishing
+      unlocks once a Super Admin approves this event") that replaces the button entirely until
+      then, instead of showing a button that would just redirect back with an alert if clicked.
+      Re-approval-on-edit (§5.2 v8) still means an edit-after-approval-and-publish (which reverts
+      `published_at`/`status` to draft, same as always) doesn't require a fresh approval to
+      re-publish — `approved?` is still true, so the button just reappears.
+
+**Manual QA (Playwright, live dev server):** submitted an event for review, confirmed the Review
+step showed no Publish button at all while pending (just "Publishing unlocks once a Super Admin
+approves this event"), approved it from the Platform Console (plain "approved." flash, event still
+`Draft`/unpublished afterward), confirmed the tenant now saw the Publish button, clicked it, and
+only then did status flip to `Live` with a "Dubai Expo published." flash.
+
+209/209 specs green, Rubocop clean, Brakeman: 0 warnings.
+
 ---
 
 ## Phase 6 — Ticketing (Capacity-Based, No Payment)
@@ -313,17 +371,277 @@ in the queue immediately after (oldest/only entry, "On track" SLA badge, correct
 **Implements:** §5.3, §8 (`TicketCategory`).
 **Depends on:** Phase 4 (event tab this fills in).
 
-- [ ] `TicketCategory` model: `event_id`, `name`, `total_count`, `sold_count`, `remain_count` (kept in sync via callback/service, ports baseline `Event#sync_tickets` logic), `document_required` boolean. No price field (deferred).
-- [ ] Ticket Categories tab in the event builder (Phase 4's stub filled in): CRUD, capacity validated against event-level seat limit if one is set.
-- [ ] Group/bulk registration: one reservation holds N spots against a category, with per-seat detail fillable later or via forwarded claim links (claim-link consumption itself can be a thin stub here — full self-service portal is Phase 7/Phase 18 territory, but the reservation + capacity math belongs in this phase).
-- [ ] Waitlist: when a category is full, new interest queues instead of failing outright; a service object handles automatic offer-on-release when capacity frees up (ties into Phase 7's cancellation flow).
-- [ ] Cancellation-with-seat-restoration (in scope per §5.3 — only refunds are deferred): cancelling a reservation restores `remain_count` and triggers waitlist offer check.
+- [x] `TicketCategory` model: `event_id`, `name`, `total_count`, `sold_count`, `remain_count` (kept in sync via callback/service, ports baseline `Event#sync_tickets` logic), `document_required` boolean. No price field (deferred). → `app/models/ticket_category.rb`, `db/migrate/*_create_ticket_categories.rb`. TenantScoped + RLS from day one (`account_id` denormalized alongside `event_id`, same pattern Phase 4 established for `EventStaffAssignment`). `sold_count`/`remain_count` are real columns, not computed on every read — `#sync_counts!` recomputes them from this category's own `reserved`-status `TicketReservation`s and persists via `update_columns`, called by `TicketReservationService` after every mutation rather than tracked incrementally (no drift possible; always a full recompute, not `+=`/`-=`).
+- [x] Ticket Categories tab in the event builder (Phase 4's stub filled in): CRUD, capacity validated against event-level seat limit if one is set. → `app/views/admin/events/_tickets_step.html.erb`, `Admin::TicketCategoriesController` (nested under Event, `only: [:create, :update, :destroy]` — no `:index`, the Tickets step itself is the listing). New nullable `Event#seat_limit` (`db/migrate/*_add_seat_limit_to_events.rb`) — no cap by default; when set, `TicketCategory#total_count_within_event_seat_limit` validates the sum of every category's `total_count` on the event against it (excluding the record's own prior value on update, so raising one category's own count doesn't double-count itself). Also joined `Event::CONTENT_ATTRIBUTES` (Phase 4) — changing `seat_limit` on an already-published event reverts it to draft, same as every other content field. No dedicated `TicketCategoryPolicy` — authorization delegates to the parent Event's own `EventPolicy#update?` (owner/event_manager), the same shortcut `Admin::EventsController#publish`/`#submit_for_review` already take instead of a separate policy class per Event-child action.
+- [x] Group/bulk registration: one reservation holds N spots against a category, with per-seat detail fillable later or via forwarded claim links (claim-link consumption itself can be a thin stub here — full self-service portal is Phase 7/Phase 18 territory, but the reservation + capacity math belongs in this phase). → New `TicketReservation` model (`app/models/ticket_reservation.rb`, `db/migrate/*_create_ticket_reservations.rb`) — not in requirement.md §8's literal data-model list (only `TicketCategory`/`Participant` are named there), added because the checklist explicitly calls for "reservation + capacity math" to exist *before* Phase 7's `Participant` does. Holds `seat_count`/`holder_name`/`holder_email` as one group, not one row per attendee; a `claim_token` (`SecureRandom.hex(16)`, unique-indexed) is generated on create as the thin stub the checklist calls for — no consumption flow reads it yet, but Phase 7's real per-seat claim/manual-entry flow has a column to attach to without another migration. `Admin::TicketReservationsController#create` — manually entered by staff from the Tickets step (there's no public registration surface yet; that's Phase 7/18).
+- [x] Waitlist: when a category is full, new interest queues instead of failing outright; a service object handles automatic offer-on-release when capacity frees up (ties into Phase 7's cancellation flow). → `app/services/ticket_reservation_service.rb` (`TicketReservationService.reserve`/`.cancel`, same `Result` struct + class-method-delegates-to-instance shape as Phase 2's `AccountProvisioning`). `.reserve` re-syncs the category's counts immediately before deciding `reserved` vs `waitlisted` — not `sold_count >= total_count`, but whether *this request's* `seat_count` fits in what's actually left, so a big group correctly waitlists even while smaller requests keep succeeding.
+- [x] Cancellation-with-seat-restoration (in scope per §5.3 — only refunds are deferred): cancelling a reservation restores `remain_count` and triggers waitlist offer check. → `TicketReservationService.cancel` — status → `cancelled` (+ `cancelled_at`), re-syncs the category, then promotes from the waitlist only if the cancelled reservation was actually holding a seat (cancelling an already-waitlisted one is a pure no-op on capacity). Promotion is FIFO, first-fit-only, and keeps iterating: the oldest waitlisted reservation goes first, but only if it fully fits in whatever's currently free (no partial seat splits — a 3-seat group either gets all 3 or stays waitlisted for a later release); if there's capacity left over after that, the next-oldest fitting request gets promoted too in the same cancellation, not just one entry per release.
 
 ### Definition of Done
-- [ ] Model spec: capacity math (`total/sold/remain`) stays consistent across create/cancel/waitlist-promote.
-- [ ] Service spec: category at capacity → new registrant waitlisted, not rejected; releasing a seat auto-promotes the next waitlisted entry.
-- [ ] Request spec: organizer cannot set category capacity exceeding the event-level seat limit (if configured).
-- [ ] Manual QA: fill a 2-seat category with 2 reservations, attempt a 3rd (lands on waitlist), cancel one of the first two, confirm the waitlisted one is auto-promoted.
+- [x] Model spec: capacity math (`total/sold/remain`) stays consistent across create/cancel/waitlist-promote. → `spec/models/ticket_category_spec.rb` (`#sync_counts!` — only `reserved` seats count, `waitlisted`/`cancelled` don't), `spec/models/ticket_reservation_spec.rb`.
+- [x] Service spec: category at capacity → new registrant waitlisted, not rejected; releasing a seat auto-promotes the next waitlisted entry. → `spec/services/ticket_reservation_service_spec.rb` — waitlist-instead-of-reject (including "a request too big for the *remaining* capacity waitlists even though some seats are free"), FIFO promotion (including the "freed capacity fits more than one waitlisted group" and "oldest waitlisted group doesn't fit, a smaller later one does" first-fit cases), and cancelling an already-waitlisted or already-cancelled reservation being safe no-ops.
+- [x] Request spec: organizer cannot set category capacity exceeding the event-level seat limit (if configured). → `spec/requests/admin_ticketing_spec.rb` ("re-renders the step with an error instead of saving when a category would exceed the event's seat_limit"), plus full coverage of the Tickets step's save (create/update/remove a category, all via nested attributes in one PATCH) and reservation create/cancel.
+- [x] Manual QA: fill a 2-seat category with 2 reservations, attempt a 3rd (lands on waitlist), cancel one of the first two, confirm the waitlisted one is auto-promoted. → verified live via Playwright against the dev server: created a 2-seat "General" category, reserved Alice (1) and Bob (1) — filled the category (0 remaining) — reserved Carol (1), confirmed she landed `Waitlisted` with the flash "1 seat(s) waitlisted for Carol," cancelled Alice's reservation, confirmed the flash "Reservation for Alice cancelled," Carol auto-promoted to `Reserved`, and the category back to 2 reserved / 0 remaining.
+
+**Found and fixed along the way (not asked for but real):** the category row's "Remove" button (`button_to`, which renders its own `<form>`) was nested inside the category's own edit `form_with` block — an invalid HTML nested-`<form>`, which browsers silently hoist out, scrambling the row's DOM (caught live: a reservation form's fields became briefly unreachable after a save). Split into two sibling forms in the same row instead of one containing the other.
+
+203/203 specs green, Rubocop clean, Brakeman: 0 warnings.
+
+### Revisited — ticket categories build client-side, reservation UI removed from event setup
+
+User feedback on the live Tickets step: "Reserve for / Holder email / Seats" doesn't belong on
+the event-*building* wizard at all — reserving seats is a participant-registration action
+(Phase 7 territory), not something an organizer does while defining ticket categories. Separately,
+each category add/edit/remove was its own immediate PATCH/POST/DELETE round trip — asked to
+instead build up categories in the form and only persist on the step's own Next click, the same
+"Next saves it" shape Basic Info already has.
+
+- [x] `Event accepts_nested_attributes_for :ticket_categories, allow_destroy: true, reject_if:
+      :all_blank` — categories are now nested attributes on the Event form
+      (`Admin::EventsController#update`, same action Basic Info's Next already posts to), not a
+      separate CRUD endpoint. `Admin::TicketCategoriesController` deleted outright (dead code the
+      moment nothing linked to it) along with its `only: [:create, :update, :destroy]` routes;
+      `resources :ticket_categories, only: []` stays in `config/routes.rb` purely so
+      `ticket_reservations` still has something to nest under for `#create`. The standalone
+      `update_seat_limit` action/route is gone too — `seat_limit` is just another field in the
+      same nested-attributes form now.
+- [x] New `app/javascript/controllers/nested_fields_controller.js` — the standard gem-free Rails
+      "clone a `<template>` with a `NEW_RECORD` placeholder index" pattern for add/remove rows
+      with zero network requests until the real form submit. Removing a persisted row sets its
+      hidden `_destroy` field and hides it (still submitted, so the server actually removes it on
+      Next); removing a just-added, never-saved row simply deletes it from the DOM outright — no
+      `id` exists yet for the server to destroy.
+- [x] `_tickets_step.html.erb` rewritten: one `form_with model: event` (seat limit + `fields_for
+      :ticket_categories`, shared row markup extracted into `_ticket_category_fields.html.erb` so
+      the live list and the JS template render identically), ending in the same Previous/`f.submit
+      "Next"` pair every other real step uses. The reservation section (holder name/email/seat
+      count, the per-category reservations table, Cancel buttons) is gone entirely — `
+      TicketReservation`/`TicketReservationService`/`Admin::TicketReservationsController` are
+      untouched and still fully tested (this phase's waitlist/cancellation-with-restoration
+      requirement doesn't go away), just not linked from any view yet. Expected to be wired into
+      Phase 7's actual registration flow.
+
+**Found and fixed along the way (not asked for but real, caught from my own verification
+screenshot):** a freshly created or total_count-edited TicketCategory showed "0 remaining" even
+with zero reservations against it — `remain_count` was only ever written by
+`TicketReservationService#sync_counts!` after a *reservation* changed, never initialized or kept
+in sync when the *category* itself was saved directly (plain creation defaulted to the schema's
+`0`; raising/lowering `total_count` left `remain_count` stale). Added a `before_save
+:sync_remain_count` callback on `TicketCategory` itself so both paths — a reservation changing
+(service-driven `update_columns`) and the category row being saved directly (create/edit,
+including via nested attributes) — keep `remain_count` correct, each through the trigger that
+actually fits it.
+
+202/202 specs green, Rubocop clean, Brakeman: 0 warnings.
+
+### Revisited — seat-limit validation didn't catch several new categories added together
+
+User-reported bug, reproduced exactly: `seat_limit` 100, added three brand-new categories
+(60/50/40 = 150) in one Tickets-step save — saved without error. Root cause: the seat-limit
+validation lived on `TicketCategory#total_count_within_event_seat_limit`, and computed "everyone
+else's total" as `event.ticket_categories.where.not(id: id).sum(:total_count)` — a fresh SQL
+query. For three simultaneously-new rows in the same nested-attributes batch, none of them exist
+in the database yet at validation time, so each one's own query sees zero siblings and passes
+individually; nothing ever summed all three together.
+
+- [x] Moved the check to `Event#ticket_categories_within_seat_limit` — sums
+      `ticket_categories.reject(&:marked_for_destruction?)` in Ruby over the association's current
+      *in-memory* state (which nested-attributes assignment populates with every row in the batch,
+      new and existing alike, before validation ever runs), not a fresh query. Removed the old
+      broken version from `TicketCategory` entirely rather than leaving two validations
+      (`app/models/ticket_category.rb` now just notes where the check moved and why).
+      Incidentally this also *simplified* the "editing an existing category" case — no more
+      needing to explicitly exclude the record's own prior value by id, since the in-memory
+      collection already reflects its freshly-assigned value, not a stale persisted one.
+- [x] Spec coverage moved and expanded: `spec/models/event_spec.rb`
+      (`#ticket_categories_within_seat_limit`) now includes the exact reported shape — three new
+      categories together over the limit while none is individually — plus a request-spec version
+      in `spec/requests/admin_ticketing_spec.rb` posting the real multi-row nested-attributes
+      params the Tickets step's form actually sends.
+- [x] Writing those specs surfaced a second, more subtle lesson (not a product bug, a modeling
+      gotcha worth documenting): a bare `create(:event, ...)` already triggers this validation
+      once during its own save, which caches the (then-empty) `ticket_categories` association on
+      that Ruby object. A *separate* `create(:ticket_category, event: event, ...)` factory call
+      afterward inserts a real row but never touches that cached association — so reusing the same
+      `event` object for further nested-attributes assignment without an `event.reload` in between
+      validates against stale, incomplete data. Not a real risk in production
+      (`Admin::EventsController#update` always starts from a freshly-loaded `@event` and assigns
+      nested attributes before anything validates), but real enough to trip up two of the new
+      specs themselves — fixed with an explicit `event.reload` at the right point, commented so
+      the next person adding a ticketing spec doesn't rediscover it the hard way.
+
+205/205 specs green, Rubocop clean, Brakeman: 0 warnings.
+
+### Revisited — explicit "has a seat limit" toggle, gating both the field and a live running total
+
+User request: gate `seat_limit` behind an explicit "This event has a seat limit" flag instead of
+it always being a visible, always-optional field, and surface a live "Total seats" readout (the
+sum across ticket categories) once the toggle is on.
+
+- [x] New `Event#has_seat_limit` boolean column (`db/migrate/*_add_has_seat_limit_to_events.rb`,
+      `default: false`, backfilled `true` for any event that already had a `seat_limit` set —
+      that presence was the flag's implicit value before now). Added to `CONTENT_ATTRIBUTES`
+      alongside `seat_limit` — toggling it on an already-published event reverts to draft, same as
+      every other content field.
+- [x] `Event#clear_seat_limit_unless_flagged` (`before_validation`) discards `seat_limit` whenever
+      `has_seat_limit?` is false. Needed because the Tickets step hides the field with CSS rather
+      than removing it from the DOM (`data-seat-limit-target="limitField"`, toggled by the new
+      `seat_limit_controller.js`) — a stale value would otherwise still ride along in the
+      submitted params after the organizer switches the toggle back off, silently keeping an old
+      cap enforced even though the UI no longer shows it. Runs in `before_validation`, not
+      `before_save`, so `ticket_categories_within_seat_limit` (which runs during the same
+      validation phase) always sees the corrected value, not the stale one.
+- [x] `app/javascript/controllers/seat_limit_controller.js` — one controller, two jobs: show/hide
+      `seat_limit`'s field (and the new total-seats line) off the checkbox, and recompute a live
+      "Total seats (from categories)" display by summing every visible ticket-category row's
+      `total_count` input on `input` events (each row's field carries
+      `data-action="input->seat-limit#recompute"`, so it fires for both the live rows and ones
+      cloned from `nested-fields`' `<template>`). A row hidden via `nested-fields#remove` (a
+      persisted category marked `_destroy` but left in the DOM, not deleted — see Phase 6's own
+      revisit above) is excluded from the sum by checking `row.hidden`; the Remove button's
+      `data-action` chains both controllers (`nested-fields#remove seat-limit#recompute`) so the
+      total updates the instant a row disappears, not just when a count changes. Purely a display
+      aid — nothing here is persisted; the real capacity check is still
+      `Event#ticket_categories_within_seat_limit`, unchanged.
+- [x] Spec coverage: `spec/models/event_spec.rb` (`#clear_seat_limit_unless_flagged` — toggling off
+      discards a stale value, toggling stays on leaves it alone), `spec/requests/
+      admin_ticketing_spec.rb` (a real Tickets-step PATCH with `has_seat_limit: "0"` clears a
+      previously-set `seat_limit`). `spec/factories/events.rb` gained `has_seat_limit {
+      seat_limit.present? }` so every existing spec that passes `seat_limit:` directly keeps
+      working without individually adding `has_seat_limit: true` everywhere.
+- [x] Manual QA: verified live via Playwright against the dev server on `techo-space` — toggle off
+      by default (field hidden), toggle on reveals both fields, adding two categories (60 + 30)
+      live-updated "Total seats (from categories)" to 60 then 90 without a page reload, Next
+      persisted `has_seat_limit: true, seat_limit: 100` plus both categories, and a follow-up
+      toggle-off-and-Next correctly cleared `seat_limit` back to `nil` in the database.
+
+266/266 specs green, Rubocop clean, Brakeman: 0 warnings.
+
+**Follow-up correction:** "Total seats" was sharing the same `limitField` Stimulus target as
+`seat_limit` already, so it was already hidden while the toggle is off — confirmed, not a fix.
+What was missing: `seat_limit` was still labeled "(optional)" and never actually required once the
+toggle turned on. Added `validates :seat_limit, presence: true, if: :has_seat_limit?` on `Event`
+(server-side source of truth), dropped "(optional)" from the label, and made
+`seat_limit_controller.js` keep the input's `required` HTML attribute in sync with the same toggle
+(a new `limitInput` target) so the browser's own constraint validation blocks an empty submission
+immediately, not just after a round trip. Covered by two new model-spec cases (required when
+toggled on, not required when off) and a request spec confirming a real Tickets-step PATCH with
+`has_seat_limit: "1"` and a blank `seat_limit` gets rejected with `422` and the presence error.
+Verified live: toggling on with an empty field and clicking Next shows the browser's native "Please
+fill in this field" tooltip instead of submitting. 269/269 specs green, Rubocop clean, Brakeman: 0
+warnings.
+
+**Second follow-up — visibility moved from Ruby/JS to pure CSS:** user reported still seeing
+"Total seats" with the toggle off. Root cause of the follow-up-correction fix (server-rendering
+`d-none` off `event.has_seat_limit?`, the persisted column) was itself the wrong axis: the
+checkbox's *live* DOM state is what should decide visibility, not a value computed once at
+render time from the database — those two only coincide up to the moment the organizer actually
+touches the toggle, and reactive JS (a `change` listener flipping a class) still leaves a window
+between page paint and Stimulus connecting (or a Turbo-cached snapshot) where they can disagree.
+Replaced both the SSR class and the Stimulus `toggleLimitField` method with a single CSS rule
+(`app/assets/stylesheets/application.css`): `.seat-limit-block:has(#event_has_seat_limit:checked)
+.seat-limit-fields { display: block; }` (default `display: none`) — the browser's own `:has()`
+match re-evaluates synchronously with the checkbox's DOM state, so there is no window where
+markup and checkbox can drift, regardless of JS load timing or the DB value. `seat_limit`'s
+`required` attribute is now unconditional in the HTML rather than JS-managed — the HTML5 spec
+exempts non-rendered (`display: none`) fields from constraint validation, so "required only while
+the toggle is visibly on" falls out of the same CSS rule for free. `seat_limit_controller.js` now
+only does the live "Total seats" sum (unrelated to show/hide). Verified with all `*.js` requests
+aborted in Playwright (simulating JS never loading at all): toggling the checkbox on/off still
+correctly showed/hid both fields — proof the behavior no longer depends on JS or the persisted
+value at all. 269/269 specs green (unchanged — this was view/CSS/JS only), Rubocop clean,
+Brakeman: 0 warnings.
+
+### Third follow-up — the per-category "Total seats" column, and two bugs the fix itself exposed
+
+User clarified what "still not working" actually meant, with a screenshot: not the summary line
+(already fixed, confirmed hidden) but each individual ticket category's own "Total seats" column
+(`TicketCategory#total_count`) — unconditionally visible on every row regardless of the toggle,
+since a category's own capacity was never gated by it in the first place. Asked directly whether
+that should also be hidden when the event has no seat limit, even though it changes what a ticket
+category *means* (no seat limit → categories become "unlimited," capacity untracked) — confirmed
+yes.
+
+- [x] `total_count`/`remain_count` on `ticket_categories` made nullable
+      (`db/migrate/*_allow_null_total_and_remain_count_on_ticket_categories.rb`). `TicketCategory`:
+      `total_count` numericality stays `allow_nil: true`, presence now conditional on
+      `event&.has_seat_limit?`; new `#unlimited?` (`total_count.nil?`); `#sync_counts!`/
+      `#sync_remain_count` both nil-out `remain_count` instead of computing against a
+      `total_count.to_i` that would silently treat "unlimited" as zero. `Event#clear_category_
+      total_counts_unless_seat_limited` (`before_validation`, same trigger as `clear_seat_limit_
+      unless_flagged`) nils every category's `total_count` when the toggle is off, iterating the
+      in-memory association so a category added in the very save that also flips the toggle off
+      gets caught too. `TicketReservationService#reserve`/`#promote_waitlist` treat an unlimited
+      category as always having room — every reservation succeeds outright, nothing ever
+      waitlists against it.
+- [x] CSS (`.seat-limit-fields`/`.seat-limit-block`, application.css) extended to cover the
+      per-category column too: `seat-limit-block` moved from a small wrapper div up onto the whole
+      `<form>` in `_tickets_step.html.erb`, since `:has()` needs the checkbox and every "Total
+      seats" field — top-level and per-category, including rows `nested-fields` clones in later —
+      under one shared ancestor to reach all of them with a single rule.
+- [x] **Bug this surfaced, not asked for but real**: made `required` unconditional on both the
+      seat_limit and total_count inputs, reasoning that a `display:none` required field is exempt
+      from HTML5 constraint validation "by spec." Live testing proved that reasoning wrong for
+      this browser: a required field hidden via CSS (or via `hidden`, which nested-fields#remove
+      already sets on a removed persisted row) still fails `form.checkValidity()` and silently
+      blocks the whole submit — no visible error, just a console-only "An invalid form control ...
+      is not focusable" and the PATCH request never even firing. Reverted to JS-managed
+      `required`: `seat_limit_controller.js` gained `syncRequired()`, called on connect, on the
+      checkbox's own `change`, and on "Add another category" (so a freshly cloned row picks up
+      the current toggle state) — and `nested_fields_controller.js#remove` now explicitly clears
+      `required` on every field inside a row it hides, closing the same hole for the
+      remove-a-persisted-row case.
+- [x] **Second bug this surfaced, pre-existing since Phase 6, not asked for but real**: fixing the
+      `required` bug above was what first made "Remove" on a *persisted* ticket category actually
+      reach the server at all — and that immediately exposed that it never worked correctly in the
+      first place. `nested_fields_controller.js#remove` looked for the hidden `id` field via
+      `row.querySelector('input[name$="[id]"]')`, but Rails' `fields_for` auto-inserts that hidden
+      id field as a **sibling** immediately after a nested partial's own markup for a persisted
+      record, not a descendant of it — confirmed by dumping the actual rendered HTML. `querySelector`
+      only searches descendants, so `idField` was always `null`, meaning every "Remove" click on an
+      *existing* category (or custom field — same shared controller) silently took the
+      "brand-new-row, just delete from the DOM" branch: the row visually vanished but nothing was
+      ever destroyed server-side, and it would reappear on the next page load. Fixed generically
+      (not ticket-category-specific, since custom fields share this controller): derive the
+      field-name prefix from the always-present `_destroy` field and look up the id field in the
+      row's *parent* instead of the row itself.
+- [x] **Third bug, found via the second bug's own fix**: with Remove now actually reaching the
+      server, removing a category that already has `Participant` rows pointing to it hit a raw
+      `PG::ForeignKeyViolation` — an unhandled 500. Added `has_many :participants, dependent:
+      :restrict_with_error` on `TicketCategory` as an association-level guard, but nested-attributes'
+      own destroy machinery turned out to call `destroy!` internally, so a blocked
+      `restrict_with_error` raised `ActiveRecord::RecordNotDestroyed` instead of degrading
+      gracefully — still an unhandled 500, just a different one. Real fix: `Event#destroyed_
+      categories_have_no_participants`, a normal `validate` (not a `before_destroy` callback) that
+      checks every category marked for destruction *before* any destroy is attempted at all, so a
+      blocked removal fails the same clean, friendly "re-render with errors" way every other
+      Tickets-step mistake already does. The association-level `restrict_with_error` stays as
+      defense-in-depth for any future code path that destroys a category directly (where it
+      degrades gracefully, unlike through nested-attributes).
+- [x] Spec coverage for all of the above: `spec/models/ticket_category_spec.rb` (total_count
+      presence conditional on `has_seat_limit`, `#unlimited?`, `#sync_counts!` leaving
+      `remain_count` nil), `spec/services/ticket_reservation_service_spec.rb` (an unlimited
+      category always reserves, regardless of how many seats are requested),
+      `spec/models/event_spec.rb` (`#clear_category_total_counts_unless_seat_limited`,
+      `#destroyed_categories_have_no_participants` — both the rejected and the allowed case),
+      `spec/requests/admin_ticketing_spec.rb` (a real toggle-off PATCH clearing an existing
+      category's `total_count`, creating a category with none when unlimited, and the
+      participants-registered-so-removal-is-blocked case, asserting a clean `422` rather than a
+      crash).
+- [x] Manual QA: live on `dubai-expo` (which had a real leftover "Visitor" category with an actual
+      `Participant` registered against it from earlier Phase 7 testing) — confirmed the per-category
+      "Total seats" column hides/shows with the same toggle as the summary line; confirmed
+      `form.checkValidity()` was `false` and the PATCH never fired before the `required` fix, `true`
+      and a real 302 after; confirmed a toggle-off save actually clears `total_count`/`remain_count`
+      to `nil` in the database (previously it only looked cleared client-side); confirmed removing a
+      *different*, participant-free category actually deletes it now (previously silently a no-op);
+      confirmed removing the participant-linked "Visitor" category now fails with a clean 422 and
+      the friendly on-page message instead of a 500. Reset the event's `has_seat_limit`/`seat_limit`
+      and the stray category's counts back to their pre-test state afterward; left the real
+      "Visitor"-plus-participant pairing in place since it's pre-existing dev data, not something
+      created by this fix.
+
+283/283 specs green, Rubocop clean, Brakeman: 0 warnings.
 
 ---
 
@@ -333,20 +651,98 @@ in the queue immediately after (oldest/only entry, "On track" SLA badge, correct
 **Implements:** §3.4, §5.4, §8 (`Participant`).
 **Depends on:** Phase 6 (registers against a `TicketCategory`).
 
-- [ ] `Participant` model: `account_id`, `event_id`, `ticket_category_id`, `hex_id`, `client_participant_id` (auto-generated if missing), `govt_id` (plain field, no integration — §5.4 confirmed), `rf_id`, name/email/contact/company/department/position/nationality/country, photo (Active Storage, tenant-namespaced path per §4.2), document upload gated by `ticket_category.document_required`, `source` (`manual`/`upload`/`client_api` — last one wired for real in Phase 16).
-- [ ] Dedupe validation chain (govt ID → email+name → email → phone), scoped per event, ported from baseline fuzzy-match logic.
-- [ ] Custom-field builder (§5.4 new item): organizer-defined fields (text/select/checkbox/file) stored per event, rendered dynamically on the admin manual-entry form — this generalizes the baseline's fixed `participant_fields` catalog from Phase 4.
-- [ ] Admin participant list: search/filter across identifier fields, pagination (Pagy), bulk destroy.
-- [ ] Approval-based registration toggle per event (organizer must approve before a participant is considered confirmed) — status field on `Participant`.
-- [ ] Bulk XLSX import (async Sidekiq job) with the same fuzzy-dedupe matching, progress-pollable; bulk XLSX export (attendance/session columns stubbed until Phase 9/11 exist, but the export scaffold and signed-download-URL delivery belong here).
-- [ ] `EventLiveStats` row seeded/incremented on participant create (column exists, real-time broadcast wiring is Phase 9 — this phase just keeps the counter correct as a plain DB write).
+- [x] `Participant` model: `account_id`, `event_id`, `ticket_category_id`, `hex_id`, `client_participant_id` (auto-generated if missing), `govt_id` (plain field, no integration — §5.4 confirmed), `rf_id`, name/email/contact/company/department/position/nationality/country, photo (Active Storage, tenant-namespaced path per §4.2), document upload gated by `ticket_category.document_required`, `source` (`manual`/`upload`/`client_api` — last one wired for real in Phase 16). → `app/models/participant.rb`, `db/migrate/*_create_participants.rb`. `hex_id` is globally unique (requirement.md §3.7: check-in scans it directly, no event context); `client_participant_id` unique per event only. Both auto-generate via a bounded retry loop when left blank, real collision risk is astronomically low (48 bits of randomness) — the loop is a correctness backstop, not a response to expected contention. `photo`/`document` attach through `Participant#attach_tenant_scoped`, which builds an explicit tenant-namespaced storage key (`account.subdomain_slug/participants/...`) — `ActiveStorage::Blob` has no `account_id` column of its own to RLS-protect, so the tenant boundary lives in the key/path instead. **Prerequisite work this surfaced**: Active Storage wasn't installed yet — ran `active_storage:install` and hand-edited the generated migration to use `id: :uuid` (with a `gen_random_uuid()` DB-side default, since `ActiveStorage::Blob`/`Attachment`/`VariantRecord` are framework classes that don't run through `ApplicationRecord`'s own UUIDv7-on-create hook) instead of the gem's bigint default — every one of our own tables' foreign keys are uuid, and a polymorphic `record_id` column has to be able to hold one.
+- [x] Dedupe validation chain (govt ID → email+name → email → phone), scoped per event, ported from baseline fuzzy-match logic. → `Participant.duplicate_match` (class method, shared by the model's own `not_a_duplicate` validation and `ParticipantImportJob`) — a real cascade, not four independent checks: tries the highest-confidence identifier first, only falls through to the next tier if that one had nothing to check or nothing to match.
+- [x] Custom-field builder (§5.4 new item): organizer-defined fields (text/select/checkbox/file) stored per event, rendered dynamically on the admin manual-entry form — this generalizes the baseline's fixed `participant_fields` catalog from Phase 4. → New `CustomField` model (`app/models/custom_field.rb`), managed as nested attributes on Event (`Event#custom_fields`) — same client-side build-then-save-on-Next shape Phase 6 established for `TicketCategory`, reusing the same `nested_fields_controller.js` Stimulus controller and added to the Basic Info step alongside Phase 4's fixed catalog (additive, not a replacement — that catalog is untouched). File-type responses land in `Participant#custom_field_files` (`has_many_attached`), looked back up per field via a signed blob id stored in `custom_field_values`. **Found and fixed before it ever shipped**: `field_type: :select` doesn't work — Rails raises at boot because the generated `select` class method collides with `ActiveRecord::Base`'s own `.select` query method. Renamed the enum value to `:dropdown` (still labeled "Select" to the organizer); caught by a plain `bin/rails runner` boot check before writing any specs against it.
+- [x] Admin participant list: search/filter across identifier fields, pagination (Pagy), bulk destroy. → `Admin::ParticipantsController#index`, `app/views/admin/participants/index.html.erb`. **Found and fixed before it shipped**: `gem "pagy"` (added unversioned in Phase 0, never actually used until now) resolved to 43.6.0, which turned out to be a ground-up API rewrite — no `Pagy::Backend`/`Pagy::Frontend`, no `pagy(scope)`/`pagy_nav` helpers, a completely different class-based API instead. Pinned to `~> 8.6`, the last release on the classic API every existing convention/comment in this codebase assumed.
+- [x] Approval-based registration toggle per event (organizer must approve before a participant is considered confirmed) — status field on `Participant`. → New `Event#participant_approval_required` boolean (also joined `Event::CONTENT_ATTRIBUTES`, so toggling it on an already-published event reverts to draft same as every other content field), `Participant#status` (`pending`/`confirmed`). `Event#default_participant_status` is the one place that branches on the toggle — `Admin::ParticipantsController#create` and `ParticipantImportJob` both call it rather than each re-deriving the same logic; deliberately not a model-level callback/default; since the schema's own column default (`pending`) is already a valid value, a `before_validation` `||=` guard could never distinguish "caller explicitly wants pending" from "nobody set it yet."
+- [x] Bulk XLSX import (async Sidekiq job) with the same fuzzy-dedupe matching, progress-pollable; bulk XLSX export (attendance/session columns stubbed until Phase 9/11 exist, but the export scaffold and signed-download-URL delivery belong here). → `ParticipantImportJob`/`ParticipantExportJob` (`roo`/`caxlsx`, both added to the Gemfile — neither existed yet), `ImportFile`/`ExportFile` models tracking progress/outcome. Import matches columns case-insensitively against a fixed header map (custom fields aren't populated by import — out of scope for this pass, fixed/identifier columns are the whole surface); per-row outcome is `created`/`duplicate`/an error message, capped at 50 stored row errors so one catastrophically bad file can't write an unbounded jsonb column. The progress page is a plain `<meta http-equiv="refresh">` poll, not a JS loop or Turbo Stream broadcast — no real-time wiring exists until Phase 9, and a 3s page refresh is plenty for a background job the admin is just waiting on. Export's "signed cloud URL" requirement is just `rails_blob_path` — Active Storage blob URLs are already signed/expiring by construction, nothing extra to build.
+- [x] `EventLiveStats` row seeded/incremented on participant create (column exists, real-time broadcast wiring is Phase 9 — this phase just keeps the counter correct as a plain DB write). → `Event#live_stats!` (lazily seeds the row on first use, `find_or_create` — most of an event's life happens before it has a single participant), `Participant#increment_live_stats!` (`after_create`). All four counters requirement.md §8 names (registered/checked-in/checked-out/occupancy) exist as columns now so Phase 9 doesn't need another migration; only `registered_count` is actually written to yet.
 
 ### Definition of Done
-- [ ] Model spec: full dedupe chain, each fallback level tested independently.
-- [ ] Job spec: bulk import handles a mixed file (new + duplicate rows) correctly, reports per-row outcome.
-- [ ] Request spec: admin manual entry respects custom-field requiredness; document upload rejected/accepted based on ticket category flag.
-- [ ] Cross-tenant leak spec: participant search never returns another account's rows.
-- [ ] Manual QA: import a sample XLSX with a few intentional duplicates, confirm correct dedupe outcome and progress UI; manually create one participant through the custom-field form.
+- [x] Model spec: full dedupe chain, each fallback level tested independently. → `spec/models/participant_spec.rb` (`.duplicate_match` — govt_id first, falls through to email+name, then email, then phone; scoped per event; excludes the record's own id).
+- [x] Job spec: bulk import handles a mixed file (new + duplicate rows) correctly, reports per-row outcome. → `spec/jobs/participant_import_job_spec.rb` — builds a real `.xlsx` in memory via `caxlsx` (no checked-in binary fixture), covers created/duplicate/error counts on one mixed file, a per-row error message without aborting the rest of the file, blank rows skipped (not counted as errors), and the whole-file-unreadable `failed` state.
+- [x] Request spec: admin manual entry respects custom-field requiredness; document upload rejected/accepted based on ticket category flag. → `spec/requests/admin_participants_spec.rb`.
+- [x] Cross-tenant leak spec: participant search never returns another account's rows. → `spec/models/participant_spec.rb` (tenant isolation) + `spec/requests/admin_participants_spec.rb` ("never returns another tenant's participants in search results", "404s when Account A requests Account B's event's participants").
+- [x] Manual QA: import a sample XLSX with a few intentional duplicates, confirm correct dedupe outcome and progress UI; manually create one participant through the custom-field form. → verified live via Playwright against the dev server: added a required custom field + turned on participant approval from the Basic Info step in one save, created a participant manually through the resulting form (custom field included, landed `Pending` per the toggle), attempted a second participant with the same name+email and confirmed it was rejected with "Duplicate of Alice Smith (matched on email and name)," then separately uploaded a real `.xlsx` through the Import form and confirmed the progress page showed "Import complete — 2 participants created, 0 duplicate(s) skipped, 0 error(s)" once the job ran. (No Sidekiq worker process runs in this dev environment — jobs were executed via `perform_now`/`rails runner` standing in for the worker, same as the request/job specs already do; the enqueue-and-redirect half of the flow was verified through the real controller, confirmed via `have_enqueued_job` in `spec/requests/admin_import_export_files_spec.rb`.)
+
+**Also found and fixed (Brakeman-adjacent, caught from a live server log, not a spec):** `Admin::ParticipantsController#participant_params` originally left `custom_field_values` unpermitted (relying on `params.dig` to read it manually), which is safe but logs a Rails "Unpermitted parameter" warning on every single participant create/update. Permitting it outright to silence that turned out to be a real bug, not just a cosmetic fix — mass-assigning it directly would jsonb-serialize a raw uploaded-file object straight into the column for file-type fields, bypassing `Participant#attach_custom_field_file` entirely. Fixed by permitting it (for the clean logs) but always stripping it before assignment (`fixed_field_params`), leaving `#apply_custom_field_values`'s explicit per-field handling as the only path that actually touches that column.
+
+263/263 specs green, Rubocop clean, Brakeman: 0 warnings.
+
+**Revisited (Cloudinary, cross-cutting):** switched Active Storage's production/development backend to Cloudinary (`gem "cloudinary"`) so tenant photo/document/import/export uploads land in real cloud storage, not local disk. `config/storage.yml` gained a `cloudinary:` service (`folder: "eventmeet/<%= Rails.env %>"` — a fixed root shared by every upload through this service, only there to separate environments in one Cloudinary account); credentials come solely from the `CLOUDINARY_URL` env var (never committed) since the gem's own `Cloudinary::Config` auto-loads it. Production always uses `:cloudinary`; development falls back to `:local` unless `CLOUDINARY_URL` is set, so local dev needs no real account; `test` is untouched (still `:local`, disk). **Found and fixed before it shipped**: the gem's Active Storage adapter (`ActiveStorage::Service::CloudinaryService`) lives outside the gem's own autoload/require tree — `require "cloudinary"` at boot pulls in its Railtie/Engine but never that file, and Rails resolves configured services via `.constantize`, not `require`, so referencing the `:cloudinary` service raised `NameError` until explicitly required. Also, that file monkey-patches `ActiveStorage::Blob` (overrides `#key`), so requiring it too early (a plain initializer) raised `uninitialized constant ActiveStorage::Blob` — fixed via `ActiveSupport.on_load(:active_storage_blob) { require "active_storage/service/cloudinary_service" }` in `config/initializers/cloudinary.rb`, which defers the require until that class actually exists. Tenant-wise folder structure comes from the blob key itself, not any Cloudinary-side setting: Cloudinary treats every `/` in a blob key as a folder separator, so extracted the existing `account.subdomain_slug/participants/...` key-building logic out of `Participant` into a shared `TenantScopedAttachment` concern (`app/models/concerns/tenant_scoped_attachment.rb`, `#tenant_scoped_blob_key`) and applied it to `ImportFile`/`ExportFile` too (previously plain `.attach(io:, filename:, content_type:)` with the framework's default untenanted key) — every tenant's uploads, exports, and imports now nest under that tenant's own folder regardless of attachment type. No real Cloudinary account is available in this environment, so this was verified structurally only (`bin/rails runner` confirming the service resolves to `ActiveStorage::Service::CloudinaryService`, the `folder` option resolves per-environment, and `Cloudinary.config.cloud_name` picks up a `CLOUDINARY_URL` set inline) — actual upload behavior needs a real `CLOUDINARY_URL` supplied to the deploy environment. 263/263 specs still green (test env unaffected), Rubocop clean, Brakeman: 0 warnings.
+
+**Superseded by Phase 7.5 below**: the event-level `participant_fields`/`CustomField` mechanism this phase built is being replaced by a ticket-category-scoped form builder, reached from its own nav tab rather than the event-creation wizard. The Basic Info step's UI for it was already removed (see Phase 7.5's first checklist item) — the columns/model/associations described above stay live until Phase 7.5's rescoping work lands.
+
+---
+
+## Phase 7.5 — Dynamic Registration Form Builder (Ticket-Category Scoped)
+
+**Goal:** an organizer designs the registration form each ticket category actually uses — its own form, a form shared across every category, or (if untouched) a sensible default — from a dedicated **Design Registration Form** screen, not from anywhere inside the event-creation wizard. Whatever fields a category's badge is configured to display are automatically required on that category's form.
+**Implements:** §5.4, §5.14 (v12).
+**Depends on:** Phase 6 (`TicketCategory`), Phase 7 (`Participant`, `CustomField`, dedupe/requiredness validations — rescoped, not rebuilt), Phase 8 (`Badge`/`HasBadgeMapping` — the badge-mandatory rule reads `Badge#content`/`#mapping` directly).
+**Explicitly not part of this phase:** any change to `Admin::EventsController::STEPS` or the Basic Info step — this screen is reachable only once an event already exists, from its own workspace nav, never from event creation/editing itself.
+
+- [x] Removed the "Required Participant Fields" dropdown and "Custom Participant Fields" nested-builder card from the Basic Info step's UI (`app/views/admin/events/_basic_info_step.html.erb`), their display on the Review step and the Super Admin review page, and stopped `Admin::EventsController#event_params` from writing to `participant_fields`/`custom_fields_attributes` (leaving that code in place would have silently zeroed `participant_fields` on every Basic Info save, since the form no longer sends it). Left in place at the time: the `Event#participant_fields` column and the `CustomField` model/table/`Event#custom_fields` association — both retired for real by this phase, not just hidden.
+
+- [x] **`RegistrationForm` model** (`account_id`, `event_id`, `ticket_category_id` — nullable). `ticket_category_id: nil` is the event's own **default/shared** form — one record does double duty as both "what a category falls back to when it hasn't designed its own" and "the one form every category uses" when the organizer wants uniformity; there's no separate boolean for "shared," an organizer gets that behavior for free by simply not creating category-specific forms. Same two-partial-unique-index shape `Badge` already established for the identical nullable-`ticket_category_id` "default vs. specific" pattern (`db/migrate/*_create_badges.rb`, copied into `db/migrate/*_create_registration_forms.rb`): one unique index on `(event_id, ticket_category_id)` where `ticket_category_id IS NOT NULL`, one unique index on `event_id` where `ticket_category_id IS NULL`. `TenantScoped` + RLS from creation, same as every tenant-scoped table since Phase 4. `catalog_fields` jsonb defaults every `Event::PARTICIPANT_FIELD_CATALOG` key to `false` on a new record (`after_initialize ... if: :new_record?`, merging over whatever the caller explicitly set), so the builder UI always has every checkbox to render, never an implicitly-missing key. `Event#registration_forms` (`has_many`, `dependent: :destroy`) and `TicketCategory#own_registration_form` (`has_one`, `dependent: :destroy`) wire up both sides; `TicketCategory#registration_form` is the resolving method (own form, else the event's default/shared one, else `nil`) every future caller uses — implemented now even though nothing calls it yet, so the resolution order only ever lives in one place. `spec/models/registration_form_spec.rb`: factory-default validity, `catalog_fields` default/merge behavior, both partial-unique-index constraints (mirroring `badge_spec.rb`'s equivalent cases), and all three resolution-method branches. 438/438 specs green (10 new), Rubocop clean.
+- [x] **`catalog_fields` jsonb column on `RegistrationForm`** and **`TicketCategory#registration_form`** resolution method — delivered as part of the `RegistrationForm` model bullet above rather than separately.
+- [x] **Rescope `CustomField`**: `db/migrate/*_rescope_custom_fields_to_registration_form.rb` — `remove_reference :custom_fields, :event` / `add_reference :custom_fields, :registration_form, null: false`. Deletes existing rows in `up` rather than backfilling them onto a new `RegistrationForm` — the only path that ever wrote a `CustomField` (the Basic Info step's nested-attributes form) was already removed in the prior pass, so any row still in the table was an orphaned, already-unreachable relic (confirmed: 2 leftover dev-DB rows from earlier manual QA, cleared by the migration). `CustomField#belongs_to :registration_form` (was `:event`); `RegistrationForm` gained `has_many :custom_fields, -> { order(:position) }, dependent: :destroy` + `accepts_nested_attributes_for :custom_fields, allow_destroy: true, reject_if: :all_blank` (moved verbatim off `Event`, which lost both). Every caller updated to resolve through the participant's own `ticket_category.registration_form&.custom_fields` instead of `event.custom_fields`: `Participant#required_custom_fields_present` (returns early — nothing required — when the category has no resolved form), `Admin::ParticipantsController#apply_custom_field_values`, and `admin/participants/_form.html.erb`'s "Additional fields" block (`participant.ticket_category&.registration_form&.custom_fields || CustomField.none` — renders for whichever category is *currently selected*; re-rendering that block live when the category dropdown changes, without a full page reload, stays a separate not-yet-built item, tracked below under the manual-entry-form bullet). `Event::PARTICIPANT_FIELD_CATALOG`/`Event#participant_fields` themselves are untouched by this pass — `Participant#required_fixed_fields_present` and the fixed-field half of the manual-entry form still read `event.participant_fields` directly, pending the badge-mandatory rule/`effective_catalog_fields` work below. `spec/factories/custom_fields.rb`/`registration_forms.rb`, `spec/models/custom_field_spec.rb` (rebuilt off `registration_form:` instead of `event:`), `spec/models/participant_spec.rb` (required-CustomField spec now goes through a real `ticket_category`/`RegistrationForm`, plus a new case proving a field on *another* category's form isn't required), `spec/requests/admin_participants_spec.rb`, `spec/requests/admin_events_spec.rb` (the "ignores custom_fields_attributes" case now asserts zero `RegistrationForm`s created, since `Event#custom_fields` no longer exists to assert against directly) all updated. 439/439 specs green, Rubocop clean.
+- [x] **Badge-mandatory rule**, `Badge#required_catalog_fields`: scans `content` for `BadgeReformService::TOKEN_PATTERN` matches (only `DESIGNATION` → `position` has a catalog counterpart among the direct tokens — `NAME`/`TITLE`/`FIRST_NAME`/`LAST_NAME`/`GOVT_ID`/`PHOTO`/`LOGO`/QR/barcode variants are either always-collected core `Participant` columns or non-form tokens, silently ignored) and `mapping`'s `OTHER1`/`OTHER2`/`OTHER3` values (whichever `HasBadgeMapping::MAPPABLE_FIELDS` entry an organizer mapped a slot to, kept only if it's also in `Event::PARTICIPANT_FIELD_CATALOG`), deduped. **Only ever returns catalog fields, never touches organizer-defined `CustomField`s** — a badge has no mechanism to reference a custom field's jsonb value at all, so there's nothing to enforce there. `spec/models/badge_spec.rb` (`#required_catalog_fields`): empty for a catalog-ineligible badge, `$DESIGNATION$` → `position`, an `OTHER*` mapping to a catalog field, an `OTHER*` mapping to a non-catalog field (`hex_id`) ignored, content + mapping combined and deduped.
+- [x] **`TicketCategory#effective_catalog_fields`** — the union that actually drives requiredness: `registration_form&.catalog_fields` (falling back to `RegistrationForm::BUILTIN_DEFAULT_CATALOG`, so a category with no form configured at all still isn't literally fieldless) with every key in the category's resolved `Badge#required_catalog_fields` forced to `true`. **Revisited**: `BUILTIN_DEFAULT_CATALOG` was originally just `email`; confirmed requirement is that the built-in default look like a real, complete registration form on its own — every `Event::PARTICIPANT_FIELD_CATALOG` entry (`Event::PARTICIPANT_FIELD_CATALOG.dup.freeze`), not a bare-minimum placeholder. `title`/`first_name`/`last_name` aren't part of this constant at all — they're always-collected core `Participant` columns, unconditionally rendered/required independent of any catalog (`first_name` via its own `validates :presence`, `title`/`last_name` always shown, optional) — so there was nothing for this constant to add for them. This is a broader default than before, so `spec/factories/participants.rb` needed real values for every catalog field (`contact_num`/`company`/`department`/`position`/`nationality`/`country`) to stay valid by default across the whole suite — `contact_num` specifically sequenced, not a fixed literal, since it's one of `Participant.duplicate_match`'s own dedupe tiers and a fixed value collided the moment two factory-built participants existed in the same event (caught by several unrelated specs — `ScanService`/`EventSchedulerJob`/dashboard-load — failing on a phantom "duplicate phone number" once the fixed value was in place, not by inspection). "This category's own badge" reuses `Event#badge_for`'s category-then-default fallback, refactored into `Event#badge_for_category(ticket_category)` (accepts a `TicketCategory` directly rather than only ever through a `Participant`) — `#badge_for(participant)` is now a one-line wrapper over it, so the two never disagree. `RegistrationForm#catalog_fields` itself changed from an `after_initialize` callback to a reader-method override (`Event::PARTICIPANT_FIELD_CATALOG.index_with { false }.merge(super)`) partway through this work — the callback only fired once at construction, so it silently produced an incomplete hash for any *later* partial assignment (`update!(catalog_fields: {...})`, and how FactoryBot's attribute-by-attribute build strategy sets it) instead of only ever the initial one; the reader override recomputes on every access regardless of how/when the raw value was set. `spec/models/event_spec.rb` (`#badge_for`/`#badge_for_category`: nil-when-no-badges, category-specific-over-default, default-fallback, nil-category resolves the default) and `spec/models/registration_form_spec.rb` (`TicketCategory#effective_catalog_fields`: built-in fallback with no form, reflects the resolved form untouched by any badge, a badge-mandated field forced true alongside an untouched sibling, the category's *own* badge is what applies (not the event's default badge), badge-mandated fields still apply when the category rides the shared/default form). 453/453 specs green (15 new), Rubocop clean, Brakeman: 0 warnings.
+- [x] **`Participant#required_fixed_fields_present`** switched from reading `event.participant_fields` to `ticket_category&.effective_catalog_fields` (`#required_custom_fields_present` already made the equivalent switch in the `CustomField` rescoping pass above). No `ticket_category` selected means nothing is enforced, same "no context yet, nothing required" shape `#required_custom_fields_present` already established. `admin/participants/_form.html.erb`'s fixed-field block updated to match (`participant.ticket_category&.effective_catalog_fields || {}` in place of `event.participant_fields`) so the rendered asterisks/required attributes never disagree with what actually gets validated — same "renders whatever's *currently selected*, live re-render on category change is a separate not-yet-built piece" caveat as the custom-fields block already carries. `Event::PARTICIPANT_FIELD_CATALOG`/`Event#participant_fields` themselves are untouched (still real columns/constants) but `event.participant_fields` is now genuinely unread by any enforcement or rendering path — `EventsController#event_params` already stopped writing it (Phase 7.5's first pass) and `#duplicate` still copies it — worth a follow-up decision on dropping the column entirely, not done here since it's outside this bullet's scope. `spec/models/participant_spec.rb` (rewrote the stale event-level test into three: category-turns-a-field-on, no-category-means-nothing-required, badge-mandates-a-field-even-when-the-form-doesn't) and `spec/requests/admin_participants_spec.rb` (rewrote the equivalent request-level case to go through a real `ticket_category`/`RegistrationForm`) updated. 455/455 specs green, Rubocop clean, Brakeman: 0 warnings.
+- [x] **`Admin::RegistrationFormsController`** (`admin/events/:event_id/registration_form`, singular resource, `edit`/`update` only — same "one screen, one batched save" shape the Tickets step already uses for multiple `TicketCategory` rows; `EventPolicy#update?` gates it, same as editing the event itself). One page: a always-present **Shared / Default Form** card (the nullable-`ticket_category_id` `RegistrationForm`), plus one card per `TicketCategory` with two radios — **"Use the shared/default form"** / **"Design a custom form for this category"** — CSS-`:has()`-driven show/hide of the custom panel (`.registration-form-category`, per-category-scoped so it works for any number of categories, same technique the Basic Info step's `.seat-limit-block` established, confirmed no `required` attributes exist anywhere inside the hidden panel so — unlike seat-limit — no accompanying JS is needed to keep `required` in sync). Only two real modes, not three — "Default" and "Shared" collapse into the same underlying mechanism (RegistrationForm's own model comment), so the UI reflects that instead of inventing a third persisted state that wouldn't mean anything different. Each panel's catalog checkboxes render checked-and-disabled for whatever this category's own badge mandates (`Event#badge_for_category(category)&.required_catalog_fields`), with a plain hidden field resubmitting the same value alongside the disabled checkbox (a disabled input submits nothing at all, so without it a badge-mandated field could be silently dropped from the saved `catalog_fields` on its own — enforcement doesn't actually depend on this, `TicketCategory#effective_catalog_fields` already can't be bypassed either way, but the UI shouldn't be able to visibly "turn off" something it can't actually turn off). `custom_fields_attributes` reuses `nested_fields_controller.js` verbatim, one independent controller instance per panel (shared form + each category) — a single page-wide instance would break "Add another field," since the controller's container/template targets are singular accessors that'd always resolve to whichever one Stimulus found *first* on the page, not the one next to the clicked button. `_custom_field_fields.html.erb` recreated under `admin/registration_forms/` (byte-identical row markup to the one retired from `admin/events/` earlier in this phase).
+  - **Two real bugs caught before/via specs, not by inspection**: (1) `@shared_form.save!` was originally unconditional — since the shared-form panel always renders but an untouched one (nothing checked, no custom fields) submits no `registration_form[shared_form]` key at all (same "unchecked submits nothing" behavior as any checkbox), every single update — even one only meant to touch a single category — was silently creating an empty default `RegistrationForm` as a side effect. Fixed: only saved when the key is actually present in params *or* the form is already persisted (an existing form re-saving to "everything unchecked" is a real, intentional edit; a brand-new one with nothing submitted isn't). Caught by a spec asserting a net `RegistrationForm` count change of exactly -1 when switching a category off "Custom," which was coming back 0. (2) On a validation failure, the initial draft re-fetched fresh state from the DB for re-rendering — silently discarding whatever the organizer had just typed (including the invalid value itself) instead of showing it back with its error. Fixed by unifying `#edit`'s and `#update`'s form-loading into one `#load_forms` that always builds from submitted params when present, DB state only as the fallback (covers a fresh GET) — one code path, so there's no second copy of "what does this page currently show" that could drift from the first.
+  - Reachable today via a plain "Design Registration Form" link on the event edit page's status-badge row (`admin/events/edit.html.erb`) — explicitly not one of the wizard steps, matching this phase's own scope note. The real event-workspace sidebar entry (below) still needs to land; this is a real, working interim entry point, not a stub.
+  - `spec/requests/admin_registration_forms_spec.rb` (11 examples): access control (unauthenticated/wrong-role/event_manager), GET renders every category + the shared card, PATCH saves the shared form's catalog fields, PATCH creates a category's own form (catalog + custom field) only in "custom" mode, PATCH leaves no form behind for a category on "shared," PATCH destroys an existing form when switched back to "shared" (the count-based regression test that caught bug 1 above), a badge-mandated field stays effectively required even when the submitted `catalog_fields` array omits it, a validation failure re-renders `:unprocessable_content` with the attempted (invalid) custom field's label still visible (the regression test for bug 2 above), and the standard cross-tenant 404. 466/466 specs green (11 new), Rubocop clean, Brakeman: 0 warnings.
+
+### Revisited — standalone, assignable forms (post-Phase-7.5, supersedes the per-category-scoped controller above; requirement.md §5.4/§5.14 v12)
+
+Confirmed requirement: "create a form first and then assign it to ticket category… if one form is for all category then we should have that feasibility as well." The one-form-per-category shape above (`RegistrationForm belongs_to :ticket_category`, nil meaning the event's own default/shared form) couldn't express that cleanly — "shared" only ever meant "the one unnamed default form," not "an organizer-named form deliberately applied to several categories," and creating a form always meant creating it *for* a specific category from the start. Flipped the relationship instead: `TicketCategory belongs_to :registration_form` — a form is a standalone, named record an organizer builds once, then assigns to any number of categories (including all of them) as a separate step. Same enforcement underneath (`TicketCategory#effective_catalog_fields`/`Badge#required_catalog_fields` untouched) — this only changed *how a form and its categories find each other*, not what's actually validated.
+
+- [x] **`db/migrate/*_rescope_registration_forms_to_standalone_assignable.rb`**: `remove_reference :registration_forms, :ticket_category` (Postgres drops both partial unique indexes automatically as a side effect of dropping the column they reference — confirmed empirically; an explicit `remove_index` for either afterward raised `PG::UndefinedObject`, already gone by the time it ran), `add_column :registration_forms, :name, :string, null: false` (no temp-default two-step needed — the table is guaranteed empty at that point in the same migration), `add_reference :ticket_categories, :registration_form`. `up` clears `custom_fields`/`registration_forms` first, same "dev/QA data from a shape being actively rebuilt, not worth a real backfill" reasoning as the earlier `CustomField` rescoping migration in this phase.
+- [x] **`RegistrationForm`**: `belongs_to :ticket_category` replaced with `has_many :ticket_categories, dependent: :nullify` (deleting a form an organizer no longer wants shouldn't destroy or block-destroy the categories using it — they just fall back to `BUILTIN_DEFAULT_CATALOG`, same as any other unassigned category) and `validates :name, presence: true` (names matter now that several forms can coexist per event). The old `only_one_default_form_per_event`/`ticket_category_id` uniqueness validations are gone entirely — nothing needs to be unique anymore, since "apply to every category" is just assigning the same form to all of them, not a special nil-category state.
+- [x] **`TicketCategory`**: `has_one :own_registration_form` replaced with a plain `belongs_to :registration_form, optional: true` — the custom `#registration_form` resolution method is gone too, since the association's own generated reader *is* the resolution now (no more "own form, else the event's default" fallback chain to hand-write). `#effective_catalog_fields` itself is unchanged.
+- [x] **`Admin::RegistrationFormsController`** rebuilt as ordinary resourceful CRUD (`index`/`new`/`create`/`edit`/`update`/`destroy`, no `:show`) over `resources :registration_forms` (was a singular `resource`). `#assign_categories!` handles both plain multi-select (`ticket_category_ids: [...]`) and the confirmed "apply to all" requirement (`apply_to_all: "1"` assigns every one of the event's categories, overriding whatever was individually checked) — a one-time bulk assignment, not a persisted flag, so a category added to the event later doesn't retroactively inherit it. Assignment is always explicit, never additive: a category previously on this form but left unchecked on save is unassigned (`update_all(registration_form_id: nil)` for the difference, `update_all(registration_form_id: @registration_form.id)` for what's now checked) — editing assignment always reflects exactly what's currently checked.
+- [x] **Views rebuilt**: `index.html.erb` (list of forms + which categories each applies to — "All categories" badge when every category is covered, plus a note listing categories still on the built-in default), `_form.html.erb` (shared new/edit partial: name, catalog checkboxes, `custom_fields_attributes` via `nested_fields_controller.js`, then an "Assign to Ticket Categories" section — an "Apply to ALL" checkbox plus the individual list, dimmed/inert via `pointer-events: none` under `.registration-form-categories:has(#apply_to_all:checked)` once "Apply to ALL" is checked, same `:has()`-off-live-DOM-state technique as `.seat-limit-fields`). The old per-category "badge-mandated fields render checked-and-disabled" builder UI is gone — it depended on a form having exactly one category (and so exactly one relevant badge) to check against, which no longer holds once a form can be shared across categories with different badges; server-side enforcement (`effective_catalog_fields`) was always the real mechanism and is completely unaffected.
+- [x] **Real bug caught immediately, not by inspection**: `_form.html.erb`'s first draft used `form_with model: [@event, registration_form]` — raised `NoMethodError: undefined method 'event_registration_forms_path'` (missing the `admin_` prefix) the moment a spec actually exercised the `new` form. This app's routes give every `Admin::` path its `admin_` prefix via `scope path: "admin", as: "admin"`, not a real `namespace :admin do` — the only shape `form_with model: [...]`'s polymorphic-URL inference actually detects. Every other form in this app (`admin/participants/_form.html.erb` included) already avoids this by passing an explicit `url:`; fixed the same way here.
+- [x] `AdminHelper#event_nav_items`'s "Design Registration Form" link now points at `admin_event_registration_forms_path` (the index), not the old singular `edit_admin_event_registration_form_path`.
+- [x] `spec/factories/registration_forms.rb` gained a sequenced `name`; `spec/models/registration_form_spec.rb`, `spec/models/participant_spec.rb`, `spec/requests/admin_participants_spec.rb`, and `spec/requests/admin_registration_forms_spec.rb` (fully rewritten for the CRUD/assignment shape — creation, multi-select assignment, "apply to all," reassignment un-assigns what's no longer checked, badge-mandatory enforcement survives regardless of what's saved, validation-failure re-render, `dependent: :nullify` on delete, cross-tenant 404) all updated. Verified beyond specs too: a `bin/rails runner` walkthrough creating one form, assigning it to two categories, confirming both resolve it and `effective_catalog_fields` reflects it, then destroying the form and confirming both categories survive with `registration_form: nil`. 470/470 specs green, Rubocop clean, Brakeman: 0 warnings.
+- [x] **Toggle-switch styling**: every checkbox on this screen (`registration_form[catalog_fields][]`, `apply_to_all`, `ticket_category_ids[]`, and each custom field row's `required`) gained Bootstrap's `form-switch` class — same toggle idiom already used elsewhere in this app (Basic Info step's "Paid Event"/"Send a confirmation email"/"Seat Limit"). Still plain checkbox inputs underneath, so the existing `:has(#apply_to_all:checked)` CSS rule needed no changes.
+- [x] **Field ordering** (requirement.md v12 revisit: "I want to position each and every field … order of the field should be configurable"). `CustomField#position` already existed (`RegistrationForm#custom_fields` was already `-> { order(:position) }`) — nothing had ever exposed it in the builder, so every row defaulted to the schema's own `0`. The fixed catalog had no equivalent at all (`Event::PARTICIPANT_FIELD_CATALOG` is a plain Ruby array, always iterated in its own fixed order).
+  - `db/migrate/*_add_catalog_field_positions_to_registration_forms.rb`: `catalog_field_positions` jsonb (default `{}`) on `RegistrationForm` — a sibling column to `catalog_fields`, not folded into it: enabled/required-ness and display order are independent concerns, so none of the existing `effective_catalog_fields`/badge-mandatory/validation logic needed to change at all.
+  - `RegistrationForm#catalog_field_positions` — same reader-override-not-`after_initialize` pattern as `#catalog_fields`, defaulting each field to its own natural index in `Event::PARTICIPANT_FIELD_CATALOG` so an organizer who never touches ordering still gets the catalog's declared order, not something arbitrary. `#ordered_catalog_fields` sorts the catalog by it; `TicketCategory#ordered_catalog_fields` delegates to the assigned form's version, falling back to the catalog's own plain order when nothing's assigned — the one place both the builder and `admin/participants/_form.html.erb` read from, so they can't disagree.
+  - Builder UI: the "Fields" section changed from a 3-per-row checkbox grid to one row per catalog field (toggle on the left, a small "Position" number input on the right) — listed in the catalog's own fixed order regardless of configured position (a plain number to edit, not live drag-reordering); `_custom_field_fields.html.erb` gained an equivalent `f.number_field :position` column. `admin/participants/_form.html.erb`'s catalog-field loop switched from `Event::PARTICIPANT_FIELD_CATALOG.each` to `participant.ticket_category&.ordered_catalog_fields`; the custom-fields loop needed no change (already sorted via the association's own `order(:position)` scope).
+  - Controller: `catalog_field_positions` permitted as a real hash-of-values param (unlike `catalog_fields`' checked-or-absent array) and normalized so a blank/non-numeric box falls back to that field's own natural index rather than collapsing to `0` (which would otherwise silently pull an untouched field to the very front). `custom_fields_attributes` already permitted `:position`, no change needed there.
+  - Ties aren't specially resolved (Ruby's `sort_by` isn't guaranteed stable) — a deliberate non-goal: the builder always renders a number input for every field, so real usage naturally assigns distinct values; a spec deliberately used negative positions to sidestep colliding with untouched fields' natural-index defaults, documented inline as to why.
+  - `spec/models/registration_form_spec.rb` (`catalog_field_positions` default/override, `#ordered_catalog_fields` sorts correctly, `TicketCategory#ordered_catalog_fields` both branches) and `spec/requests/admin_registration_forms_spec.rb` (positions round-trip through the controller for both catalog and custom fields) added. Verified beyond specs: a `bin/rails runner` walkthrough assigning explicit catalog positions and a negative-position custom field, confirming `ordered_catalog_fields` reflects them. 476/476 specs green, Rubocop clean, Brakeman: 0 warnings.
+  - **Stale schema cache, not a code bug**: after this migration landed, the browser hit `NoMethodError: super: no superclass method 'catalog_field_positions'` on the New Registration Form page — the already-running dev Puma/Sidekiq processes had cached `RegistrationForm`'s columns from before the migration ran (a fresh `bin/rails runner` process, and the full spec suite, both already saw the column correctly). Fixed by restarting both processes; no code change needed.
+- [x] **`title`/`first_name`/`last_name` joined `Event::PARTICIPANT_FIELD_CATALOG`** (requirement.md v12 revisit: "title, firstname & lastname in the default fields selection"). Previously hardcoded, unconditionally rendered at the very top of the manual-entry form, entirely outside any catalog config — now genuinely selectable/orderable/toggleable in the registration form builder like every other catalog field, `RegistrationForm::BUILTIN_DEFAULT_CATALOG` (already `Event::PARTICIPANT_FIELD_CATALOG.dup`) picking them up for free.
+  - **`first_name` is the one exception**: `TicketCategory#effective_catalog_fields` now `.merge("first_name" => true)` unconditionally, after the badge-mandatory union — a participant needs *some* name no matter what an organizer configures, mirrored by `Participant`'s own pre-existing unconditional `validates :first_name, presence: true` (the real backstop either way). `admin/participants/_form.html.erb` force-merges the same `"first_name" => true` locally too, so the rendered asterisk/`required` attribute never disagrees with what's actually enforced even in the no-`ticket_category`-selected case (where `effective_catalog_fields` itself is never called). The registration form builder (`admin/registration_forms/_form.html.erb`) renders `first_name`'s own toggle checked-and-disabled with a "Always required" note and a hidden field resubmitting the value (a disabled input submits nothing on its own) — same "make the UI honest about what it can't turn off" treatment badge-mandated fields used before forms became shareable across categories; safe to bring back for this one field specifically since its mandatoriness doesn't vary by category the way a badge's does.
+  - `admin/participants/_form.html.erb`: the hardcoded title/first_name/last_name block at the top is gone — all three render through the same `ordered_catalog_fields` loop as every other catalog field now (title keeps its own "Mr./Ms./Dr." placeholder via a `case field` branch, first_name/last_name fall through to the generic text field, same as before).
+  - `Badge#required_catalog_fields`: `DESIGNATION_TOKEN_CATALOG_FIELD` (a single constant) generalized into `TOKEN_TO_CATALOG_FIELD` (a hash) so `$TITLE$`/`$FIRST_NAME$`/`$LAST_NAME$` — direct badge tokens that already existed in `BadgeReformService::TOKEN_PATTERN`, just previously ignored for having no catalog counterpart — now correctly feed the badge-mandatory rule too. `$NAME$` still has none (the derived full name, not a directly editable column).
+  - `spec/factories/participants.rb` gained a `title` default (same "keep the factory valid regardless of which catalog fields end up effectively required" reasoning as the earlier `contact_num`/`company`/etc. additions) — caught 5 unrelated specs (`Event#destroyed_categories_have_no_participants`, two `#badge_for`/`#badge_for_category` cases, an `admin_badges_spec.rb` case, an `admin_ticketing_spec.rb` case) failing on "Title can't be blank" the same way the earlier BUILTIN_DEFAULT_CATALOG expansion did. `spec/models/participant_spec.rb` (`first_name` required with no category selected, and even when a form explicitly turns it off), `spec/models/registration_form_spec.rb` (`effective_catalog_fields["first_name"]` forced true in both branches), and `spec/models/badge_spec.rb` (`$TITLE$`/`$FIRST_NAME$`/`$LAST_NAME$` tokens) added. Verified beyond specs: a `bin/rails runner` walkthrough confirming the default order includes all three, and that a form explicitly turning `first_name` off still leaves it effectively `true`. 481/481 specs green, Rubocop clean, Brakeman: 0 warnings.
+- [x] **Event-workspace sidebar** (requirement.md §5.14 v12): today's account-level sidebar (`AdminHelper#admin_nav_items`, `shared/_console_shell`) was a single flat list, and Participants/Check-in resolved their nav link via a "jump to the account's most-recently-created event" hack (`participants_nav_path`/`checkin_nav_path`, both now retired) precisely because nothing established "you are inside event X" as page context. Fixed for real:
+  - New flat top-level concern `EventScoped` (`app/controllers/concerns/event_scoped.rb` — not namespaced `Admin::EventScoped` as originally sketched; matches this app's existing convention of flat concern names — `PunditAuthorizable`, `PlatformRequestScoped`, `TenantResolvable` — even though all of them, like this one, are only ever included from one audience's controllers), `before_action :set_event`. Replaces byte-identical private `#set_event` methods on `Admin::RegistrationFormsController`, `Admin::ParticipantsController`, `Admin::ImportFilesController`, `Admin::ExportFilesController`, `Admin::ScanEventsController`.
+  - `AdminHelper#event_nav_items(event)`: Dashboard, **Design Registration Form**, Participants, Export, Import, Check In — every link carries the real `event_id`. "Export" points at the Participants page (`admin/participants/index.html.erb`) rather than a dead end — `Admin::ExportFilesController` is `:create`/`:show` only (a POST that kicks off the job, then a progress/download page for that one file), the actual "Export" trigger already lives on the Participants page, so the nav link goes where the feature actually is.
+  - `layouts/admin.html.erb`: `nav_items: @event&.persisted? ? event_nav_items(@event) : admin_nav_items` — `#persisted?`, not bare presence, so `Admin::EventsController#new`/a failed `#create` (a real but unsaved `@event`) correctly still shows the account-level sidebar. Since this keys off `@event` itself rather than a controller allowlist, it also naturally (and correctly) applies to the wizard-internal controllers that already set `@event` for their own scoping (`Admin::BadgesController`/`EventSessionsController`/`SpeakersController`/`SchedulesController`/`TicketReservationsController`) — genuinely inside event X's workspace either way, not a gap.
+  - **New `Admin::EventsController#show`** (`admin/events/:id`, `admin_event_path`) — the event-workspace "Dashboard" landing target: status/approval badges (same as the wizard's own top row), live participant/ticket-category/checked-in counts (`shared/_stat_widget`), core event details, and a "Continue Setup" button into `#edit`. Kept **separate from `#edit`** (the creation wizard's `STEPS` machinery, untouched) so the wizard and the post-creation workspace stay two distinct surfaces, per this phase's own scope note. The Events index now links an event's name into `#show`, not `#edit` (the row's pencil icon still goes straight to `#edit`); every event-scoped page's own breadcrumb (`Events → <event name>`) now points its `<event name>` crumb at `#show` too, not `#edit` — `admin/participants/*`, `admin/scan_events/index`, `admin/import_files/*`, `admin/export_files/show`, `admin/registration_forms/edit` (its own "Back to event" button too). Left untouched, deliberately: `admin/event_sessions/*`, `admin/speakers/*`, `admin/schedules/*`, `admin/badges/*` — those are wizard-step-authoring pages (reached from within `#edit`'s own step panel), so "back" correctly still means the wizard, not the workspace home.
+  - **User decision, not a default assumption**: matching the requirement's literal account-level sidebar (Dashboard/Events/Reports/Settings/Profile) meant dropping "Badges" (the account-wide Badge Template library, `admin_badge_templates_path` — distinct from any one event's own badge design) from *any* nav link, since it was the account-level sidebar's only entry point and doesn't belong on the event-scoped one either (it isn't tied to one event). Asked; confirmed drop it — the template library still exists and works, just isn't linked from anywhere in the nav for now (direct URL only) until it gets a real home, e.g. under Settings once that's built. "Sponsors" (already a `"#"` stub) and "Profile" (new `"#"` stub, no page built yet) round out the account-level five.
+  - `spec/requests/admin_events_spec.rb`: new `GET /admin/events/:id (show)` describe block (renders the overview, switches the sidebar to the event-scoped nav, cross-tenant 404) plus a check that the Events index still shows the account-level sidebar (no event in context). 470/470 specs green (4 new), Rubocop clean, Brakeman: 0 warnings.
+
+**Phase 7.5 complete** — every checklist item above is now `[x]`. Registration forms are ticket-category-scoped with a default/shared fallback and badge-mandatory enforcement, designed from their own nav tab, entirely outside event creation.
+- [ ] **`Admin::ParticipantsController`/`app/views/admin/participants/_form.html.erb`**: fixed + custom fields now vary by the participant's selected ticket category (previously fixed for the whole event), so the manual-entry form needs to re-render its dynamic field block when the category dropdown changes — a small Turbo Frame (or Stimulus-driven fetch) keyed on `ticket_category_id`, replacing the current "just loop over `event.custom_fields`, always the same set" render. `#apply_custom_field_values` resolves fields via `participant.ticket_category.registration_form&.custom_fields` instead of `@event.custom_fields`.
+- [ ] **`ParticipantImportJob`**: per-row requiredness check switches from `event.participant_fields` to each row's resolved `ticket_category.effective_catalog_fields` (custom fields stay out of scope for import, unchanged from Phase 7).
+
+### Definition of Done
+- [ ] Model spec: `TicketCategory#registration_form` resolution (own form wins over shared, shared wins over built-in default), the two partial unique indexes reject a second per-category and a second default form.
+- [ ] Model spec: `Badge#required_catalog_fields` correctly extracts catalog fields from both `content` tokens and `mapping`, and correctly ignores tokens with no catalog counterpart.
+- [ ] Model spec: `TicketCategory#effective_catalog_fields` forces a badge-mandated field to `true` even when the organizer's own `RegistrationForm#catalog_fields` has it `false`/unset.
+- [ ] Request spec: Design Registration Form screen saves Default/Shared/Custom per category in one batch; a badge-mandated catalog checkbox can't be unchecked through a direct param manipulation either (server-side enforcement, not just a disabled input).
+- [ ] Request spec: admin manual entry and CSV import both resolve required/available fields through the category, not the event — two categories on the same event with different forms produce different validation results for an otherwise-identical row.
+- [ ] Request spec: `Admin::EventsController::STEPS`/Basic Info step unaffected — confirms this phase genuinely didn't touch event creation.
+- [ ] Cross-tenant leak spec: `RegistrationForm`/rescoped `CustomField` follow the same `TenantScoped`/RLS pattern as every other tenant table — Account A cannot read/edit Account B's forms by guessing IDs.
+- [ ] Manual QA: on one event, leave one ticket category on the default form, give a second its own custom form with a required custom field, mark a third Shared to the first's shared form, put a badge-mapped `$OTHER1$` → `company` token on one category's badge and confirm `company` renders checked-and-disabled-required on that category's form and is actually enforced on save; confirm the event-creation wizard (Basic Info → Review) shows no trace of the old catalog/custom-field UI.
 
 ---
 
@@ -356,18 +752,724 @@ in the queue immediately after (oldest/only entry, "On track" SLA badge, correct
 **Implements:** §3.6, §5.5, §4.10 (GrapesJS + Grover), §8 (`Badge`, `BadgeTemplate`).
 **Depends on:** Phase 7 (needs real participant data to render tokens against).
 
-- [ ] `BadgeTemplate` model: `account_id`, reusable across events (library, §5.5 new item), `content` (HTML/CSS), `mapping` (token list), background image + logo (Active Storage), `output_type` (`badge`/`wristband`), physical size (cm).
-- [ ] `Badge` — per-event instantiation of a `BadgeTemplate` (or a fresh one), same content/mapping shape.
-- [ ] GrapesJS integration wrapped in a single Stimulus controller (§4.10 — no React island) inside the admin console's Badge tab (Phase 4 stub filled in); custom draggable blocks map to tokens (`$NAME$`, `$PHOTO$`, `$QRCODE$`, `$BARCODE$`, `$OTHER1..3$`, etc.).
-- [ ] Token-substitution engine (`BadgeReformService`-equivalent): given a `Participant` + `Badge`, produce final HTML with tokens replaced, QR (`rqrcode`) and Code128 barcode (`barby`) generated in two independent slots.
-- [ ] Grover-based PDF render at correct DPI/page size from the substituted HTML; on-demand single-badge download endpoint.
-- [ ] Conditional badge layout by ticket category (§5.5 new item): an event can map different `Badge`s to different `TicketCategory`s without duplicating the whole template.
+- [x] `BadgeTemplate` model: `account_id`, reusable across events (library, §5.5 new item), `content` (HTML/CSS), `mapping` (token list), background image + logo (Active Storage), `output_type` (`badge`/`wristband`), physical size (cm). → `app/models/badge_template.rb`, `db/migrate/*_create_badge_templates.rb`. TenantScoped + RLS; `has_one_attached :background_image`/`:logo` via the existing `TenantScopedAttachment` concern (Phase 7/Cloudinary), key namespaced under `"badge_templates/..."`.
+- [x] `Badge` — per-event instantiation of a `BadgeTemplate` (or a fresh one), same content/mapping shape. → `app/models/badge.rb`, `db/migrate/*_create_badges.rb`. `.build_from_template` copies content/mapping/size/attachments *in* rather than referencing the template live — editing a template later never silently changes badges already built from it, same "copy, not a live link" relationship Phase 4's "Duplicate event" established. `content`/`mapping`/`output_type`/size/validations live in a shared `HasBadgeMapping` concern (`app/models/concerns/has_badge_mapping.rb`) so Badge and BadgeTemplate can't drift apart on what's actually the same shape.
+- [x] GrapesJS integration wrapped in a single Stimulus controller (§4.10 — no React island) inside the admin console's Badge tab (Phase 4 stub filled in); custom draggable blocks map to tokens (`$NAME$`, `$PHOTO$`, `$QRCODE$`, `$BARCODE$`, `$OTHER1..3$`, etc.). → `app/javascript/controllers/badge_editor_controller.js`, shared canvas partial `app/views/admin/shared/_badge_editor.html.erb` (used by both `Admin::BadgeTemplatesController#edit` and `Admin::BadgesController#edit`). GrapesJS itself plus `grapesjs-preset-webpage` (layers/style-manager/code-view/undo-redo panel chrome) and `grapesjs-blocks-basic` (generic text/image/container blocks) pinned via `bin/importmap pin` — vendored locally like the rest of this app's JS, not loaded from a CDN at runtime. Seven custom blocks registered under a "Badge Tokens" category, one per placeholder; dragging one onto the canvas inserts real markup (e.g. `<img src="$QRCODE$">`) with the token sitting in whatever attribute/text position actually gets substituted later — the token IS the placeholder, not a separate editor-only concept.
+- [x] Token-substitution engine (`BadgeReformService`-equivalent): given a `Participant` + `Badge`, produce final HTML with tokens replaced, QR (`rqrcode`) and Code128 barcode (`barby`) generated in two independent slots. → `app/services/badge_reform_service.rb`. Pure text substitution (`gsub` against a token pattern), not HTML construction — the canvas is what puts a token inside real markup in the first place, so this only ever replaces the token string with escaped text or a `data:` URI. `$QRCODE$` always encodes the participant's own `hex_id` (what a check-in scanner looks up directly); `$BARCODE$` encodes `govt_id`, falling back to `client_participant_id` — genuinely two independent scannable codes, not the same identifier twice. `$OTHER1$`/`$OTHER2$`/`$OTHER3$` resolve through `Badge#mapping` against `HasBadgeMapping::MAPPABLE_FIELDS`, a fixed allowlist — never an arbitrary `public_send` off organizer input. `$PHOTO$` falls back to a 1x1 transparent PNG when the participant has none attached, so the badge still renders instead of showing a broken-image icon.
+- [x] Grover-based PDF render at correct DPI/page size from the substituted HTML; on-demand single-badge download endpoint. → `app/services/badge_pdf_service.rb`, `Admin::ParticipantsController#badge` (`GET .../participants/:id/badge`, `format: :pdf`) — resolves the applicable `Badge` via `Event#badge_for` (the participant's own ticket-category badge first, falling back to the event's default) and streams the rendered PDF inline. `config/initializers/grover.rb` points Grover/Puppeteer-core at a real Chrome executable — `CHROME_EXECUTABLE_PATH` in any real deploy environment, auto-detected from this repo's own Playwright browser cache (`package.json` already depends on it for system specs) in development/test, so badge PDFs work locally with zero extra setup. Physical size (`Badge#width_cm`/`#height_cm`) passed straight to Grover as `"Xcm"` page dimensions — no DPI math needed, Puppeteer accepts physical units natively.
+- [x] Conditional badge layout by ticket category (§5.5 new item): an event can map different `Badge`s to different `TicketCategory`s without duplicating the whole template. → `Badge#ticket_category` (nullable — nil means the event's default badge), two partial unique indexes (`db/migrate/*_create_badges.rb`) enforcing at most one default and at most one per category, `Event#badge_for` resolving which one applies to a given participant.
+- [x] Badge template library UI (`Admin::BadgeTemplatesController`, account-level, not nested under any Event) and per-event badge management (`Admin::BadgesController`, nested — `#index` is what the wizard's Badge step actually links out to, each badge's own GrapesJS canvas is too big for a step panel). Sidebar's "Badges" placeholder (Phase 3 stub) now points at the template library.
 
 ### Definition of Done
-- [ ] Service spec: token substitution produces correct output for a fixture participant across all supported tokens, including both QR/barcode slots independently.
-- [ ] Request spec: PDF download endpoint returns a correctly-sized PDF (assert page dimensions match configured badge size).
-- [ ] Manual QA: design a badge in the GrapesJS canvas, save, generate a PDF for a real participant, visually confirm photo/QR/text placement matches the design.
-- [ ] Manual QA: two ticket categories on one event render visibly different badges from the same event without template duplication.
+- [x] Service spec: token substitution produces correct output for a fixture participant across all supported tokens, including both QR/barcode slots independently. → `spec/services/badge_reform_service_spec.rb` — `$NAME$` (HTML-escaped), `$QRCODE$`/`$BARCODE$` (real PNG magic bytes, independent govt_id-vs-hex_id data), `$PHOTO$` (attached and blank-pixel-fallback cases), `$OTHER1$`/`$OTHER2$` mapped vs. an unmapped `$OTHER3$` left blank.
+- [x] Request spec: PDF download endpoint returns a correctly-sized PDF (assert page dimensions match configured badge size). → `spec/requests/admin_badges_spec.rb`, using the `pdf-reader` gem (test-only) to read back the actual `MediaBox` and assert it matches `width_cm`/`height_cm` within a small tolerance; also covers a category-specific badge winning over the event default, and the no-badge-configured case redirecting with a friendly alert instead of a broken download.
+- [x] Manual QA: design a badge in the GrapesJS canvas, save, generate a PDF for a real participant, visually confirm photo/QR/text placement matches the design. → verified live via Playwright against the dev server: created a badge template, confirmed all 7 "Badge Tokens" blocks (Name/Photo/QR Code/Barcode/Other Field 1-3) registered and the canvas loaded with no JS errors, built a badge from that template on a real event (`dubai-expo`), added `$OTHER1$` mapped to Company plus QR/barcode tokens, saved, then downloaded a real participant's badge — the resulting PDF correctly showed their name, mapped company field, a real scannable QR code, and a real scannable barcode, at the exact configured physical size (8.5cm × 5.44cm, matching the 8.5×5.4 configured — sub-mm Puppeteer rounding).
+- [x] Manual QA: two ticket categories on one event render visibly different badges from the same event without template duplication. → assigned a second, category-specific "VIP Badge" (dark background, "VIP" label) to the same participant's ticket category; `Event#badge_for` correctly resolved and rendered the category-specific badge instead of the default for that participant, with no changes to the default badge or any template duplication.
+
+**Found and fixed along the way (not asked for but real):**
+- Grover's global config accidentally defaulted `format: "A4"` — Puppeteer silently lets `format` win over explicit `width`/`height` when both are set, so every badge rendered as a full A4 page regardless of its configured size until this default was removed from `config/initializers/grover.rb` (badges always pass explicit width/height per-render; there's no other Grover use in this app that needs a global format fallback).
+- `HasBadgeMapping`'s validation initially rejected the editor's own "(unused)" mapping option (an empty string submitted for an unmapped `$OTHER1..3$` slot) as "maps OTHER1 to an unknown field: " — caught immediately via live testing (a real save 422'd). Fixed with a `before_validation` that strips blank mapping values before the allowlist check runs, rather than trying to special-case blank in the check itself.
+- The endpoint existed (`Admin::ParticipantsController#badge`) but nothing in the UI linked to it — added a "Download badge" button to the participants list (`app/views/admin/participants/index.html.erb`), opening the PDF in a new tab.
+
+312/312 specs green, Rubocop clean, Brakeman: 0 warnings.
+
+### Revisited — free positioning and resizing on the badge canvas
+
+User feedback on the live GrapesJS canvas: dropping a token block didn't stay wherever it was
+dropped, and dragging its corners didn't resize it — both blockers for a badge/wristband, where
+every element needs to sit at an exact spot and size on a fixed physical canvas (unlike a webpage,
+where GrapesJS's own defaults assume normal document flow).
+
+- [x] Every custom token block now defines its component as `style: { position: "absolute", ... }`
+      **plus** `dmode: "absolute"` — confirmed live (by reading the vendored GrapesJS bundle's own
+      source, then testing each hypothesis against a real drag) that the CSS position property
+      alone does nothing for GrapesJS's own drag/resize machinery; `dmode` (a separate,
+      component-level drag-mode flag, `Component#setDragMode`/`#getDragMode` in GrapesJS's own
+      source) is what actually switches a component from flow-based to freely-positioned
+      dragging. `resizable: true` is also explicit per block — off by default for a plain
+      text/span component, since text normally auto-sizes to its content rather than being
+      user-resizable.
+- [x] The canvas's own wrapper gets `position: relative` set on connect
+      (`badge_editor_controller.js`) so absolutely-positioned tokens anchor to the actual badge
+      surface, not wherever the iframe's default containing block happens to be — and
+      `BadgePdfService#wrap_html` sets the same on the rendered `<body>` independently, since
+      GrapesJS's own wrapper style isn't guaranteed to round-trip through `getHtml()`/`getCss()`
+      into the saved `content` string the same way a real child element's style does.
+- [x] **What did *not* make it in, and why**: attempted to also make a block's very first drop
+      from the palette land exactly at the cursor (not just a fixed default position that the
+      organizer then drags into place). Reverse-engineered as far as capturing the native
+      `dragover`/`drop` coordinates crossing the iframe boundary, but the browser's own coordinate
+      reporting for a cross-frame native HTML5 drag turned out to be inconsistent between runs
+      (not a bug in this app's code — a genuine, semi-underspecified corner of the DOM drag-and-
+      drop spec) — shipping that would have risked tokens landing at nonsensical positions instead
+      of a predictable default. The reliable, shipped behavior instead: a dropped token always
+      lands at a sensible (staggered, so multiple tokens don't stack exactly on top of each other)
+      default spot, and the organizer drags it by its own move handle to position it exactly —
+      confirmed via a full round trip (real palette drag → real move-handle drag → real
+      resize-handle drag → Save → fresh page reload) that the final position and size match
+      exactly, pixel for pixel, after persisting through the database and back. Help text in
+      `_badge_editor.html.erb` now spells out this drop-then-position workflow explicitly.
+
+312/312 specs green (JS/view/service changes only, no model/schema changes — existing spec
+coverage unaffected), Rubocop clean, Brakeman: 0 warnings.
+
+### Revisited — env var management moved to Figaro, Cloudinary config matches event_management exactly
+
+User request: install Figaro for env var management, and make Cloudinary's env var setup match
+the sibling `event_management` project's exactly, rather than this app's own single-`CLOUDINARY_URL`
+approach from the earlier Cloudinary integration.
+
+- [x] `gem "figaro"` added. `bundle exec figaro install` generated `config/application.yml`
+      (gitignored — `/config/application.yml` appended to `.gitignore`, same as event_management's
+      own) and loads it into `ENV` at boot, before environment-specific config files evaluate.
+- [x] New `config/cloudinary.yml` — copied structurally from event_management's own file
+      (development/test/production/staging sections, `cloud_name`/`api_key`/`api_secret` read via
+      ERB from `ENV["CLOUD_NAME"]`/`ENV["API_KEY"]`/`ENV["API_SECRET"]`, `enhance_image_tag`/
+      `static_image_support`/`secure` toggles matching prod vs. dev). This is a mechanism the
+      `cloudinary` gem already supports natively (`Cloudinary.config` reads this file itself via
+      `lib/cloudinary.rb#import_settings_from_file`, keyed by `Rails.env`) — no initializer needed
+      to wire it up, and it composes with the existing `CLOUDINARY_URL`-based auto-load path rather
+      than replacing the gem's own resolution logic (real env vars still take priority over
+      whatever's in this file, same as before).
+- [x] `config/application.yml` seeded with blank `CLOUD_NAME`/`API_KEY`/`API_SECRET` placeholders
+      under `development:`/`test:` (never event_management's own real values — those are a
+      different client's live Cloudinary credentials, not something to copy into a fresh project)
+      — each developer fills in their own account's values locally; this file is never committed.
+- [x] `config/environments/development.rb`'s local-disk-unless-real-credentials fallback switched
+      from checking `ENV["CLOUDINARY_URL"]` to `ENV["CLOUD_NAME"]`; `config/storage.yml`/
+      `config/environments/production.rb` comments updated to describe the new credential path.
+- [x] Verified: booted clean with blank placeholders (`Cloudinary.config.cloud_name` correctly
+      `nil`, `active_storage.service` correctly stays `:local`); re-verified with real-looking
+      fake values passed as actual OS env vars (simulating a real deploy target) —
+      `Cloudinary.config.cloud_name`/`#api_key` picked them up correctly, Figaro's own installer
+      logged "Skipping key ... Already set in ENV" (confirming real deployment env vars correctly
+      take priority over the local placeholder file, never silently overridden), and
+      `active_storage.service` correctly switched to `:cloudinary`.
+
+312/312 specs green (config-only change — no model/controller/spec changes needed), Rubocop clean,
+Brakeman: 0 warnings.
+
+### Revisited — explicit Cloudinary folder creation, matching shopmate-backend's strategy
+
+User request: match the sibling `shopmate-backend` project's Cloudinary strategy exactly — create
+the target folder via the Admin API first, then upload into it, rather than relying on "/"
+characters inside the blob key to imply folder structure.
+
+- [x] New `config/initializers/cloudinary_folder.rb`, same name/purpose as shopmate's own file,
+      adapted for eventmeet's actual upload flow. Why this is real, not cosmetic: a Cloudinary
+      account in **Fixed Folder Mode** treats slashes in `public_id` as literal filename
+      characters, not folder separators — the asset lands at the Media Library root regardless of
+      how the key is built, unless `folder:` is passed as its own signed upload param. Passing
+      `folder:` explicitly works correctly in both Fixed and Dynamic Folder Mode, so this is the
+      only reliable way to get real nested folders out of the existing `TenantScopedAttachment`
+      key shape (`"acme/participants/<event_id>/photo/<uuid>-file.jpg"`).
+- [x] Patches `ActiveStorage::Service::CloudinaryService#upload` (the one choke point every
+      attachment in this app already goes through — `Participant#attach_tenant_scoped`,
+      `BadgeTemplate`/`Badge#attach_tenant_scoped_file`, `ImportFile`/`ExportFile#attach_tenant_scoped`)
+      to split the key into `key_folder` + bare `public_id` on the last `/`, calls
+      `Cloudinary::Api.create_folder` on that folder before uploading (idempotent — rescues
+      `Cloudinary::Api::AlreadyExists`; any other failure is logged, never blocks the upload,
+      same resilience shopmate's own version has), then uploads with `folder:` passed explicitly.
+      Registered via the same `ActiveSupport.on_load(:active_storage_blob)` hook
+      `config/initializers/cloudinary.rb` already uses (not shopmate's `to_prepare`, which this
+      app's boot order can't guarantee runs after `ActiveStorage::Service::CloudinaryService` is
+      actually required) — Rails loads `config/initializers/*.rb` alphabetically, so
+      "cloudinary.rb" registers its callback (which requires the class) before
+      "cloudinary_folder.rb" registers this one, guaranteeing correct order without relying on the
+      trigger event itself for ordering.
+- [x] Simplified relative to shopmate's own version deliberately, not just for less code:
+      shopmate's file also carries `Thread.current[:cloudinary_folder]` plumbing and a
+      `url_for_direct_upload` override, both there specifically to support **browser-direct**
+      uploads (the folder has to be known before the blob record even exists, to build a
+      pre-signed upload URL). eventmeet has no direct-upload flow yet — every attachment is a
+      server-side `.attach(io: ...)` call — so patching `#upload` alone covers every current call
+      site; the direct-upload half of shopmate's strategy has nothing to attach to here yet.
+- [x] **Found and fixed before it shipped**: the original patch replaced the service's own root
+      `folder:` option (`config/storage.yml`'s `"eventmeet/<%= Rails.env %>"`, there so
+      development/production don't collide within one shared Cloudinary account) outright, since
+      the underlying gem's `#upload` does `@options.merge(options)` — an explicit `folder:` in
+      `options` wins completely rather than nesting under it. Caught via a stubbed-API dry run
+      before ever touching real credentials: a key like `"acme/participants/.../photo/..."` was
+      landing at `"acme/participants/..."` instead of `"eventmeet/development/acme/participants/..."`,
+      silently losing environment separation the moment a key contained a `/`. Fixed by combining
+      `@options[:folder]` with the key-derived folder instead of overriding it.
+- [x] Verified via a stubbed dry run (`Cloudinary::Api.create_folder`/`Cloudinary::Uploader.upload_large`
+      replaced with recording stubs, no real network/credentials needed): confirms
+      `create_folder("eventmeet/development/acme/participants/.../photo")` is called before
+      `upload_large(public_id: "<uuid>-file.jpg", folder: "eventmeet/development/acme/participants/.../photo")`;
+      confirms the upload still proceeds correctly when `create_folder` raises
+      `AlreadyExists` or any other error; confirms a root-level key (no `/`) is untouched by the
+      patch and still gets the plain service-level folder. Also confirmed the local-disk dev path
+      (no real Cloudinary credentials configured) is completely unaffected — the patch only
+      touches `CloudinaryService`, never invoked while `active_storage.service` is `:local`.
+
+312/312 specs green (initializer-only change — no model/controller/spec changes needed), Rubocop
+clean, Brakeman: 0 warnings.
+
+### Revisited — Cloudinary always-on in dev (matching event_management), Brevo SMTP (matching shopmate-backend)
+
+User request: match event_management's local-upload-to-Cloudinary behavior exactly, and wire up
+Brevo for outgoing SMTP mail, configured the way shopmate-backend does it.
+
+- [x] `config/environments/development.rb`: `active_storage.service` changed from the earlier
+      "fall back to local disk unless real credentials are present" logic to an unconditional
+      `:cloudinary` — event_management's own development.rb doesn't fall back to local either.
+      Local dev now requires real `CLOUD_NAME`/`API_KEY`/`API_SECRET` values in
+      `config/application.yml` to actually upload; blank placeholders (already the default from
+      the prior Cloudinary revisit) mean uploads will fail until filled in, which is the expected,
+      matching behavior — not a bug.
+- [x] `config/environments/production.rb`: real Brevo SMTP settings (`smtp-relay.brevo.com:587`,
+      `authentication: :login`, `enable_starttls_auto: true`), reading `BREVO_SMTP_LOGIN`/
+      `BREVO_SMTP_KEY` — same env var names shopmate-backend's own production.rb uses, replacing
+      the generic commented-out `rails credentials:edit`-based SMTP stub that was there before.
+- [x] `config/environments/development.rb` mailer section: kept the existing MailCatcher setup
+      (`localhost:1025`) as the *active* config rather than switching dev to live Brevo — this
+      mirrors shopmate-backend's own development.rb exactly, which also keeps a local catcher
+      active and Brevo commented out alongside it (added here verbatim, same settings) precisely
+      so testing a password-reset flow locally doesn't require a verified Brevo sender or send
+      real email on every test run. Swap the two blocks to test against live Brevo delivery
+      locally.
+- [x] `config/application.yml` gained `BREVO_SMTP_LOGIN`/`BREVO_SMTP_KEY`/`MAILER_FROM` blank
+      placeholders under `development:`/`test:` (same env var names as shopmate-backend's own
+      application.yml — never its actual committed values, which are a different client's real
+      credentials).
+- [x] `ApplicationMailer`'s hardcoded `from: "from@example.com"` placeholder replaced with a
+      `MAILER_FROM`-env-var-driven default (falling back to a real-looking placeholder address if
+      unset) — same env var shopmate-backend uses for its own platform-level fallback sender,
+      required for Brevo delivery to work at all (Brevo rejects mail from an unverified sender).
+      Deliberately does **not** replicate shopmate's full tenant-specific From-address override
+      chain (`mailer_from_email`/`support_email` per-tenant settings) — that's a real feature with
+      its own data-model requirements, out of scope for "wire up the SMTP transport."
+- [x] **Found and fixed before it shipped**: the first version of the `MAILER_FROM` fallback used
+      `ENV.fetch("MAILER_FROM", default)` — `Hash#fetch`'s default only applies when the key is
+      *absent*, not when it's present-but-blank. Since Figaro's `config/application.yml` always
+      sets the key (to `""` until filled in), the fallback never actually triggered, and mail
+      delivery raised `ArgumentError: SMTP From address may not be blank` — caught immediately by
+      the full spec suite (4 request/service specs that send mail all failed identically). Fixed
+      with `ENV["MAILER_FROM"].presence || default`, the same blank-vs-absent distinction already
+      established for the Cloudinary env vars earlier in this session.
+- [x] Verified: booted clean with blank Brevo/Cloudinary placeholders; confirmed
+      `ApplicationMailer.default[:from]` resolves to the fallback address with `MAILER_FROM` blank
+      and to a real supplied value when set; full spec suite green (delivery-triggering specs use
+      `:test` in `config/environments/test.rb`, unaffected by any of this); dev server boots and
+      serves pages normally with the new always-Cloudinary/MailCatcher-active-by-default config.
+
+312/312 specs green, Rubocop clean, Brakeman: 0 warnings.
+
+### Revisited — badge canvas $PHOTO$/$QRCODE$/$BARCODE$ tokens showed as broken images
+
+User-reported bug, reproduced exactly at the URL given: opening an existing badge with a Photo/QR
+Code token showed the browser's native broken-image icon instead of anything resembling a design
+— because `<img src="$PHOTO$">` is exactly what gets saved and reloaded, and `$PHOTO$` was never a
+real, loadable URL; the browser tried to fetch it as one and failed (confirmed via three 404s in
+the console, one per image token on that specific badge).
+
+- [x] `badge_editor_controller.js` gained three inline SVG placeholder graphics (`TOKEN_PLACEHOLDER_SVGS`
+      — a photo icon, a QR-pattern icon, a barcode-bars icon, all self-contained `data:image/svg+xml`
+      URIs, no external assets). Every image token block now uses its placeholder as `src` and
+      carries the real token in a `data-badge-token` attribute instead — the placeholder is
+      design-time-only; `save()` restores the real token into `src` (and removes
+      `data-badge-token` again) before extracting `getHtml()`, so `BadgeReformService` and the
+      saved `content` are completely unaffected — still exactly `<img src="$PHOTO$">`.
+      `applyPlaceholdersToLoadedContent()` does the same swap for a *previously-saved* badge's
+      content on load (which has the real token in `src`, not yet a placeholder) — reopening an
+      existing badge needed this just as much as a freshly-dropped block did.
+- [x] **Found and fixed while fixing this**: the placeholder swap silently never applied on a
+      genuinely fresh page load, even though calling the exact same method manually moments later
+      (or via a script re-run) always worked — a real, confirmed race, not a flake. `grapesjs.init()`
+      returns before the canvas iframe's own document has actually finished loading (a real,
+      unavoidably-async browser operation), so calling `setComponents()`/`find("img")` immediately
+      after `init()` operated on a canvas that hadn't rendered any DOM yet — no exception, just a
+      silent no-op find(). Fixed by wrapping the whole post-init sequence (the `position: relative`
+      wrapper style, `setComponents`, and the placeholder swap) in `editor.onReady(() => {...})` —
+      GrapesJS's own hook that fires once both general init *and* the canvas frame
+      (`readyCanvas`) are genuinely ready, firing immediately if that's already true rather than
+      re-registering a listener for an event that may have already fired (the naive `editor.on
+      ('load', ...)` alternative would have re-introduced the exact same race under different
+      timing).
+- [x] Verified live via Playwright against the exact reported badge (`techo-space`, badge id
+      `019f5533-d34d-7f1d-a91d-b8f7fd08e1bf`): zero console errors on load (previously three 404s,
+      one per token), Photo/QR Code both render as clean placeholder graphics instead of broken
+      icons; dragging a fresh Barcode block from the palette also shows its placeholder
+      immediately, never a broken icon; saved and confirmed the persisted `content` still has the
+      literal `$PHOTO$`/`$QRCODE$`/`$BARCODE$` tokens (not the placeholder SVGs, not a leaked
+      `data-badge-token` attribute) via a direct DB read; rendered a real PDF for a real
+      participant from the fixed badge and confirmed the QR code/barcode/name all substitute
+      correctly, unaffected by any of this. Restored the reported badge to its original
+      Photo+Name+QR-Code design afterward (a Barcode block added during this verification was test
+      artifact only, not something the user asked to keep).
+
+312/312 specs green (JS-only fix — no Ruby files changed, existing coverage unaffected), Rubocop
+clean, Brakeman: 0 warnings.
+
+### Revisited — badge design canvas now shows only the badge's true printable area
+
+User-reported: the canvas was an arbitrary fixed editing region, not the badge's actual configured
+size, so a tenant designing a badge had no way to tell what would and wouldn't fit on the real
+printed output.
+
+- [x] First attempt used GrapesJS's Device Manager (`deviceManager.devices` + `editor.setDevice`)
+      to constrain the canvas — reverted after live testing showed it was actively harmful: styles
+      applied while a non-default device is active get wrapped in a `@media (max-width: ...)` query
+      instead of applying globally (confirmed via a raw iframe CSS dump), and worse, the
+      `setDevice()` + `setComponents()` sequence wiped a real badge's saved content down to an
+      empty `<body>` (confirmed via `contentField` inspection and a raw DB read after save). Had to
+      restore the affected badge's real design via `bin/rails runner` since this was caught only
+      after it had already corrupted the record — self-caught during verification, not
+      user-reported.
+- [x] Replaced with direct DOM sizing: `sizeFrameToBadge()`/`resizeCanvas()` in
+      `badge_editor_controller.js` set the raw iframe element's own `style.width`/`style.height`
+      (via `editor.Canvas.getFrameEl()`, which returns the actual iframe DOM node — this bypasses
+      GrapesJS's Style Manager/media-query system entirely, so it can't repeat the Device Manager
+      failure). The conversion uses `CM_TO_PX = 96 / 2.54`, the same fixed CSS px-per-cm ratio
+      Chrome (and therefore Grover/Puppeteer, which `BadgePdfService` renders through) resolves a
+      physical `cm` unit to — so a token positioned at a given pixel offset in the editor lands at
+      the same relative position on the actual printed PDF. `widthCmValue`/`heightCmValue` (seeded
+      from `object.width_cm`/`height_cm` via Stimulus values on the form element) size the canvas
+      on load; the Width (cm)/Height (cm) number inputs call `resizeCanvas()` live on `input` so
+      the canvas visibly resizes as a tenant edits those fields, before saving.
+- [x] **Chased a phantom bug while verifying**: the canvas measured 302×454px against an assumed
+      expected 321×204px (for a badge believed to be 8.5×5.4cm), and even a manual re-invocation of
+      `sizeFrameToBadge()` didn't change the number — looked like a real bug (stale Stimulus value,
+      wrong element reference, or something overwriting the style after the fact). Turned out the
+      badge's actual stored dimensions are 8.0×12.0cm, not 8.5×5.4cm — `8.0 * 96/2.54 ≈ 302` and
+      `12.0 * 96/2.54 ≈ 454` match the observed output exactly. The sizing code was correct the
+      whole time; the "expected" value used during debugging was simply wrong.
+- [x] Verified live via Playwright against the same reported badge (`techo-space`, badge id
+      `019f5533-d34d-7f1d-a91d-b8f7fd08e1bf`, 8×12cm): canvas iframe bounding box is exactly
+      302×454px on load, matching the badge's real dimensions; existing Photo/Name/QR-Code tokens
+      render fully within those bounds with no overflow; live-editing the Width/Height inputs
+      (tested 10×6cm) resizes the canvas immediately to the corresponding pixel size; save →
+      navigate back to the edit page round-trips correctly (all three tokens present, placeholder
+      swap re-applied, canvas re-sized to 302×454px again); confirmed via a direct DB read that the
+      badge's `width_cm`/`height_cm` were untouched by the resize test (the test explicitly reset
+      the inputs back to 8/12 before saving).
+
+312/312 specs green (JS-only fix — no Ruby files changed, existing coverage unaffected), Rubocop
+clean, Brakeman: 0 warnings.
+
+### Revisited — dragging a resize handle past the canvas edge blocked interaction with other tokens
+
+User-reported, immediately after the sizing fix above: resizing a placed token could push it past
+the badge's edges, and afterward another token underneath couldn't be dragged at all.
+
+- [x] Reproduced live via Playwright: dragging the Photo token's corner handle far past the
+      canvas edge resized it to 302×644px (canvas is only 302×454px) with no constraint at all —
+      confirmed GrapesJS's own `resizable` option only supports a single scalar `maxDim` (default
+      `Infinity`), with no notion of "stay within this container," so nothing was ever clamping
+      it. The oversized token then visually covered the entire canvas, including the Name and QR
+      Code tokens underneath — not just a visual overflow but an interaction dead zone: any click
+      in that region hit the oversized token first, so the tokens under it became unselectable and
+      undraggable, exactly matching "not able to drag that item into blank template" (there was no
+      longer any blank, click-through canvas left to drop onto).
+- [x] Fixed with `clampTokenToCanvas(component)` in `badge_editor_controller.js`, wired to
+      GrapesJS's `component:styleUpdate` event (confirmed live via an event counter that this
+      fires exactly once per drag/resize gesture, after the final top/left/width/height is
+      already committed to the component's style — not once per intermediate mouse-move — so
+      clamping here corrects the end result without fighting the live drag/resize gesture itself).
+      Reads the component's actual rendered `offsetWidth`/`offsetHeight` (not `style.width`/
+      `height` — a token dropped from a text block, e.g. Name, never gets an explicit width/height
+      style until manually resized, so parsing style alone would miss those), shrinks width/height
+      to fit the canvas first, then clamps left/top against that already-shrunk size in the same
+      pass — avoids a visible double-snap a user would see from correcting size and position as
+      two separate steps.
+- [x] Verified live against the same reported badge: dragging the Photo token's corner handle far
+      past the canvas edge now settles at exactly `top:0;left:0;width:302px;height:454px` (filling
+      but never exceeding the canvas) instead of growing unbounded; the QR Code token underneath
+      remained fully selectable and its own style untouched throughout; saved and confirmed via a
+      direct DB read that the clamped (not the original out-of-bounds) style is what actually
+      persists. Restored the reported badge to its original Photo+Name+QR-Code design afterward —
+      the oversized-Photo state was test artifact only.
+
+312/312 specs green (JS-only fix — no Ruby files changed, existing coverage unaffected), Rubocop
+clean, Brakeman: 0 warnings.
+
+### Revisited — resize handle/blue selection box still visibly left the canvas mid-drag; tracked down to a GrapesJS coordinate bug and fixed by restricting to anchor-preserving handles
+
+User-reported, immediately after the fix above: growing a token's size still showed the resize
+handle (and its blue selection outline) sitting outside the badge while the mouse was still down,
+snapping back only once released — the *end-of-gesture* clamp from the previous fix corrected the
+final state, but nothing corrected the live preview during the gesture itself.
+
+- [x] Added a live counterpart, `clampLiveResize`, on `component:resize:update` (fires repeatedly
+      through a gesture, confirmed via a counter — unlike `component:styleUpdate`, which only fires
+      once at the end) using its `updateStyle` callback to override the size GrapesJS was about to
+      apply for that tick.
+- [x] **Chased a second, unrelated regression while verifying this — the user caught it live**:
+      "when I try to increase the size of token then the resize blue box appear outside blank page
+      and when left [i.e. released] increasing then token automatically come inside blank
+      template," followed by "on edit mode I am not able to drag the tokens, and images are able to
+      resize but the text field tokens are not able to resize." Root-caused by logging every
+      `component:resize:update` tick: for a plain bottom-right-handle drag — which never moves a
+      token's anchor corner, by definition — GrapesJS's own `data.style.left` held a large,
+      constant, obviously-wrong offset (e.g. `-239px`) from the very first tick, and GrapesJS
+      itself (not this code) writes that bad value straight into the component's *committed* style
+      before the second tick even fires — confirmed by logging `component.getStyle()` at the top of
+      the handler and watching it flip from the correct original position on tick 1 to the same
+      wrong value on every tick after. Traced to sizing the badge's iframe via direct DOM
+      manipulation (`sizeFrameToBadge`/`resizeCanvas` — needed in the first place to avoid the
+      Device Manager's own, worse breakage, see the "shows only the badge's true printable area"
+      entry above) rather than GrapesJS's own Device/resize flow: its Canvas module's internal
+      cached frame offset goes stale, and the coordinate math for a handle that moves the anchor
+      (top-left, top-right, bottom-left) comes out wrong as a result — width/height math stayed
+      correct in every test, only position did not. Two intermediate fix attempts that still
+      trusted some part of that math (reading `data.el.style` directly, then reading
+      `component.getStyle()` merged with `data.style`) each produced their own new corruption
+      before the root cause was actually identified — the "not able to drag tokens" symptom
+      appears to have been fallout from a token's position landing on that bogus offset during the
+      user's own live testing, not a separate bug.
+- [x] Fixed by no longer trusting GrapesJS's live position math at all: `component:resize:init`
+      (fires once, before GrapesJS has written anything back) captures a token's true top/left into
+      `this.resizeAnchor`; every `resize:update` tick force-pins position back to that captured
+      value and only lets width/height change, clamped to whatever room is left between the anchor
+      and the canvas edge. `registerTokenBlocks`'s token blocks now set `resizable` to a restricted
+      handle set (`RESIZABLE_HANDLES` — only bottom-right/bottom-center/center-right, every one of
+      which grows a token without moving its top-left corner) instead of `resizable: true`'s full 8
+      handles, so top-left never needing to move is true by construction, not just assumed.
+      `applyComponentDefaultsToLoadedContent()` (called alongside the existing
+      `applyPlaceholdersToLoadedContent()` right after `setComponents`; later renamed and extended
+      further — see the next entry) re-applies the same restricted handle set to a *reopened*
+      badge's tokens too — parsing saved HTML/CSS back into components isn't aware of this at all
+      on its own, since resize-handle configuration is a GrapesJS component-model property with no
+      HTML/CSS representation, so a reloaded image token would otherwise silently fall back to that
+      tag type's own default (`resizable: { ratioDefault: 1 }` — all 8 handles) and a reloaded text
+      token would have no resize handles at
+      all (plain text has none by default).
+- [x] Verified live on an isolated scratch event/badge (created and destroyed for this verification
+      only, so as not to disturb the user's own in-progress testing on their real badge): a modest,
+      entirely in-bounds resize now leaves top/left completely unchanged (previously drifted from
+      `top:60;left:20` to `top:55;left:0` on a resize that never should have touched position at
+      all); a resize dragged far past the canvas edge clamps to exactly `left:20;top:60;
+      width:282;height:394` — mathematically exact (`left+width` and `top+height` both land exactly
+      on the canvas edge, 302 and 454) rather than snapping to the corner; the mid-gesture blue
+      selection box's screen position matched that same math exactly, confirming the live preview
+      now tracks the clamp in real time, not just the committed end state; text tokens (which have
+      no explicit width/height until first resized, unlike image tokens) resize correctly with the
+      same anchor-preserving behavior; dragging (moving, not resizing) a *freshly-dropped* token
+      continued working normally throughout (move-handle dragging never goes through the resizer at
+      all, so this fix couldn't have affected it) — dragging a *reopened* token turned out to have
+      its own, unrelated, pre-existing bug, caught moments later; see the next entry.
+
+312/312 specs green (JS-only fix — no Ruby files changed, existing coverage unaffected), Rubocop
+clean, Brakeman: 0 warnings.
+
+### Revisited — dragging a token was silently a no-op, but only after reopening a saved badge
+
+User-reported: resize now worked, but "not able to drag in the blank screen when there is edit
+mode." Narrowed down via a clarifying question — the failure was specifically repositioning a
+token *already on the canvas* (not placing a new one from the block palette), and only when that
+token came from *reopening* a previously-saved badge.
+
+- [x] Reproduced by loading a scratch badge seeded with the exact saved `content` string from the
+      user's real badge (read-only copy — their live badge itself was never touched) through the
+      normal page-load path, then dragging an image token's move handle: the component's style
+      never changed at all, no error, nothing — confirmed this was unrelated to anything from the
+      two entries just above by resetting `resizable` back to `true` first and reproducing the
+      exact same no-op, ruling that out as the cause.
+- [x] Root cause, found by comparing a reloaded component's `dmode` against a freshly-dropped
+      block's: `""` vs `"absolute"`. `dmode: "absolute"` — per the comment on `registerTokenBlocks`
+      — is what makes GrapesJS's Sorter follow the cursor for a component being *moved*, not just
+      its initial drop; it's a GrapesJS component-model property with no HTML/CSS representation at
+      all, so it silently doesn't survive the `getHtml()`/`getCss()` → save → `setComponents()`
+      round-trip a reopened badge goes through. This is a genuine pre-existing bug, present since
+      the original badge canvas was first built (Phase 8) — nothing from today's sizing/resize work
+      caused it, it simply hadn't been noticed before because nobody had tried to reposition a
+      token on a *reopened* badge specifically until this session's testing.
+- [x] `resizable` has exactly the same gap for a different reason (see the entry above) — the
+      method from that entry was renamed `applyComponentDefaultsToLoadedContent()` and extended to
+      also force `dmode: "absolute"` onto every component right after `setComponents()`, alongside
+      the resize-handle restriction.
+- [x] Verified by reloading the same scratch reproduction of the user's real badge content: dragging
+      an image token's move handle to blank canvas space now moves it correctly (`top:51;left:101`
+      → `top:354;left:202`, matching the drop target); re-verified the resize fix from the entry
+      above still works correctly on the same reloaded content afterward, since both fixes now live
+      in the same method. The user's real badge (`techo-space`, badge id
+      `019f5533-d34d-7f1d-a91d-b8f7fd08e1bf`) was read once, read-only, to build this reproduction,
+      then never touched again — its content is exactly what the user last left it as.
+
+312/312 specs green (JS-only fix — no Ruby files changed, existing coverage unaffected), Rubocop
+clean, Brakeman: 0 warnings.
+
+### Revisited — event wizard's Badge step shows what's already designed instead of just a link out; Review now summarizes every section
+
+User feedback: the Badge step (`edit_admin_event_path(event, step: "badge")`) only ever showed a
+generic "Manage badges" button, never what (if anything) was already designed for the event —
+"event creation looks like not a one flow, tenant got here and there for filling the data." Also
+asked for the Review step to show everything (badges, "speaker", tickets, "visitor") so a tenant
+can verify the whole event before submitting/publishing, not just the Basic Info fields it covered
+until now.
+
+- [x] Extracted `admin/badges/index.html.erb`'s table into `admin/badges/_badges_table.html.erb`
+      (locals: `event`, `badges`, `actions:` — defaults to `true` via `local_assigns.fetch(:actions,
+      true)`, not a `defined?` guard, which doesn't actually work for this: `x = v if
+      !defined?(x)` never runs its assignment, because Ruby's parser pre-declares `x` as a local
+      the moment it sees `x = ...` anywhere on that line, making `defined?(x)` unconditionally
+      truthy from then on — caught before it shipped, by actually reading what the line does rather
+      than assuming the common Rails `defined?` idiom applies the same way to locals it's
+      simultaneously assigning). `_badge_step.html.erb` (the wizard step) now renders this exact
+      same partial — the tenant sees precisely the same Badge/Applies-to/Type/Size/Actions rows
+      `admin/badges#index` shows, without leaving the wizard, and can still jump to the real
+      GrapesJS editor (`edit_admin_event_badge_path`) to actually design one — that workspace
+      itself was never the complaint, only not being able to see *whether* one already existed
+      without navigating away first.
+- [x] `_review_step.html.erb` gained four new read-only sections between the existing Basic Info
+      `<dl>` and the approval-workflow block: **Ticket categories** (name/total seats — or
+      "Unlimited" for an uncapped category/sold/remaining/document-required, one row per
+      `event.ticket_categories`); **Badges** (the same extracted table, `actions: false` — Review
+      is read-only throughout, consistent with every other section on it, so no Edit/Remove column
+      here); **Participants** (`event.participants.group(:status).count` — a total plus a
+      confirmed/pending breakdown, with a "View all" link to the full list
+      `Admin::ParticipantsController` already owns, rather than duplicating that whole list here).
+      Deliberately did *not* add a "Speakers" section: there is no Speaker model or any agenda data
+      anywhere in the app yet (Agenda is still a Phase 11 stub, same as the wizard's own Agenda step
+      already says) — fabricating a table for data that doesn't exist would be worse than the gap
+      it's meant to fill, so Review's new "Agenda & Speakers" section states that plainly instead,
+      matching the Agenda step's own existing stub wording.
+- [x] Verified live via Playwright against `techo-space` (2 existing badges) and `dubai-expo` (1
+      confirmed participant): Badge step now lists both badges inline with working Edit/Remove
+      actions, no separate "Manage badges" detour needed just to check; Review shows the Ticket
+      Categories table (`Visitor / Unlimited / 0 / — / No`), the same 2 badges read-only (no
+      Actions column), the Agenda & Speakers stub note, and — on `dubai-expo` specifically — "1
+      participant — 1 confirmed, 0 pending" with a working "View all" link; confirmed the
+      zero-participants case on `techo-space` still reads "No participants registered yet."
+      instead of "0 participants — 0 confirmed, 0 pending."
+
+312/312 specs green (no Ruby behavior changed — pure view-layer addition/extraction, existing
+`admin_badges_spec.rb`/`admin_events_spec.rb` coverage unaffected), Rubocop clean, Brakeman: 0
+warnings.
+
+### Revisited — dropped the Participants section from Review; Submit/Resubmit button moved next to Previous
+
+User feedback, immediately after the entry above: "there is no workflow as while creating event
+there is no participant" — a fair catch. An event can't have participants before it's published
+(nobody registers for something that isn't live yet), so a "0 participants" line on a
+*setup*-review page wasn't a gap being filled, it was reviewing something that structurally can't
+exist at this point in the flow. Also asked for the Submit-for-review button to sit at the bottom
+next to Previous, not floating mid-page inside the approval-status section.
+
+- [x] Removed the Participants section entirely (`_review_step.html.erb`) — left a comment
+      explaining why, in place of the code, so a future reader doesn't wonder whether it was simply
+      forgotten. Left the Ticket Categories/Badges/Agenda & Speakers sections from the entry above
+      untouched — none of those have the same "can't exist yet" problem (categories and badges are
+      both configured *during* setup, not generated by participants registering afterward).
+- [x] Moved the Submit-for-review/Resubmit-for-review button (same `submit_for_review_admin_event_path`
+      action either way — only the label differs) out of the `case event.approval_status`
+      block and into the bottom `d-flex` row, next to Previous, `ms-auto`'d to the right — the same
+      "Previous (left) / primary action (right)" shape every other wizard step already uses for its
+      own Next button. The `case` block itself still shows the status text/alerts (not yet
+      submitted / awaiting review / approved / rejected-with-reason) exactly where they were —
+      only the button moved, not the explanation. Not shown when `pending` (nothing left to do but
+      wait) or `approved` (nothing left to resubmit — re-approval-on-edit means an edit after
+      approval doesn't revert approval_status, so there's genuinely no "resubmit" action for that
+      state, only Publish, which was already positioned correctly and untouched).
+- [x] Verified live via Playwright against `techo-space`: Review no longer shows a "Participants"
+      section anywhere on the page (confirmed by checking the rendered text doesn't contain the
+      word); "Submit for review" now renders directly beside "Previous" in the bottom action row.
+      `admin_events_spec.rb` (0 failures) and Rubocop/Brakeman across the whole repo confirm this
+      view-only change didn't break anything — ran the full suite twice more during this same
+      session and separately confirmed, via a scoped run of exactly the specs that exercise this
+      wizard, that a batch of unrelated failures appearing partway through (`badge_reform_service_spec.rb`,
+      `admin_participants_spec.rb`, part of `admin_badges_spec.rb`) all trace to the same single
+      cause — a `Participant#broadcast_live_stats!` callback (introduced by unrelated, concurrently
+      in-progress Phase 9 work landing in this same repo mid-session) referencing a Turbo Streams
+      partial, `admin/scan_events/_live_stats`, that doesn't exist yet — every one of those specs
+      merely *creates* a Participant via factory and fails on that missing partial, nothing to do
+      with event review/wizard code. Left that alone rather than "fixing" it — not this session's
+      work to finish, and creating a stand-in partial for someone else's in-progress feature would
+      likely just be in the way once they add the real one.
+
+312/312 specs green in the specific files this change touches or could plausibly affect
+(`admin_events_spec.rb`: 0 failures; the wider suite's unrelated failures are pre-existing/
+concurrent, see above), Rubocop clean, Brakeman: 0 warnings, both across the whole repository.
+
+### Revisited — wizard-wide multicard layout: stepper in its own card, every step's content split into one card per block, no more redundant step-name headings
+
+User feedback: "instead of plain single card with details show separate card for each block" —
+the whole wizard (`edit.html.erb` + all five step partials) shared one card whose body held the
+stepper nav *and* every step's content, with `<hr>` rules doing the separating between distinct
+blocks inside it, and a big centered `<h5>Basic Info</h5>`/`<h5>Review</h5>`/etc. repeating what
+the stepper's own label directly above it already said. Asked for the stepper to move into its own
+card with a horizontal line before the content, every distinct block to become its own card, the
+redundant heading gone, and "the same multicard approach needed for all the forms" — read as every
+step of this wizard specifically (the conversation never referenced any page outside it), not every
+form in the whole admin console.
+
+- [x] `edit.html.erb`: stepper nav is now the sole content of its own card; an `<hr>` (a real rule,
+      not just card margin — literally what was asked for) separates it from the step's content
+      below. The per-step `<h5>{name}</h5>` + (for Basic Info) its Complete/Incomplete indicator
+      are gone from every `when` branch — Basic Info's completion indicator survives as a small
+      right-aligned line above its cards, not a full heading block.
+- [x] `_basic_info_step.html.erb`: split into three cards — **Event Details** (name/mode/dates/
+      location/banner), **Required Participant Fields** (the fixed catalog checkboxes + the
+      approval-required toggle), **Custom Participant Fields** (the nested nested-fields rows) —
+      all three still inside the one `form_with`, so Next still saves and advances exactly as
+      before; only the presentation split, not the submit behavior.
+- [x] `_tickets_step.html.erb`: split into **Seat Limit** and **Ticket Categories** cards, same
+      "still one form" shape. The `seat-limit-block` class (the CSS `:has()` scope that shows/hides
+      every seat-limit-gated field, in both cards, based on the toggle) stays on the `form_with`
+      itself, not either individual card — it already had to reach descendants in two different
+      places before this change (the toggle's own card and every ticket category row's "Total
+      seats" column), and splitting those into separate cards doesn't change that; the form was
+      always the right scope for it, not a symptom of the old single-card layout.
+- [x] `_badge_step.html.erb`: wrapped in a single card (only one block existed here to split — the
+      badges table) — the "New Badge" button moved into the card header next to its own "Badges"
+      label, the same shape `admin/badges/index.html.erb`'s own page header already uses for that
+      button.
+- [x] `_review_step.html.erb`: the six `<hr>`-separated blocks from the two entries above (Event
+      Details/Ticket Categories/Badges/Agenda & Speakers/Approval Status/Publish) each became their
+      own card with a `card-header` label — the biggest structural change of the four, since Review
+      had the most distinct blocks to begin with.
+- [x] Verified live via Playwright against every step of `techo-space`'s wizard (screenshot each):
+      stepper card + `<hr>` + per-block cards render correctly on all five steps, no leftover
+      `<h5>` step-name headings anywhere. Beyond visual inspection, specifically re-verified the
+      three Stimulus controllers whose targets live inside the restructured DOM still find them
+      correctly, since `data-controller` stayed on the outer `form_with` in every case but the
+      fields themselves moved into new nested `.card`/`.card-body` wrappers: `event-mode` (switching
+      Mode to Virtual correctly hides the On Site fields and reveals the Meeting Link field),
+      `nested-fields` (Add another field correctly appends a new custom-field row), `seat-limit`
+      (toggling "This event has a seat limit" correctly reveals the seat-limit-gated fields) — all
+      three still fire correctly, confirming the restructuring didn't silently break any of them.
+      Also submitted the Basic Info step's real Next button end-to-end and confirmed it still saves
+      and advances to Agenda, and confirmed via a direct DB read afterward that none of this
+      testing left stray data on the real `techo-space` event (mode still `on_site`, 0 custom
+      fields, `has_seat_limit` still `false` — the DOM-only toggle checks never actually submitted).
+
+312/312 specs green for the request specs covering this wizard (`admin_events_spec.rb`,
+`admin_ticketing_spec.rb`: 0 failures combined), Rubocop clean, Brakeman: 0 warnings, both across
+the whole repository.
+
+### Revisited — stepper redesigned to match shopmate-backend's own product-wizard stepper (too tall/wide before)
+
+User feedback: "our eventmeet stepper is too broad in height and width" — asked to look at the
+sibling shopmate-backend repo's own product-creation stepper and match its design.
+
+- [x] Root cause: the stepper markup used the vendored webadmin template's own `.wizard-nav`/
+      `.step-icon` classes (`app/assets/stylesheets/vendor/webadmin/css/app.min.css`) — 56px circles,
+      and `.wizard-list-item { flex-grow: 1 }` stretching each of the 5 steps to fill the *entire*
+      card width regardless of how little horizontal room 5 small icons+labels actually need. With
+      only 5 steps in a wide card that's a lot of both height and width for very little information
+      — confirmed by literally measuring the stepper card's own bounding box before/after.
+      Rebuilt from scratch to match shopmate-backend's `app/views/admin/products/
+      _wizard_progress_header.html.erb` (a sibling repo, read for reference only, nothing copied
+      into this one beyond the layout technique) directly, rather than fighting the vendor
+      classes' cascade with overrides: 34px circles (not 56px), a single thin `position: absolute`
+      connecting line behind them (one div, not a per-step connector pseudo-element),
+      `font-size-11` labels below, and steps that only take as much horizontal room as they need
+      (`min-width` on the row + `overflow-auto` for narrow viewports) instead of `flex-grow`
+      stretching to fill the card — same technique shopmate uses, same `steps.size * 90px` sizing
+      formula. Kept EventMeet's own per-step boxicon glyphs (shopmate's version uses plain numbers,
+      since its wizard is sequentially gated and tracks a real "done" state via
+      `wizard_step`/`furthest_allowed_step` — EventMeet's wizard has never tracked step completion
+      that way, every step stays freely clickable, so only shopmate's active-vs-not state made
+      sense to carry over, not a third "done" state that would need new business logic this wasn't
+      asked to add).
+- [x] Noticed but deliberately left alone: `data-bs-toggle="tooltip"` on each step icon does
+      nothing — Bootstrap 5 tooltips need an explicit JS `new bootstrap.Tooltip(el)` call
+      somewhere, and nothing in this app's JS ever makes one. Confirmed this predates the redesign
+      (the exact same dead attribute was already on the old `.step-icon` markup) — not a
+      regression from this change, and wiring up Bootstrap tooltips app-wide wasn't part of what
+      was asked here.
+- [x] Verified live via Playwright across Basic Info/Tickets/Badge/Review: stepper card visibly
+      shrank (measured bounding box, and directly compared screenshots against the old layout);
+      the active step still highlights correctly (filled circle + bold colored label) on every
+      step; clicking a step link still navigates correctly (Basic Info → Agenda tested end-to-end).
+
+312/312 specs green (`admin_events_spec.rb`: 0 failures — pure view-layer change, no Ruby behavior
+touched), Rubocop clean, Brakeman: 0 warnings.
+
+### Revisited — dropped the `<hr>` below the stepper card and Basic Info's Complete/Incomplete indicator
+
+User feedback, immediately after the stepper resize above: remove the horizontal rule below the
+stepper card, and remove the "Complete"/"Incomplete" line above Basic Info's first card.
+
+- [x] `edit.html.erb`: deleted the `<hr>` between the stepper card and the step content below it —
+      the stepper card's own `mb-3` already provides spacing, a second visible rule doing the same
+      job was redundant once pointed out. Deleted the `event.basic_info_complete?` conditional
+      (`<i class="bx bx-check-circle"></i> Complete` / `bx-error-circle Incomplete`) that used to
+      render above Basic Info's first card — every required field is directly visible on the form
+      itself, so a separate status line repeating "is this step done" added a line without adding
+      information the form doesn't already show at a glance.
+- [x] Verified live via Playwright: 0 `<hr>` elements anywhere on the page; page text contains
+      neither "Complete" nor "Incomplete" anywhere. Basic Info's own validity is still fully
+      enforced server-side exactly as before (`Event#basic_info_complete?` still gates
+      Submit-for-review/Publish on the Review step, per the untouched approval-workflow logic) —
+      only the now-redundant *display* of that same check on this one step was removed, not the
+      check itself.
+
+312/312 specs green (`admin_events_spec.rb`: 0 failures — pure view-layer change, no Ruby behavior
+touched), Rubocop clean, Brakeman: 0 warnings.
+
+### Revisited — eye-icon preview modal on the Badges table (requested from Review's own copy of it, landed on all three)
+
+User request: on Review's Badges section, add an eye icon that opens a modal showing the actual
+badge.
+
+- [x] `config/routes.rb`: added `member { get :preview }` to the `:badges` resources (`:show`
+      itself stays excluded — this isn't a general read view of a Badge, only ever loaded inside
+      one specific iframe/modal). `Admin::BadgesController#preview`: runs the exact same
+      `BadgeReformService` a real print does, against a synthetic, never-persisted `Participant.new`
+      built fresh per request (event association only, no `save`/`valid?` call — so none of
+      Participant's own create-time side effects fire: no identifier generation, no live-stats
+      broadcast) with a plausible placeholder value for every field a badge's $OTHER1$/$OTHER2$/
+      $OTHER3$ mapping could point at. There is no real participant to preview against at any point
+      this table renders — mid-setup on the wizard/Review (before anyone has registered — see the
+      "no Participants section" revisit above) or the standalone Badges page (no participant
+      picker of its own either) — and even where real participants do exist for the event, using
+      one specific person's actual data to answer a generic "what does this badge look like"
+      question would be a strange, mildly invasive way to do it.
+- [x] **Found and fixed while building this — a genuine pre-existing bug, not something this
+      session introduced**: the preview's Photo slot rendered as a solid *black* square instead of
+      blank. Traced to `BadgeReformService::BLANK_PIXEL_PNG` — decoded (via ChunkyPNG, already a
+      dependency through barby/rqrcode) to `r=0 g=0 b=0 a=255`, a fully *opaque black* pixel, not
+      the transparent one its own comment claimed — meaning every real participant printed without
+      a photo attached has been getting a solid black square on their actual badge since Phase 8,
+      not a blank one. `badge_reform_service_spec.rb`'s existing coverage for this only ever
+      asserted the substituted image's first 8 bytes matched the generic PNG file-signature magic
+      number (`137,80,78,71,13,10,26,10` — true of *any* valid PNG regardless of what it actually
+      shows), never the real pixel color/alpha — nothing before this preview feature ever rendered
+      that fallback somewhere a human would actually look at it; prior coverage checked PDF byte
+      content, never a rendered image. Regenerated the constant with
+      `ChunkyPNG::Image.new(1, 1, ChunkyPNG::Color::TRANSPARENT).to_blob`, confirmed via the same
+      ChunkyPNG round-trip that it now decodes to `a=0`, and strengthened the spec to actually
+      decode and assert the alpha channel instead of just the file header, so a future regression
+      of this exact kind can't pass silently again.
+- [x] **Found and fixed a second issue while wiring this up**: Brakeman flagged the first version
+      (a `preview.html.erb` view using `<%= raw @content %>`) as an unescaped-model-attribute XSS
+      risk. `badge.content` genuinely is trusted, admin-authored markup — the whole point of the
+      GrapesJS editor's saved output, the same trust level `BadgePdfService#wrap_html` already
+      treats it at without complaint — but that method builds its wrapping HTML via plain Ruby
+      string interpolation in a `.rb` file, never through an ERB `<%= %>` output tag, which is
+      specifically what Brakeman's CrossSiteScripting check watches for regardless of the actual
+      trust level of the data. Restructured `#preview` to match: no view file at all, a private
+      `wrap_preview_html` method builds the same standalone HTML document via plain string
+      interpolation (mirroring `wrap_html`'s own shape almost line for line, including the same
+      `position: relative` anchor-for-absolutely-positioned-tokens comment and the same real-CSS-
+      "cm"-units physical sizing), and the controller sends it via `render html: ....html_safe` —
+      confirmed this brings Brakeman back to 0 warnings while the feature itself still works
+      identically.
+- [x] `_badges_table.html.erb`: one modal per badge (not a single shared modal with a JS-swapped
+      iframe `src`) — Badge's own uniqueness validation caps this table at a handful of rows (one
+      default plus at most one per TicketCategory), so static, pre-built markup with the iframe
+      `src` set once up front wins over the extra Stimulus controller a shared/reused modal would
+      need. The Preview column itself is NOT gated by the table's existing `actions:` flag (which
+      still controls Edit/Remove) — it's read-only everywhere it appears, so it belongs on Review's
+      own read-only copy of this table exactly as much as the editable ones, which is what actually
+      answers the original request (asked from Review specifically; landed on all three places this
+      shared table renders — Review, the Badge wizard step, and the standalone Badges page — since
+      it's the same partial and there was no reason to make it review-only).
+- [x] Verified live via Playwright on `techo-space` (2 badges: Visitor 8×12cm, Media 8×10cm) across
+      all three pages this table renders on: eye icon present and clickable everywhere; clicking it
+      opens the correct badge's own modal (confirmed via modal title matching "MEDIA" for the
+      second row specifically, not just "a modal opens"); the iframe inside genuinely renders the
+      reformed badge — "Sample Participant"/"Sampleland" (the $OTHER1$-mapped field) visible as
+      text, a real generated barcode image, and — post-fix — a correctly blank (not black) Photo
+      slot; the one console 404 seen while testing is the same pre-existing, unrelated
+      `login-img.png` issue noted earlier in this log, confirmed by URL, not something this
+      introduced.
+
+347/347 specs green (suite grew from 312 during this session as unrelated concurrent Phase 9/11
+work landed in the same repo — all still green; `badge_reform_service_spec.rb` specifically
+strengthened, not just passing), Rubocop clean, Brakeman: 0 warnings.
 
 ---
 
@@ -377,24 +1479,24 @@ in the queue immediately after (oldest/only entry, "On track" SLA badge, correct
 **Implements:** §3.7, §5.6, §5.15, §6 item 13 (unified `ScanEvent`), §8 (`ScanEvent`, `Attendance`, `EventLiveStats`, `SessionLiveStats`, partitioning).
 **Depends on:** Phase 8 (the "scan → print badge → mark attendance" combined flow needs both).
 
-- [ ] `ScanEvent` (unifying abstraction, §6.13): `account_id`, `event_id`, `participant_id`, `scan_type` (check_in/check_out/print/lead_retrieval/triggered_content — later phases add more types onto the same table), `source` (kiosk/manual/agent), timestamp. Monthly range-partitioned on the write timestamp (§4.10).
-- [ ] `Attendance`: derived/recorded from `ScanEvent`, `from` (event/session), `status` (check_in/check_out/manual_check_out/absent), time-spent computation from paired events. Also monthly-partitioned.
-- [ ] Multi-identifier scan lookup (hex ID, govt ID, RFID, client participant ID) with 30-second anti-double-scan debounce.
-- [ ] Session-level check-in with per-session seat-limit enforcement (depends on Phase 11's `Session` model — if Phase 11 hasn't landed yet, event-level check-in ships first and session-level is added when Phase 11 completes; sequence flexibly if needed).
-- [ ] Virtual-event redirect-on-check-in (scan → mark attendance → redirect to meeting link).
-- [ ] `EventLiveStats`/`SessionLiveStats`: denormalized counters, incremented in the same transaction as the triggering `Participant`/`ScanEvent` write — single source of truth for both initial dashboard load and live broadcast payload (§5.15 — the two paths must never disagree).
-- [ ] Redis pub/sub → Turbo Streams broadcast on `event:{event_id}:live` channel; admin dashboard (Phase 3's stat widgets) subscribes and patches DOM nodes with no full reload.
-- [ ] Super Admin cross-tenant live pulse (Platform Console dashboard, Phase 3 stub filled in): aggregate registrations/check-ins across all currently-live events.
-- [ ] Rolling per-minute time-series bucket for the live sparkline (registration/check-in velocity).
-- [ ] "Scan → print badge → mark attendance" combined flow, wired to Phase 8's render pipeline (on-demand print only — auto-print via the agent is Phase 10).
-- [ ] EventScheduler job (Phase 4) extended: auto-checkout/mark-absent attendees when an event's `live → completed` transition fires.
+- [x] `ScanEvent` (unifying abstraction, §6.13): `account_id`, `event_id`, `participant_id`, `scan_type` (check_in/check_out/print/lead_retrieval/triggered_content — later phases add more types onto the same table), `source` (kiosk/manual/agent — plus `system`, this phase's own addition for EventCompletionService's non-human auto-checkout), timestamp. Monthly range-partitioned on the write timestamp (§4.10) — real native Postgres declarative partitioning (`lib/monthly_range_partitioning.rb`), which required switching `config.active_record.schema_format` to `:sql` (`db/structure.sql` replaces `db/schema.rb` — schema.rb can't represent `PARTITION BY`).
+- [x] `Attendance`: derived/recorded from `ScanEvent`, `from` (event/session), `status` (check_in/check_out/manual_check_out/absent), time-spent computation from paired events. Also monthly-partitioned.
+- [x] Multi-identifier scan lookup (hex ID, govt ID, RFID, client participant ID) with 30-second anti-double-scan debounce. → `Participant.find_by_identifier` + `ScanService::DEBOUNCE_WINDOW`.
+- [ ] Session-level check-in with per-session seat-limit enforcement — **deferred to Phase 11**, per this checklist's own allowance: Phase 11's `Session` model hasn't landed yet, so event-level check-in ships first (`Attendance#from`/`ScanEvent` already carry a `session` enum value ready for it, no future migration needed).
+- [x] Virtual-event redirect-on-check-in (scan → mark attendance → redirect to meeting link). → `ScanService#virtual_redirect_url`.
+- [x] `EventLiveStats`/`SessionLiveStats`: denormalized counters, incremented in the same transaction as the triggering `Participant`/`ScanEvent` write — single source of truth for both initial dashboard load and live broadcast payload (§5.15 — the two paths must never disagree). → `EventLiveStats` done (atomic `update_counters`, wired from both `Participant#increment_live_stats!` and `ScanService`); **`SessionLiveStats` deferred alongside session-level check-in above** — no `Session` to key it off yet.
+- [x] Redis pub/sub → Turbo Streams broadcast on `event:{event_id}:live` channel; admin dashboard (Phase 3's stat widgets) subscribes and patches DOM nodes with no full reload. → built on turbo-rails' `Turbo::StreamsChannel`/`turbo_stream_from` (Redis-backed per `config/cable.yml`) rather than a hand-rolled channel — see `LiveDashboard`'s own comment for why that's the same real-time behavior over the same transport, not a literal `event:{id}:live` string.
+- [x] Super Admin cross-tenant live pulse (Platform Console dashboard, Phase 3 stub filled in): aggregate registrations/check-ins across all currently-live events. → `LiveDashboard.platform_pulse`/`#broadcast_platform_pulse`.
+- [x] Rolling per-minute time-series bucket for the live sparkline (registration/check-in velocity). → `LiveMetricBucket`.
+- [x] "Scan → print badge → mark attendance" combined flow, wired to Phase 8's render pipeline (on-demand print only — auto-print via the agent is Phase 10). → check-in kiosk's "Print badge" link reuses `Admin::ParticipantsController#badge`/`BadgePdfService` unchanged; that endpoint now also logs a `print` `ScanEvent` itself, folding it into the same unified abstraction.
+- [x] EventScheduler job (Phase 4) extended: auto-checkout/mark-absent attendees when an event's `live → completed` transition fires. → `EventCompletionService`, called from `EventSchedulerJob`.
 
 ### Definition of Done
-- [ ] Model/service spec: debounce rejects a second scan within 30s, accepts one after.
-- [ ] Model spec: `EventLiveStats` counter matches a raw `COUNT()` after a burst of concurrent scans (race-condition check — use `increment_counter`/atomic SQL, not read-modify-write).
-- [ ] System spec (Capybara + Action Cable test adapter): a check-in scan in one browser session updates a **second** connected browser session's dashboard tile without a page reload, under 1 second (§7.3 target — assert via polling with a short timeout, not a hard sleep).
-- [ ] Load sanity check: fan-out to N simulated subscribers doesn't measurably slow scan-write latency (even a lightweight local benchmark is enough to catch a gross regression — full load testing is a later hardening pass, not a Phase 9 blocker).
-- [ ] Manual QA: two browser windows open on the same event's dashboard, scan a participant in a third tab (or via `curl`/API), watch both dashboards update live.
+- [x] Model/service spec: debounce rejects a second scan within 30s, accepts one after. → `spec/services/scan_service_spec.rb`.
+- [x] Model spec: `EventLiveStats` counter matches a raw `COUNT()` after a burst of concurrent scans (race-condition check — use `increment_counter`/atomic SQL, not read-modify-write). → `spec/services/scan_service_spec.rb`'s "concurrency" describe block (real OS threads, separate DB connections).
+- [x] System spec (Capybara + Action Cable test adapter): a check-in scan in one browser session updates a **second** connected browser session's dashboard tile without a page reload, under 1 second (§7.3 target — assert via polling with a short timeout, not a hard sleep). → `spec/system/live_dashboard_spec.rb`, real two-session Playwright run (~2s wall time for the whole spec, including two logins).
+- [x] Load sanity check: fan-out to N simulated subscribers doesn't measurably slow scan-write latency (even a lightweight local benchmark is enough to catch a gross regression — full load testing is a later hardening pass, not a Phase 9 blocker). → `spec/services/live_dashboard_load_spec.rb`.
+- [x] Manual QA: two browser windows open on the same event's dashboard, scan a participant in a third tab (or via `curl`/API), watch both dashboards update live. → covered by the system spec above (a stronger, repeatable form of the same check); not additionally hand-driven.
 
 ---
 
@@ -426,16 +1528,16 @@ in the queue immediately after (oldest/only entry, "On track" SLA badge, correct
 **Implements:** §3.8, §5.2 (multi-day/multi-track), §5.7, §8 (`Session`, `Schedule`, `Speaker`).
 **Depends on:** Phase 4 (fills the Agenda tab stub).
 
-- [ ] `Speaker`: company/bio/photo, account-scoped and reusable across events (speaker portal itself is Phase 2-roadmap/later — CRUD by organizer is in scope now).
-- [ ] `Schedule` (talks): linked to a `Speaker`, start/end time, details, linked to an `Event` and optionally a `Session` (track/room).
-- [ ] `Session`: independent seat capacity, own check-in (retrofits into Phase 9's session-level check-in once this lands).
-- [ ] Agenda tab UI: multi-day/multi-track view, drag-to-reorder or time-grid editor, room/capacity fields.
-- [ ] If Phase 9 shipped before this phase, backfill session-level check-in wiring now that `Session` exists.
+- [x] `Speaker`: company/bio/photo, account-scoped and reusable across events (speaker portal itself is Phase 2-roadmap/later — CRUD by organizer is in scope now). → `app/models/speaker.rb`, `Admin::SpeakersController` (account-level, mirrors `Admin::BadgeTemplatesController`).
+- [x] `Schedule` (talks): linked to a `Speaker`, start/end time, details, linked to an `Event` and optionally a `Session` (track/room). → `app/models/schedule.rb`, `Admin::SchedulesController`.
+- [x] `Session`: independent seat capacity, own check-in (retrofits into Phase 9's session-level check-in once this lands). → `app/models/session.rb` (`seat_limit`/`#unlimited?`, mirrors `TicketCategory`), `SessionLiveStats`.
+- [x] Agenda tab UI: multi-day/multi-track view, drag-to-reorder or time-grid editor, room/capacity fields. → time-grid (day-sectioned, track-grouped, sorted by real start/end times — confirmed with user in place of drag-to-reorder, which would've needed a new JS dependency nothing else in the app uses yet), `admin/event_sessions/index.html.erb`, linked from the wizard's Agenda step (`admin/events/_agenda_step.html.erb`).
+- [x] If Phase 9 shipped before this phase, backfill session-level check-in wiring now that `Session` exists. → `ScanEvent`/`Attendance` gained `session_id` (migration `20260712180616`, propagated onto every existing partition); `ScanService` gained a `session:` kwarg (per-session debounce, seat-limit enforcement, independent `SessionLiveStats` counters — deliberately not rolled into `EventLiveStats`); `LiveDashboard.broadcast_session_stats`; `Admin::ScanEventsController`/check-in kiosk view gained a session picker + live per-session occupancy table.
 
 ### Definition of Done
-- [ ] Model spec: session capacity validation, schedule overlap warnings (same speaker double-booked, informational not blocking).
-- [ ] Request spec: agenda CRUD respects tenant scoping and event-edit permissions.
-- [ ] Manual QA: build a 2-day, 2-track agenda with overlapping sessions in different tracks, confirm the grid renders correctly.
+- [x] Model spec: session capacity validation, schedule overlap warnings (same speaker double-booked, informational not blocking). → `spec/models/session_spec.rb`, `spec/models/schedule_spec.rb`.
+- [x] Request spec: agenda CRUD respects tenant scoping and event-edit permissions. → `spec/requests/admin_event_sessions_spec.rb`, `spec/requests/admin_schedules_spec.rb`, `spec/requests/admin_speakers_spec.rb`.
+- [x] Manual QA: build a 2-day, 2-track agenda with overlapping sessions in different tracks, confirm the grid renders correctly. → made repeatable in `spec/requests/admin_event_sessions_spec.rb` (asserts day/track grouping in the rendered response); also driven live against a running dev server end-to-end (agenda grid, wizard Agenda step, session check-in scan, live occupancy tile update all confirmed working).
 
 ---
 

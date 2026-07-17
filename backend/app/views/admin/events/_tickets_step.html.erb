@@ -1,0 +1,59 @@
+<%# Locals: event.
+    Phase 6 — Ticketing (requirement.md §5.3). Same "Next saves it" shape as Basic Info — ticket
+    categories build up client-side (add/remove rows, no per-row save round trip) and only
+    actually persist when Next is clicked (Admin::EventsController#update, Event
+    accepts_nested_attributes_for :ticket_categories). Deliberately no reservation UI here
+    ("Reserve for" / holder email / seat count) — reserving seats is a participant-registration
+    action, not an event-setup one; that belongs to Phase 7's registration flow, not this wizard.
+    TicketReservation/TicketReservationService already exist (this phase's capacity/waitlist
+    math) for that flow to call once it's built. %>
+<%= form_with model: event, url: admin_event_path(event), method: :patch, data: { controller: "nested-fields" } do |f| %>
+  <%= hidden_field_tag :step, "tickets" %>
+  <%# :base errors (e.g. "Can't remove ... participants are already registered under it") have no
+      field of their own to attach to. :seat_limit errors (categories' combined total exceeding
+      the event's seat limit — Event#ticket_categories_within_seat_limit) land here too, not on a
+      field of their own on this page, since "This event has a seat limit"/the seat count itself
+      now live on the Basic Info step's Settings card, not here. %>
+  <% if event.errors[:base].any? || event.errors[:seat_limit].any? %>
+    <div class="alert alert-danger">
+      <ul class="mb-0">
+        <% event.errors[:base].each do |message| %>
+          <li><%= message %></li>
+        <% end %>
+        <% event.errors[:seat_limit].each do |message| %>
+          <li>This event's seat limit <%= message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <div class="card mb-3">
+    <div class="card-header"><span class="fw-semibold">Ticket Categories</span></div>
+    <div class="card-body">
+      <% if event.has_seat_limit? %>
+        <p class="text-muted">Total capacity across every category below can't exceed this event's seat limit (<%= event.seat_limit %>).</p>
+      <% end %>
+
+      <div data-nested-fields-target="container">
+        <%= f.fields_for :ticket_categories do |category_fields| %>
+          <%= render "ticket_category_fields", f: category_fields, event: event %>
+        <% end %>
+      </div>
+
+      <template data-nested-fields-target="template">
+        <%= f.fields_for :ticket_categories, TicketCategory.new, child_index: "NEW_RECORD" do |category_fields| %>
+          <%= render "ticket_category_fields", f: category_fields, event: event %>
+        <% end %>
+      </template>
+
+      <button type="button" class="btn btn-sm btn-outline-primary mb-0" data-action="nested-fields#add">
+        <i class="bx bx-plus"></i> Add another category
+      </button>
+    </div>
+  </div>
+
+  <div class="d-flex align-items-start gap-3 mt-4">
+    <%= link_to "Previous", edit_admin_event_path(event, step: "event_schedule"), class: "btn btn-outline-secondary" %>
+    <%= f.submit "Next", class: "btn btn-primary ms-auto" %>
+  </div>
+<% end %>

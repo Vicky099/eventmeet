@@ -1,0 +1,45 @@
+<%# Phase 9 (requirement.md §5.15) — LiveDashboard.broadcast_event_stats replaces this exact node
+    (Turbo::StreamsChannel.broadcast_replace_to target: "live-stats-#{event.id}") on every
+    check-in/registration write; admin/scan_events/index.html.erb also renders it directly for
+    first paint before any broadcast has happened.
+
+    Every value below comes from Event's own #checked_in_participant_count/
+    #arrived_today_participant_count/#currently_in_venue_count (app/models/event.rb) — real,
+    distinct-participant counts, not EventLiveStats' cumulative scan counters. See those methods'
+    own comment for why: this dashboard isn't the high-frequency check-in-desk write path
+    EventLiveStats exists to serve cheaply (Admin::EventsController#show's own precedent), and a
+    "N checked in" sitting next to "M registered" reads as a headcount, not a raw scan tally.
+
+    Locals: event (Event). %>
+<div id="live-stats-<%= event.id %>">
+  <div class="row g-3">
+    <div class="col-md-6 col-xl-3">
+      <%= render "shared/stat_widget", label: "Registered", value: event.participants.count, icon: "bx-user-plus", color: "primary" %>
+    </div>
+    <div class="col-md-6 col-xl-3">
+      <%= render "shared/stat_widget", label: "Checked In", value: event.checked_in_participant_count, icon: "bx-log-in-circle", color: "success" %>
+    </div>
+    <div class="col-md-6 col-xl-3">
+      <%= render "shared/stat_widget", label: "Arrived Today", value: event.arrived_today_participant_count, icon: "bx-calendar-check", color: "info" %>
+    </div>
+    <div class="col-md-6 col-xl-3">
+      <%= render "shared/stat_widget", label: "Currently In Venue", value: event.currently_in_venue_count, icon: "bx-walk", color: "warning" %>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-0">
+    <div class="col-12">
+      <div class="card mb-0">
+        <div class="card-body">
+          <h6 class="font-size-15 text-muted mb-2">Check-in velocity</h6>
+          <%# Explicit full path, not a bare "sparkline" relative lookup — this partial is also
+              rendered via Turbo::StreamsChannel.broadcast_replace_to (LiveDashboard), whose
+              ActionController::Renderer context doesn't carry the same admin/scan_events prefix a
+              normal request-rendered view gets, so a relative lookup 404s there even though it
+              works fine from index.html.erb. %>
+          <%= render "admin/scan_events/sparkline", series: LiveMetricBucket.sparkline_series(event: event, metric: :check_in) %>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

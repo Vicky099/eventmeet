@@ -18,6 +18,9 @@ module SuperAdmin
     def show
     end
 
+    # Doesn't publish the event — that's the tenant's own subsequent manual action, which
+    # Admin::EventsController#publish only allows once @event.approved? (requirement.md §5.2
+    # revisited: approve unlocks Publish, it doesn't perform it).
     def approve
       @event.approve!(by: current_platform_staff)
       redirect_to platform_event_reviews_path, notice: "#{@event.name} approved."

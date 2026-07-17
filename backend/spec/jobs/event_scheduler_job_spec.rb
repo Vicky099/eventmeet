@@ -115,4 +115,50 @@ RSpec.describe EventSchedulerJob, type: :job do
 
     expect { EventSchedulerJob.perform_now }.to have_enqueued_job(EventSchedulerJob)
   end
+
+  # Phase 9 checklist: "EventScheduler job extended: auto-checkout/mark-absent attendees when an
+  # event's live -> completed transition fires."
+  describe "live -> completed attendance finalization (requirement.md §3.7)", :aggregate_failures do
+    # The outer `around` block above freezes time to 2026-01-01 — outside the June-September 2026
+    # window the initial migration provisioned partitions for (lib/monthly_range_partitioning.rb
+    # creates partitions relative to whenever the migration actually ran, not relative to a test's
+    # frozen clock). PartitionMaintenanceJob is what keeps this window moving in a real deployment;
+    # here, just provision the one frozen month directly so ScanEvent/Attendance writes land
+    # somewhere.
+    before do
+      MonthlyRangePartitioning.ensure_partitions!(ActiveRecord::Base.connection, :scan_events, partition_column: :scanned_at, months_behind: 0, months_ahead: 0)
+      MonthlyRangePartitioning.ensure_partitions!(ActiveRecord::Base.connection, :attendances, partition_column: :occurred_at, months_behind: 0, months_ahead: 0)
+    end
+
+    it "auto-checks-out a participant still checked in and marks a never-scanned one absent" do
+      event = create_event(starts_at: 2.hours.ago, ends_at: 1.hour.from_now)
+      Event.unscoped_across_tenants { event.update!(status: :live) }
+      Current.account = account
+      checked_in_participant = create(:participant, account: account, event: event)
+      absent_participant = create(:participant, account: account, event: event)
+      ScanService.call(event: event, identifier: checked_in_participant.hex_id, scan_type: :check_in)
+
+      travel 2.hours
+      EventSchedulerJob.perform_now
+
+      Current.account = account
+      expect(Event.unscoped_across_tenants { event.reload }.status).to eq("completed")
+      expect(checked_in_participant.attendances.order(:occurred_at).pluck(:status)).to eq(%w[check_in manual_check_out])
+      expect(absent_participant.attendances.pluck(:status)).to eq(%w[absent])
+      expect(event.live_stats!.checked_out_count).to eq(1)
+      expect(event.live_stats!.occupancy_count).to eq(0)
+    end
+
+    it "doesn't finalize attendance for an event that skips live entirely (draft published straight past its end)" do
+      event = create_event(starts_at: 3.days.ago, ends_at: 2.days.ago)
+      Current.account = account
+      participant = create(:participant, account: account, event: event)
+
+      EventSchedulerJob.perform_now
+
+      Current.account = account
+      expect(Event.unscoped_across_tenants { event.reload }.status).to eq("completed")
+      expect(participant.attendances).to be_none
+    end
+  end
 end

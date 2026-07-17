@@ -21,8 +21,10 @@ Rails.application.configure do
   # Enable serving of images, stylesheets, and JavaScripts from an asset server.
   # config.asset_host = "http://assets.example.com"
 
-  # Store uploaded files on the local file system (see config/storage.yml for options).
-  config.active_storage.service = :local
+  # Participant photos/documents go to Cloudinary, tenant-namespaced via the blob key (see
+  # config/storage.yml, config/cloudinary.yml — credentials come from the CLOUD_NAME/API_KEY/
+  # API_SECRET env vars, set directly on the deploy target, not via Figaro's application.yml).
+  config.active_storage.service = :cloudinary
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.
   config.assume_ssl = true
@@ -58,14 +60,19 @@ Rails.application.configure do
   # Set host to be used by links generated in mailer templates.
   config.action_mailer.default_url_options = { host: "example.com" }
 
-  # Specify outgoing SMTP server. Remember to add smtp/* credentials via rails credentials:edit.
-  # config.action_mailer.smtp_settings = {
-  #   user_name: Rails.application.credentials.dig(:smtp, :user_name),
-  #   password: Rails.application.credentials.dig(:smtp, :password),
-  #   address: "smtp.example.com",
-  #   port: 587,
-  #   authentication: :plain
-  # }
+  # Brevo SMTP — same transport shopmate-backend uses, same env var names
+  # (BREVO_SMTP_LOGIN/BREVO_SMTP_KEY), set directly on the deploy target, not via Figaro's
+  # application.yml (production credentials never live in a per-developer-machine file).
+  config.action_mailer.raise_delivery_errors = true
+  config.action_mailer.delivery_method = :smtp
+  config.action_mailer.smtp_settings = {
+    address: "smtp-relay.brevo.com",
+    port: 587,
+    user_name: ENV["BREVO_SMTP_LOGIN"],
+    password: ENV["BREVO_SMTP_KEY"],
+    authentication: :login,
+    enable_starttls_auto: true
+  }
 
   # Enable locale fallbacks for I18n (makes lookups for any locale fall back to
   # the I18n.default_locale when a translation cannot be found).

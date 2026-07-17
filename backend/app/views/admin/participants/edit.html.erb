@@ -1,0 +1,16 @@
+<% content_for :page_title, @participant.name %>
+
+<%= render "shared/page_header",
+  icon: "bx-group",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) },
+            { label: "Participants", path: admin_event_participants_path(@event) }, { label: @participant.name } ] %>
+
+<div class="row">
+  <div class="col-xl-9">
+    <div class="card">
+      <div class="card-body">
+        <%= render "form", event: @event, participant: @participant %>
+      </div>
+    </div>
+  </div>
+</div>

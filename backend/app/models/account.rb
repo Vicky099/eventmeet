@@ -7,6 +7,14 @@ class Account < ApplicationRecord
 
   enum :status, { active: 0, suspended: 1 }
 
+  # requirement.md revisit: "While registering the Tenant, we should capture ... Logo." No
+  # TenantScopedAttachment#attach_tenant_scoped here — that concern is for resources *belonging
+  # to* an account (Participant#photo, Badge#logo, ...), keyed by `account.subdomain_slug`; here
+  # the account itself IS that account, so #attach_logo below calls TenantScopedAttachment's own
+  # module-level .blob_key directly, passing `self`, for the exact same tenant-namespaced
+  # Cloudinary folder shape every other attachment in this app already uses.
+  has_one_attached :logo
+
   has_many :account_memberships, dependent: :destroy
   has_many :users, through: :account_memberships
   has_many :tenant_domains, dependent: :destroy
@@ -19,6 +27,10 @@ class Account < ApplicationRecord
   # console/context is asking, same as every other has_many here.
   has_many :events, dependent: :destroy
   has_many :event_staff_assignments, dependent: :destroy
+  # Unlike TicketCategory/Participant/etc. (which cascade transitively through Event), a
+  # BadgeTemplate (Phase 8) has no Event parent to cascade through — it's account-scoped
+  # directly, as a reusable library — so it needs its own explicit dependent: :destroy here.
+  has_many :badge_templates, dependent: :destroy
 
   validates :name, presence: true
   validates :subdomain_slug, presence: true,
@@ -30,5 +42,46 @@ class Account < ApplicationRecord
                               length: { minimum: 3, maximum: 63 },
                               exclusion: { in: RESERVED_SLUGS, message: "is a reserved word" }
 
+  # requirement.md revisit: "While registering the Tenant, we should capture ... contact email,
+  # contact num ... sender email." on: :create only — a tenant provisioned before this feature
+  # existed can still be edited/suspended/reinstated without first being forced to backfill these;
+  # only a *new* registration actually requires them, matching the requirement's own wording.
+  # Presence and format are deliberately two SEPARATE `validates` calls per field, not one shared
+  # call with `allow_blank: true` tacked on — Rails' `validates` macro merges any option declared
+  # outside the per-validator-type hashes into *every* validator in that same call, so a combined
+  # `validates :x, presence: { on: :create }, format: {...}, allow_blank: true` silently neuters
+  # its own presence check (a blank value would short-circuit past PresenceValidator too, the one
+  # validator whose entire job is flagging blank values). format's own allow_blank is what lets a
+  # still-blank legacy value skip the format check without also skipping presence on create.
+  validates :contact_email, presence: { on: :create }
+  validates :contact_email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
+  validates :sender_email, presence: { on: :create }
+  validates :sender_email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
+  validates :contact_num, presence: { on: :create }
+
+  # requirement.md revisit: "we should capture the event timezone and all the dates which are
+  # display in the UI should abey the tenant timezone." One zone per tenant (not per event) —
+  # TenantResolvable#with_tenant_time_zone (app/controllers/concerns/tenant_resolvable.rb) applies
+  # it to every tenant-scoped request via Time.use_zone, and ApplicationMailer#mail applies it to
+  # every tenant-scoped mailer the same way — between Rails' own time_zone_aware_attributes
+  # (default on) and both of those, every existing strftime/to_fs call anywhere in this app
+  # already renders in the tenant's own zone with no per-view changes needed. Always required
+  # (not on: :create) — the "UTC" DB default (see this column's own migration) means every
+  # pre-existing row already satisfies this, and a blank value here would silently break Time.zone
+  # application for every future request, unlike the three contact fields above which only affect
+  # what's displayed, never how it's computed.
+  validates :time_zone, presence: true, inclusion: { in: ActiveSupport::TimeZone.all.map(&:name) }
+
   before_validation { self.subdomain_slug = subdomain_slug&.downcase }
+
+  def attach_logo(uploaded_file)
+    return if uploaded_file.blank?
+
+    logo.attach(
+      io: uploaded_file,
+      filename: uploaded_file.original_filename,
+      content_type: uploaded_file.content_type,
+      key: TenantScopedAttachment.blob_key(self, "logo", filename: uploaded_file.original_filename)
+    )
+  end
 end

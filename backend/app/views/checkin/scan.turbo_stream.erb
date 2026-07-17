@@ -1,0 +1,12 @@
+<%# `update`, not `replace`: the result banner needs updating on every scan, repeatedly, without
+    a page reload — `replace` swaps out the whole `#scan-result` element (the
+    `.checkin-result-slot` wrapper carrying the spacing between it and the Scan button above) for
+    whatever _result's own root happens to be that render, which has no id/class of its own to be
+    re-targeted by — confirmed live: the SECOND scan onward lost both the wrapper (so the banner
+    sat flush against the Scan button, no gap) and the ability to update again at all (no element
+    with id="scan-result" left in the DOM for a follow-up turbo_stream.replace to find). `update`
+    replaces only the wrapper's *contents*, leaving the wrapper — id, class, spacing — in place
+    across every subsequent scan. %>
+<%= turbo_stream.update "scan-result" do %>
+  <%= render "result", result: @result %>
+<% end %>

@@ -193,3 +193,604 @@ body[data-sidebar-size="sm"] {
   from { transform: translateY(0); opacity: 1; }
   to { transform: translateY(-8px); opacity: 0; }
 }
+
+/* Basic Info step's Settings card (app/views/admin/events/_basic_info_step.html.erb): the
+   "Number of seats" field only makes sense once the "Seat Limit" toggle is checked. Driven
+   entirely by :has() off the checkbox's own live DOM state — not a Ruby-computed class from the
+   persisted `has_seat_limit` column, and not a JS listener toggling a class after the fact. That
+   matters here: the checkbox can be flipped by the organizer before ever saving, and the two
+   alternative approaches (server-rendered class from the DB value; a Stimulus `change` listener)
+   each had a window — first paint, a Turbo-cached snapshot, JS not yet connected — where the
+   checkbox's real state and the field's visibility could disagree. CSS re-evaluates :checked
+   synchronously with the DOM itself, so there's no window where they can drift apart.
+   `seat-limit-block` sits on the whole <form> (not a narrower wrapper) for the same reason it did
+   when this lived on the Tickets step — the widest reasonable scope is also the simplest one.
+   Ticket categories' own "Total seats" column and the Sessions form's "Seat limit" field are each
+   on a *different* page/step now (this toggle isn't in their DOM at all), so they gate visibility
+   server-side off the persisted event.has_seat_limit? instead — see _ticket_category_fields.html.erb
+   and admin/event_sessions/_form.html.erb.
+   `required` is deliberately NOT handled here, unlike visibility — confirmed live that a required
+   field hidden via display:none still fails the browser's own constraint validation and silently
+   blocks the whole form's submit ("An invalid form control ... is not focusable" in the console,
+   no visible error, no request even sent). CSS can hide an element; it can't make a browser stop
+   caring whether a hidden required field is filled in. seat_limit_controller.js's syncRequired()
+   keeps `required` itself in sync with the same checkbox instead. */
+.seat-limit-fields {
+  display: none;
+}
+
+.seat-limit-block:has(#event_has_seat_limit:checked) .seat-limit-fields {
+  display: block;
+}
+
+/* Design Registration Form screen (admin/registration_forms/_form.html.erb, Phase 7.5): once
+   "Apply to ALL ticket categories" is checked, the individual per-category checkboxes below it
+   are moot — Admin::RegistrationFormsController#assign_categories! ignores them entirely in that
+   case — so dim them and block interaction rather than leaving them looking independently
+   actionable. pointer-events: none (not the `disabled` attribute, which CSS can't set) — a stray
+   checked box left over from before "Apply to ALL" was checked is harmless either way, since the
+   controller never reads ticket_category_ids when apply_to_all is "1". Same :has()-off-live-DOM-
+   state technique as .seat-limit-fields above. */
+.registration-form-categories:has(#apply_to_all:checked) .ticket-category-checkboxes {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Event dashboard analytics (admin/events/show.html.erb) — plain CSS bars, not a JS charting
+   library, consistent with this app's general "avoid a second JS framework" ethos and this
+   specific page's low data volume/cardinality (a handful of ticket categories, one status
+   breakdown). Light-surface values only, not themed — this admin console (the vendored webadmin
+   template and everything built on it since) has no dark-mode support anywhere, so a themed pair
+   here would be the one inconsistent thing on the page. Colors are the dataviz skill's validated
+   palette (categorical slot 1 blue for single-series magnitude, the fixed status palette for
+   state), not this app's own Bootstrap theme colors — those govern the stat tiles/badges
+   elsewhere on this page and are untouched; these two rules are real chart marks, which the
+   skill's color rules exist to govern, not general UI chrome. */
+.bar-track {
+  height: 10px;
+  border-radius: 4px;
+  background: #f0efec; /* diverging-pair neutral midpoint, doubling as a neutral "track" gray */
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: #2a78d6; /* categorical slot 1 (blue) */
+}
+
+/* 2px gap between stacked segments (mark spec) comes from the flex `gap` itself, showing the
+   track's own background through — not a border/margin trick that would need per-segment
+   color-matching upkeep. */
+.status-bar {
+  display: flex;
+  gap: 2px;
+  height: 12px;
+  border-radius: 4px;
+  background: #f0efec;
+  overflow: hidden;
+}
+
+.status-bar-segment:first-child {
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+
+.status-bar-segment:last-child {
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+
+/* Phase 9 revisit — the standalone check-in kiosk (layouts/checkin.html.erb, views/checkin/*):
+   "out of admin panel and admin layout ... beautiful UI ... mobile friendly." A deliberately
+   different visual language from the dense admin console — one focused task per screen, large
+   touch targets (44px+ per standard mobile-tap-target guidance), generous spacing, a soft
+   gradient backdrop instead of the console's flat gray — built mobile-first (base rules target a
+   phone; the min-width breakpoint below only relaxes sizing for a tablet/desktop). Reuses this
+   app's own CSS variables (--bs-primary etc., already defined by the vendored Bootstrap build
+   shared/_head.html.erb loads) rather than hardcoding a second color set that could drift from
+   the rest of the app's primary blue. */
+.checkin-body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, var(--bs-primary-bg-subtle) 0%, #f5f6f8 320px);
+}
+
+.checkin-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--bs-border-color, #eff0f2);
+}
+
+.checkin-header-inner {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.checkin-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.checkin-brand-mark {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--bs-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.checkin-brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.checkin-brand-app {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bs-gray-600);
+}
+
+.checkin-brand-event {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--bs-gray-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* <details>/<summary> — no JS needed for a menu this simple; the browser's own disclosure
+   behavior is already tap/keyboard-accessible. The default marker triangle is suppressed on both
+   engines so .checkin-user-avatar (the circular initial) is the only visible affordance. */
+.checkin-user {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.checkin-user > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.checkin-user > summary::-webkit-details-marker {
+  display: none;
+}
+
+.checkin-user-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bs-primary-bg-subtle);
+  color: var(--bs-primary);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.checkin-user-menu {
+  position: absolute;
+  right: 0;
+  top: 44px;
+  min-width: 200px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(19, 21, 22, 0.12);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.checkin-user-email {
+  font-size: 12px;
+  color: var(--bs-gray-600);
+  word-break: break-all;
+}
+
+.checkin-logout-btn {
+  border: 1px solid var(--bs-border-color, #eff0f2);
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bs-danger);
+  text-align: left;
+}
+
+.checkin-main {
+  flex: 1;
+  padding: 20px 16px 40px;
+}
+
+.checkin-card {
+  max-width: 560px;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 12px 32px rgba(19, 21, 22, 0.08);
+  padding: 24px 18px;
+}
+
+.checkin-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: var(--bs-gray-900);
+}
+
+.checkin-subtitle {
+  font-size: 14px;
+  color: var(--bs-gray-600);
+  margin: 0 0 20px;
+}
+
+.checkin-field-group {
+  margin-bottom: 18px;
+}
+
+.checkin-field-label {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bs-gray-600);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.checkin-pill-group,
+.checkin-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.checkin-pill {
+  flex: 1 1 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1.5px solid var(--bs-border-color, #eff0f2);
+  background: #fff;
+  color: var(--bs-gray-700);
+  font-weight: 600;
+  font-size: 15px;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.checkin-pill.is-active {
+  background: var(--bs-primary);
+  border-color: var(--bs-primary);
+  color: #fff;
+}
+
+.checkin-chip {
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--bs-border-color, #eff0f2);
+  background: #fff;
+  color: var(--bs-gray-700);
+  font-weight: 600;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.checkin-chip.is-active {
+  background: var(--bs-primary-bg-subtle);
+  border-color: var(--bs-primary);
+  color: var(--bs-primary);
+}
+
+.checkin-chip-time {
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+.checkin-scan-input-wrap {
+  position: relative;
+  margin-bottom: 14px;
+}
+
+.checkin-scan-icon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 22px;
+  color: var(--bs-gray-500);
+}
+
+.checkin-scan-input {
+  width: 100%;
+  min-height: 56px;
+  padding: 14px 16px 14px 48px;
+  border-radius: 14px;
+  border: 1.5px solid var(--bs-border-color, #eff0f2);
+  font-size: 17px;
+  background: var(--bs-gray-100);
+}
+
+.checkin-scan-input:focus {
+  outline: none;
+  border-color: var(--bs-primary);
+  background: #fff;
+  box-shadow: 0 0 0 3px var(--bs-primary-bg-subtle);
+}
+
+.checkin-scan-submit {
+  width: 100%;
+  min-height: 52px;
+  border: none;
+  border-radius: 14px;
+  background: var(--bs-primary);
+  color: #fff;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+}
+
+.checkin-scan-submit:active {
+  opacity: 0.9;
+}
+
+.checkin-result-slot {
+  margin-top: 28px;
+}
+
+@keyframes checkin-result-pop {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.checkin-result {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 16px;
+  animation: checkin-result-pop 0.2s ease-out;
+}
+
+.checkin-result.is-success {
+  background: var(--bs-success-bg-subtle);
+}
+
+.checkin-result.is-danger {
+  background: var(--bs-danger-bg-subtle);
+}
+
+.checkin-result.is-warning {
+  background: var(--bs-warning-bg-subtle);
+}
+
+.checkin-result-icon {
+  flex-shrink: 0;
+  font-size: 32px;
+}
+
+.checkin-result.is-danger .checkin-result-icon {
+  color: var(--bs-danger);
+}
+
+.checkin-result.is-warning .checkin-result-icon {
+  color: var(--bs-warning-text-emphasis, #624e16);
+}
+
+.checkin-result-photo {
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.checkin-result-photo-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bs-success);
+  color: #fff;
+  font-weight: 700;
+  font-size: 20px;
+}
+
+.checkin-result.is-warning .checkin-result-photo-placeholder {
+  background: var(--bs-warning);
+  color: var(--bs-warning-text-emphasis, #624e16);
+}
+
+.checkin-result-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.checkin-result-body strong {
+  font-size: 16px;
+  color: var(--bs-gray-900);
+}
+
+.checkin-result-body span {
+  font-size: 13px;
+  color: var(--bs-gray-700);
+}
+
+.checkin-result-link {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.checkin-result-badge-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid var(--bs-border-color, #eff0f2);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bs-gray-700);
+}
+
+.checkin-footer {
+  padding: 16px;
+}
+
+.checkin-footer-inner {
+  max-width: 560px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--bs-gray-600);
+}
+
+.checkin-footer-link {
+  font-weight: 600;
+}
+
+@media (min-width: 576px) {
+  .checkin-main {
+    padding: 32px 16px 56px;
+  }
+
+  .checkin-card {
+    padding: 32px 36px;
+  }
+
+  .checkin-title {
+    font-size: 26px;
+  }
+}
+
+/* Check-in Arrivals chart (admin/scan_events/_arrivals_chart.html.erb) — a plain HTML/CSS column
+   chart, single hue (categorical slot 1 blue, matching .bar-fill elsewhere on these same
+   dashboards), value-at-the-cap direct labels (dataviz skill: correct for bars/columns, unlike
+   line/dot marks), CSS-only hover/focus tooltip (no JS — [data-tooltip]:hover::after below). */
+.arrival-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 140px;
+  /* Headroom above the columns — not just for the value label (~16px): the hover/focus tooltip
+     (below) anchors to `bottom: 100%` of .arrival-bar-col, which is 100% the height of *this*
+     box, not the bar's own rendered height — so every column's tooltip sits at the same fixed
+     point above this container regardless of that bar's value, and needs room for its own
+     padding + text + margin-bottom (~32px), not just the value label's. Confirmed live: at 20px
+     the tooltip clipped up into the "By Hour — Today" heading sitting right above this element. */
+  padding-top: 44px;
+  overflow-x: auto;
+}
+
+.arrival-bar-col {
+  position: relative;
+  flex: 1 0 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  outline: none;
+}
+
+.arrival-bar-value {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--bs-gray-700);
+  min-height: 14px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.arrival-bar {
+  width: 100%;
+  max-width: 24px;
+  background: #2a78d6; /* categorical slot 1 (blue) — same hue as .bar-fill */
+  border-radius: 4px 4px 0 0; /* rounded data-end, square at the baseline */
+  min-height: 2px;
+  transition: opacity 0.1s ease;
+}
+
+.arrival-bar-col:hover .arrival-bar,
+.arrival-bar-col:focus .arrival-bar {
+  opacity: 0.75; /* the hovered/focused mark visibly responds */
+}
+
+.arrival-bar-label {
+  font-size: 10px;
+  color: var(--bs-gray-600);
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
+.arrival-bar-col[data-tooltip]:hover::after,
+.arrival-bar-col[data-tooltip]:focus::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--bs-gray-900);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.arrivals-peak {
+  font-size: 13px;
+  color: var(--bs-gray-700);
+}

@@ -1,0 +1,16 @@
+<% content_for :page_title, @speaker.name %>
+
+<%= render "shared/page_header",
+  icon: "bx-microphone",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: edit_admin_event_path(@event) },
+            { label: "Speakers", path: edit_admin_event_path(@event, step: "speaker") }, { label: @speaker.name } ] %>
+
+<div class="row">
+  <div class="col-xl-9">
+    <div class="card">
+      <div class="card-body">
+        <%= render "form", event: @event, speaker: @speaker %>
+      </div>
+    </div>
+  </div>
+</div>

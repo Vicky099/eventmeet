@@ -1,0 +1,29 @@
+<%# Locals (all optional): field_name (String), blob_signed_id (String). Paired with a sibling
+    <input type="file"> inside a data-controller="image-upload" wrapper
+    (app/javascript/controllers/image_upload_controller.js) — that file input needs
+    data-image-upload-target="fileInput" plus data-direct-upload-url/data-blob-field-name for this
+    bar to show real, byte-level progress (an XHR uploading straight to Cloudinary), not a guess.
+
+    blob_signed_id (when given) seeds blobContainer with a hidden field carrying an
+    already-uploaded blob's signed_id up front, rather than leaving that div for the JS `change`
+    callback to fill in later. This is what a caller reaches for when the record already has this
+    attachment pending in memory but the *browser* has no record of it — the exact gap that bit
+    Admin::ParticipantsController#create: a validation failure on other fields re-renders the
+    whole page fresh (not a Turbo Frame patch), which wipes out the hidden field the JS only ever
+    injected as a side effect of the original upload's `change` event; without this, the
+    already-uploaded (real, sitting-in-Cloudinary) blob would have no way to ride along on the
+    retry submission, and silently never gets attached at all. image_upload_controller.js's own
+    `fileSelected` clears and replaces blobContainer's content the same way whether it started
+    empty or pre-seeded, so picking a different file here still overwrites this correctly. %>
+<div class="mt-2" hidden data-image-upload-target="uploadProgress">
+  <div class="progress" style="height: 4px;">
+    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" data-image-upload-target="progressBar"></div>
+  </div>
+  <small class="text-muted">Uploading to Cloudinary&hellip;</small>
+</div>
+<div data-image-upload-target="uploadStatus"></div>
+<div data-image-upload-target="blobContainer">
+  <% if local_assigns[:blob_signed_id].present? %>
+    <%= hidden_field_tag local_assigns[:field_name], local_assigns[:blob_signed_id] %>
+  <% end %>
+</div>

@@ -23,28 +23,39 @@ RSpec.describe Event, type: :model do
     expect(event.errors[:ends_at]).to be_present
   end
 
+  # Basic Info mandatory fields (requirement.md UI note): on-site needs Address AND a Google
+  # Maps link; virtual needs a meeting link; hybrid needs all three.
   describe "mode-dependent location presence" do
-    it "requires address for on_site" do
-      event = build(:event, account: account, mode: :on_site, address: nil, meeting_link: nil)
+    it "requires address and map_url for on_site" do
+      event = build(:event, account: account, mode: :on_site, address: nil, map_url: nil, meeting_link: nil)
       expect(event).not_to be_valid
       expect(event.errors[:address]).to be_present
+      expect(event.errors[:map_url]).to be_present
     end
 
-    it "requires meeting_link for virtual" do
-      event = build(:event, account: account, mode: :virtual, address: nil, meeting_link: nil)
+    it "requires meeting_link for virtual, and does not require address/map_url" do
+      event = build(:event, account: account, mode: :virtual, address: nil, map_url: nil, meeting_link: nil)
       expect(event).not_to be_valid
       expect(event.errors[:meeting_link]).to be_present
+      expect(event.errors[:address]).to be_empty
+      expect(event.errors[:map_url]).to be_empty
     end
 
-    it "requires both address and meeting_link for hybrid" do
-      event = build(:event, account: account, mode: :hybrid, address: nil, meeting_link: nil)
+    it "requires address, map_url, and meeting_link for hybrid" do
+      event = build(:event, account: account, mode: :hybrid, address: nil, map_url: nil, meeting_link: nil)
       expect(event).not_to be_valid
       expect(event.errors[:address]).to be_present
+      expect(event.errors[:map_url]).to be_present
       expect(event.errors[:meeting_link]).to be_present
     end
 
     it "is valid for virtual with only a meeting_link" do
-      event = build(:event, account: account, mode: :virtual, address: nil, meeting_link: "https://example.com/room")
+      event = build(:event, account: account, mode: :virtual, address: nil, map_url: nil, meeting_link: "https://example.com/room")
+      expect(event).to be_valid
+    end
+
+    it "is valid for on_site with both address and map_url present" do
+      event = build(:event, account: account, mode: :on_site, address: "123 Main St", map_url: "https://maps.google.com/?q=123")
       expect(event).to be_valid
     end
   end
@@ -100,6 +111,61 @@ RSpec.describe Event, type: :model do
     it "is false for a virtual event with only an address, no meeting_link" do
       event = build(:event, account: account, mode: :virtual, address: "123 Main St", meeting_link: nil)
       expect(event.basic_info_complete?).to be false
+    end
+
+    it "is false for an on_site event with an address but no map_url" do
+      event = build(:event, account: account, mode: :on_site, address: "123 Main St", map_url: nil)
+      expect(event.basic_info_complete?).to be false
+    end
+  end
+
+  # Wizard stepper's green-checkmark state (app/views/admin/events/edit.html.erb).
+  describe "#step_complete?" do
+    it "delegates basic_info to #basic_info_complete?" do
+      complete = build(:event, account: account, mode: :on_site, address: "123 Main St")
+      incomplete = build(:event, account: account, name: nil)
+
+      expect(complete.step_complete?("basic_info")).to be true
+      expect(incomplete.step_complete?("basic_info")).to be false
+    end
+
+    it "is false for sessions/speaker/event_schedule/tickets/badge with nothing created yet" do
+      event = create(:event, account: account)
+
+      expect(event.step_complete?("sessions")).to be false
+      expect(event.step_complete?("speaker")).to be false
+      expect(event.step_complete?("event_schedule")).to be false
+      expect(event.step_complete?("tickets")).to be false
+      expect(event.step_complete?("badge")).to be false
+    end
+
+    it "is true for sessions/speaker/event_schedule/tickets/badge once at least one row exists" do
+      event = create(:event, account: account)
+      create(:session, account: account, event: event)
+      create(:speaker, account: account, event: event)
+      create(:schedule, account: account, event: event)
+      create(:ticket_category, account: account, event: event)
+      create(:badge, account: account, event: event)
+
+      expect(event.step_complete?("sessions")).to be true
+      expect(event.step_complete?("speaker")).to be true
+      expect(event.step_complete?("event_schedule")).to be true
+      expect(event.step_complete?("tickets")).to be true
+      expect(event.step_complete?("badge")).to be true
+    end
+
+    it "treats review as complete only once the event is published" do
+      event = create(:event, account: account, starts_at: 1.day.from_now, ends_at: 2.days.from_now)
+      expect(event.step_complete?("review")).to be false
+
+      event.publish!
+
+      expect(event.step_complete?("review")).to be true
+    end
+
+    it "is false for an unrecognized step" do
+      event = create(:event, account: account)
+      expect(event.step_complete?("nonexistent")).to be false
     end
   end
 
@@ -159,6 +225,24 @@ RSpec.describe Event, type: :model do
       expect(event.published?).to be false
       expect(event.status).to eq("draft")
     end
+
+    # Basic Info gap-fill: description/is_paid/send_registration_email are edited on the same
+    # step as name/mode/etc, so they revert a published event to draft on edit the same way.
+    it "reverts on an edit to the new Basic Info gap-fill fields too" do
+      event = create(:event, account: account, starts_at: 1.day.from_now, ends_at: 2.days.from_now)
+      event.publish!
+
+      event.update!(description: "New description")
+      expect(event.status).to eq("draft")
+
+      event.publish!
+      event.update!(is_paid: true)
+      expect(event.status).to eq("draft")
+
+      event.publish!
+      event.update!(send_registration_email: true)
+      expect(event.status).to eq("draft")
+    end
   end
 
   describe "approval_status enum" do
@@ -198,6 +282,16 @@ RSpec.describe Event, type: :model do
       event.update!(name: "Renamed After Approval")
 
       expect(event.reload.approval_status).to eq("approved")
+    end
+
+    it "does not publish the event — that's the tenant's own subsequent manual step" do
+      event = create(:event, account: account, starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
+      expect(event.published?).to be false
+
+      event.approve!(by: create(:user, :platform_staff))
+
+      expect(event.published?).to be false
+      expect(event.status).to eq("draft")
     end
   end
 
@@ -290,6 +384,216 @@ RSpec.describe Event, type: :model do
       event.approve!(by: create(:user, :platform_staff))
 
       expect(event.review_sla_at_risk?).to be false
+    end
+  end
+
+  describe "#clear_seat_limit_unless_flagged" do
+    it "discards a stale seat_limit when has_seat_limit is false" do
+      event = create(:event, account: account, has_seat_limit: true, seat_limit: 50)
+
+      event.assign_attributes(has_seat_limit: false)
+      event.valid?
+
+      expect(event.seat_limit).to be_nil
+    end
+
+    it "leaves seat_limit untouched when has_seat_limit is true" do
+      event = create(:event, account: account, has_seat_limit: true, seat_limit: 50)
+
+      event.valid?
+
+      expect(event.seat_limit).to eq(50)
+    end
+  end
+
+  describe "#clear_category_total_counts_unless_seat_limited" do
+    it "discards every category's total_count when has_seat_limit turns off" do
+      event = create(:event, account: account, has_seat_limit: true, seat_limit: 100)
+      category = create(:ticket_category, account: account, event: event, total_count: 60)
+      event.reload
+
+      event.assign_attributes(has_seat_limit: false)
+      event.valid?
+
+      # Reads back through the same in-memory association the callback actually mutated — not the
+      # standalone `category` variable (a separate Ruby object for the same DB row) and not a
+      # reload (which would just re-fetch the still-unpersisted-change DB value). Same reasoning
+      # as ticket_categories_within_seat_limit's own spec, above.
+      expect(event.ticket_categories.find { |c| c.id == category.id }.total_count).to be_nil
+    end
+
+    it "leaves categories' total_count untouched when has_seat_limit stays on" do
+      event = create(:event, account: account, has_seat_limit: true, seat_limit: 100)
+      category = create(:ticket_category, account: account, event: event, total_count: 60)
+      event.reload
+
+      event.valid?
+
+      expect(event.ticket_categories.find { |c| c.id == category.id }.total_count).to eq(60)
+    end
+
+    it "also clears a brand-new category built in the same save, not just already-persisted ones" do
+      event = create(:event, account: account, has_seat_limit: false)
+      event.ticket_categories.build(account: account, name: "General", total_count: 60)
+
+      event.valid?
+
+      expect(event.ticket_categories.first.total_count).to be_nil
+    end
+  end
+
+  describe "seat_limit presence" do
+    it "is required once has_seat_limit is toggled on" do
+      event = build(:event, account: account, has_seat_limit: true, seat_limit: nil)
+
+      expect(event).not_to be_valid
+      expect(event.errors[:seat_limit]).to be_present
+    end
+
+    it "is not required when has_seat_limit is off" do
+      event = build(:event, account: account, has_seat_limit: false, seat_limit: nil)
+
+      expect(event).to be_valid
+    end
+  end
+
+  describe "#destroyed_categories_have_no_participants" do
+    it "rejects marking a category with existing participants for destruction" do
+      event = create(:event, account: account)
+      category = create(:ticket_category, account: account, event: event)
+      create(:participant, account: account, event: event, ticket_category: category)
+      event.reload
+
+      # Mirrors the real Tickets-step flow (same reasoning as
+      # "accounts for a category's newly-edited value", above) — mutates the association's own
+      # loaded in-memory record, not a separately-queried `.first`, which is what
+      # #destroyed_categories_have_no_participants actually iterates.
+      event.assign_attributes(ticket_categories_attributes: { "0" => { id: category.id, _destroy: "1" } })
+
+      expect(event).not_to be_valid
+      expect(event.errors[:base].first).to include("participants are already registered")
+    end
+
+    it "allows marking a category with no participants for destruction" do
+      event = create(:event, account: account)
+      category = create(:ticket_category, account: account, event: event)
+      event.reload
+
+      event.assign_attributes(ticket_categories_attributes: { "0" => { id: category.id, _destroy: "1" } })
+
+      expect(event).to be_valid
+    end
+  end
+
+  describe "#ticket_categories_within_seat_limit (requirement.md §5.3)" do
+    it "allows any combined total when the event has no seat_limit" do
+      event = create(:event, account: account, seat_limit: nil)
+      event.ticket_categories.build(account: account, name: "General", total_count: 1_000)
+
+      expect(event).to be_valid
+    end
+
+    it "rejects a single new category that alone exceeds the seat_limit" do
+      event = create(:event, account: account, seat_limit: 50)
+      event.ticket_categories.build(account: account, name: "General", total_count: 51)
+
+      expect(event).not_to be_valid
+      expect(event.errors[:seat_limit]).to be_present
+    end
+
+    # The exact bug reported live: seat_limit 100, three brand-new categories totalling 150 in
+    # one save — none exceeds 100 alone, only their sum does. The old (removed)
+    # TicketCategory-level validation missed this entirely: each new row queried the database for
+    # "other categories' total," which was 0 for all three since none of them existed yet.
+    it "rejects several brand-new categories submitted together whose combined total exceeds the seat_limit, even though none exceeds it alone" do
+      event = create(:event, account: account, seat_limit: 100)
+      event.ticket_categories.build(account: account, name: "General", total_count: 60)
+      event.ticket_categories.build(account: account, name: "VIP", total_count: 50)
+      event.ticket_categories.build(account: account, name: "Press", total_count: 40)
+
+      expect(event).not_to be_valid
+      expect(event.errors[:seat_limit].first).to include("150")
+    end
+
+    it "allows several brand-new categories submitted together when their combined total fits" do
+      event = create(:event, account: account, seat_limit: 100)
+      event.ticket_categories.build(account: account, name: "General", total_count: 60)
+      event.ticket_categories.build(account: account, name: "VIP", total_count: 40)
+
+      expect(event).to be_valid
+    end
+
+    it "accounts for a category's newly-edited value, not its stale persisted one" do
+      event = create(:event, account: account, seat_limit: 50)
+      category = create(:ticket_category, account: account, event: event, total_count: 50)
+      # Creating the category via a separate factory call, above, doesn't touch `event`'s own
+      # in-memory `ticket_categories` — and `create(:event, ...)` already triggered this very
+      # validation once (during its own save), which caches an empty association on `event` right
+      # then. Reload to match what the real flow actually looks like: Admin::EventsController's
+      # `set_event` does a fresh `Event.friendly.find` every request, so nested attributes always
+      # assign against an unloaded (or already-current) association, never a stale cached one.
+      event.reload
+
+      # Mirrors the real Tickets-step flow (Admin::EventsController#update ->
+      # event.assign_attributes(ticket_categories_attributes: ...)) — accepts_nested_attributes_for
+      # finds the existing category by :id and mutates it *within* the event's own loaded
+      # `ticket_categories` association, which is what the validation actually reads. Reassigning
+      # a standalone `category` variable's attribute wouldn't touch that same in-memory copy.
+      event.assign_attributes(ticket_categories_attributes: { "0" => { id: category.id, total_count: 45 } })
+      expect(event).to be_valid
+
+      event.assign_attributes(ticket_categories_attributes: { "0" => { id: category.id, total_count: 51 } })
+      expect(event).not_to be_valid
+    end
+
+    it "ignores a category marked for destruction in the same save" do
+      event = create(:event, account: account, seat_limit: 50)
+      category = create(:ticket_category, account: account, event: event, total_count: 50)
+      event.reload # see the comment above — avoids validating against a stale cached association
+
+      event.ticket_categories.build(account: account, name: "General", total_count: 40)
+      event.ticket_categories.find { |c| c.id == category.id }.mark_for_destruction
+
+      expect(event).to be_valid
+    end
+  end
+
+  describe "#badge_for / #badge_for_category (requirement.md §5.5)" do
+    it "returns nil when no badges exist" do
+      event = create(:event, account: account)
+      participant = create(:participant, account: account, event: event)
+
+      expect(event.badge_for(participant)).to be_nil
+      expect(event.badge_for_category(nil)).to be_nil
+    end
+
+    it "prefers a category-specific badge over the event's default" do
+      event = create(:event, account: account)
+      category = create(:ticket_category, account: account, event: event)
+      default_badge = create(:badge, account: account, event: event, ticket_category: nil)
+      category_badge = create(:badge, account: account, event: event, ticket_category: category)
+      participant = create(:participant, account: account, event: event, ticket_category: category)
+
+      expect(event.badge_for(participant)).to eq(category_badge)
+      expect(event.badge_for_category(category)).to eq(category_badge)
+      expect(default_badge).to be_persisted # sanity: the default exists but isn't the one picked
+    end
+
+    it "falls back to the event's default badge when the category has none of its own" do
+      event = create(:event, account: account)
+      category = create(:ticket_category, account: account, event: event)
+      default_badge = create(:badge, account: account, event: event, ticket_category: nil)
+      participant = create(:participant, account: account, event: event, ticket_category: category)
+
+      expect(event.badge_for(participant)).to eq(default_badge)
+      expect(event.badge_for_category(category)).to eq(default_badge)
+    end
+
+    it "badge_for_category resolves the default badge for a nil category" do
+      event = create(:event, account: account)
+      default_badge = create(:badge, account: account, event: event, ticket_category: nil)
+
+      expect(event.badge_for_category(nil)).to eq(default_badge)
     end
   end
 

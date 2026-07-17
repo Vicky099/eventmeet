@@ -1,0 +1,8 @@
+<% content_for :page_title, "Edit #{@badge.name} — #{@event.name}" %>
+
+<%= render "shared/page_header",
+  icon: "bx-id-card", crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: edit_admin_event_path(@event) }, { label: @badge.name } ] %>
+
+<%= render "admin/shared/badge_editor", object: @badge,
+      url: admin_event_badge_path(@event, @badge), method: :patch,
+      back_path: edit_admin_event_path(@event, step: "badge") %>

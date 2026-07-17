@@ -39,8 +39,30 @@
       </div>
       <div class="card-body">
         <dl class="row mb-0">
+          <% if @account.logo.attached? %>
+            <dt class="col-sm-4">Logo</dt>
+            <%# Not image_tag(attachment) — "no implicit conversion of ActiveStorage::Attached::One
+                into String", compounded by this app's config/cloudinary.yml `enhance_image_tag:
+                true` mangling any URL string fed to image_tag instead (see checkin/_result.html.erb
+                and admin/speakers/index.html.erb's own identical comments — confirmed live here
+                too). A bare <img> via `tag.img` sidesteps image_tag entirely. %>
+            <dd class="col-sm-8"><%= tag.img src: @account.logo.url, style: "max-height: 60px;", alt: "#{@account.name} logo" %></dd>
+          <% end %>
+
           <dt class="col-sm-4">Name</dt>
           <dd class="col-sm-8"><%= @account.name %></dd>
+
+          <dt class="col-sm-4">Contact Email</dt>
+          <dd class="col-sm-8"><%= @account.contact_email.presence || "—" %></dd>
+
+          <dt class="col-sm-4">Contact Number</dt>
+          <dd class="col-sm-8"><%= @account.contact_num.presence || "—" %></dd>
+
+          <dt class="col-sm-4">Sender Email</dt>
+          <dd class="col-sm-8"><%= @account.sender_email.presence || "—" %></dd>
+
+          <dt class="col-sm-4">Timezone</dt>
+          <dd class="col-sm-8"><%= @account.time_zone %></dd>
 
           <dt class="col-sm-4">Subdomain</dt>
           <dd class="col-sm-8"><%= @account.subdomain_slug %>.<%= Rails.application.config.x.platform_domain %></dd>

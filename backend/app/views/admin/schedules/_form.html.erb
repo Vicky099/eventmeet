@@ -1,0 +1,41 @@
+<%# Locals: event, schedule. %>
+<%= form_with model: schedule, url: schedule.persisted? ? admin_event_schedule_path(event, schedule) : admin_event_schedules_path(event),
+      local: true do |f| %>
+  <div class="row g-3">
+    <div class="col-md-8">
+      <%= f.label :title, class: "form-label" %>
+      <%= f.text_field :title, class: field_error_class(schedule, :title), required: true %>
+      <%= field_error_feedback(schedule, :title) %>
+    </div>
+    <div class="col-md-4">
+      <%= f.label :speaker_id, "Speaker", class: "form-label" %>
+      <%= f.select :speaker_id, event.speakers.order(:name).map { |s| [ s.name, s.id ] },
+            { include_blank: "Select a speaker" }, class: field_error_class(schedule, :speaker_id, base: "form-select"), required: true %>
+      <%= field_error_feedback(schedule, :speaker_id) %>
+    </div>
+    <div class="col-md-4">
+      <%= f.label :session_id, "Session (optional)", class: "form-label" %>
+      <%= f.select :session_id, event.sessions.order(:starts_at).map { |s| [ s.name, s.id ] },
+            { include_blank: "None — standalone talk" }, class: "form-select" %>
+    </div>
+    <div class="col-md-4">
+      <%= f.label :starts_at, "Starts", class: "form-label" %>
+      <%= f.datetime_field :starts_at, class: field_error_class(schedule, :starts_at) %>
+      <%= field_error_feedback(schedule, :starts_at) %>
+    </div>
+    <div class="col-md-4">
+      <%= f.label :ends_at, "Ends", class: "form-label" %>
+      <%= f.datetime_field :ends_at, class: field_error_class(schedule, :ends_at) %>
+      <%= field_error_feedback(schedule, :ends_at) %>
+    </div>
+    <div class="col-12">
+      <%= f.label :details, class: "form-label" %>
+      <%= f.text_area :details, class: "form-control", rows: 3 %>
+    </div>
+  </div>
+
+  <div class="d-flex align-items-center gap-3 mt-4">
+    <%= link_to "Cancel", edit_admin_event_path(event, step: "event_schedule"), class: "btn btn-outline-secondary" %>
+    <%= f.submit schedule.persisted? ? "Save" : "Add Talk", class: "btn btn-primary ms-auto" %>
+  </div>
+<% end %>

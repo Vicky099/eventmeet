@@ -1,0 +1,12 @@
+<% content_for :page_title, "New Registration Form" %>
+
+<%= render "shared/page_header",
+  icon: "bx-list-check",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) },
+            { label: "Registration Forms", path: admin_event_registration_forms_path(@event) }, { label: "New" } ] %>
+
+<div class="card">
+  <div class="card-body">
+    <%= render "form", registration_form: @registration_form, ticket_categories: @ticket_categories %>
+  </div>
+</div>

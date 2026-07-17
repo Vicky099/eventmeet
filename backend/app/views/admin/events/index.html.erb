@@ -32,7 +32,7 @@
         <tbody>
           <% @events.each do |event| %>
             <tr>
-              <td><%= link_to event.name, edit_admin_event_path(event) %></td>
+              <td><%= link_to event.name, admin_event_path(event) %></td>
               <td><%= event.mode.humanize %></td>
               <td><%= event.starts_at.to_fs(:short) %></td>
               <td><span class="badge bg-info-subtle text-info"><%= event.status.humanize %></span></td>

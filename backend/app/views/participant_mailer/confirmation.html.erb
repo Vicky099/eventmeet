@@ -1,0 +1,18 @@
+<h1>You're registered for <%= @event.name %></h1>
+
+<p>Hi <%= @participant.first_name %>,</p>
+
+<p>Your registration for <strong><%= @event.name %></strong> is confirmed.</p>
+
+<ul>
+  <li><strong>When:</strong> <%= @event.starts_at.strftime("%B %-d, %Y %H:%M") %> &ndash; <%= @event.ends_at.strftime("%B %-d, %Y %H:%M") %></li>
+  <% if @event.address.present? %>
+    <li><strong>Where:</strong> <%= @event.address %></li>
+  <% end %>
+  <% if @event.meeting_link.present? %>
+    <li><strong>Meeting link:</strong> <%= link_to @event.meeting_link, @event.meeting_link %></li>
+  <% end %>
+  <li><strong>Your registration ID:</strong> <%= @participant.client_participant_id %></li>
+</ul>
+
+<p>See you there!</p>

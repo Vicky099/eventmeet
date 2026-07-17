@@ -27,7 +27,9 @@ module SuperAdmin
     # on success. This action only translates its Result into a redirect or a re-rendered form.
     def create
       attrs = account_params
-      result = AccountProvisioning.call(account_attributes: attrs.except(:admin_email), admin_email: attrs[:admin_email])
+      result = AccountProvisioning.call(
+        account_attributes: attrs.except(:admin_email), admin_email: attrs[:admin_email], logo: params.dig(:account, :logo)
+      )
 
       if result.success?
         redirect_to platform_account_path(result.account),
@@ -46,6 +48,8 @@ module SuperAdmin
     # form never renders that field (_form.html.erb), but strong params doesn't know that; excluded
     # explicitly rather than trusting the form to never send it, same as #create does.
     def update
+      @account.attach_logo(params.dig(:account, :logo))
+
       if @account.update(account_params.except(:admin_email))
         redirect_to platform_account_path(@account), notice: "#{@account.name} updated."
       else
@@ -81,7 +85,9 @@ module SuperAdmin
     end
 
     def account_params
-      params.require(:account).permit(:name, :subdomain_slug, :admin_email)
+      params.require(:account).permit(
+        :name, :subdomain_slug, :admin_email, :contact_email, :contact_num, :sender_email, :time_zone
+      )
     end
 
     def slug_availability(slug, exclude_id: nil)

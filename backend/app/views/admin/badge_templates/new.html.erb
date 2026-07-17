@@ -1,0 +1,40 @@
+<% content_for :page_title, "New Badge Template" %>
+
+<%= render "shared/page_header",
+  icon: "bx-id-card", crumbs: [ { label: "Badge Templates", path: admin_badge_templates_path }, { label: "New" } ] %>
+
+<%# A lightweight "start a template" form — name/type/size only. The GrapesJS canvas itself
+    (background/logo/mapping/content) is the edit page, reached immediately after this creates a
+    blank row; there's nothing worth designing yet without a persisted record to save it to. %>
+<div class="card">
+  <div class="card-body">
+    <%= form_with model: @badge_template, url: admin_badge_templates_path do |f| %>
+      <div class="mb-3">
+        <%= f.label :name, class: "form-label" %>
+        <%= f.text_field :name, class: field_error_class(@badge_template, :name), placeholder: "e.g. Standard Attendee Badge" %>
+        <%= field_error_feedback(@badge_template, :name) %>
+      </div>
+      <div class="row g-3 mb-3">
+        <div class="col-md-4">
+          <%= f.label :output_type, class: "form-label" %>
+          <%= f.select :output_type, BadgeTemplate.output_types.keys.map { |t| [ t.humanize, t ] }, {}, class: "form-select" %>
+        </div>
+        <div class="col-md-4">
+          <%= f.label :width_cm, "Width (cm)", class: "form-label" %>
+          <%= f.number_field :width_cm, step: 0.1, min: 0.1, class: field_error_class(@badge_template, :width_cm) %>
+          <%= field_error_feedback(@badge_template, :width_cm) %>
+        </div>
+        <div class="col-md-4">
+          <%= f.label :height_cm, "Height (cm)", class: "form-label" %>
+          <%= f.number_field :height_cm, step: 0.1, min: 0.1, class: field_error_class(@badge_template, :height_cm) %>
+          <%= field_error_feedback(@badge_template, :height_cm) %>
+        </div>
+      </div>
+
+      <div class="d-flex align-items-center gap-3">
+        <%= link_to "Cancel", admin_badge_templates_path, class: "btn btn-outline-secondary" %>
+        <%= f.submit "Continue to design", class: "btn btn-primary ms-auto" %>
+      </div>
+    <% end %>
+  </div>
+</div>

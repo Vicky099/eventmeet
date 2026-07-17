@@ -1,71 +1,124 @@
 <%# Locals: event.
     Step 1 of the wizard (requirement.md §5.2 revisited) — Next is a real PATCH
-    (Admin::EventsController#update) that saves this step and advances, not autosave. %>
-<%= form_with model: event, url: admin_event_path(event), method: :patch, data: { controller: "event-mode" } do |f| %>
+    (Admin::EventsController#update) that saves this step and advances, not autosave. Several
+    distinct cards below (Event Details/Settings) — all still inside this one `form_with`, so
+    they still submit together as a single Next; only the presentation split into separate
+    cards, not the save behavior. %>
+<%# seat-limit-block/seat-limit-fields: same CSS-driven show/hide as the Tickets step used for its
+    own fields (application.css) — :has() off the "Seat Limit" toggle's own live DOM state, so the
+    seat count input appears/disappears instantly with no dependency on Stimulus having connected
+    yet, including right after a failed submit re-render. %>
+<%= form_with model: event, url: admin_event_path(event), method: :patch,
+      html: { class: "seat-limit-block" }, data: { controller: "event-mode seat-limit" } do |f| %>
   <%= hidden_field_tag :step, "basic_info" %>
-  <% if event.errors.any? %>
-    <div class="alert alert-danger">
-      <ul class="mb-0">
-        <% event.errors.full_messages.each do |message| %>
-          <li><%= message %></li>
-        <% end %>
-      </ul>
-    </div>
-  <% end %>
+  <%# No top-of-form error summary — every field on this step renders its own error inline,
+      directly below itself (field_error_class/field_error_feedback,
+      app/helpers/application_helper.rb), so a summary list up here would only ever repeat what's
+      already shown at the field. %>
 
-  <div class="row g-3">
-    <div class="col-md-8">
-      <%= f.label :name, class: "form-label" %>
-      <%= f.text_field :name, class: "form-control" %>
-    </div>
-    <div class="col-md-4">
-      <%= f.label :mode, class: "form-label" %>
-      <%= f.select :mode, Event.modes.keys.map { |m| [ m.humanize, m ] }, {},
-            class: "form-select", data: { event_mode_target: "mode", action: "change->event-mode#toggle" } %>
-    </div>
+  <div class="card mb-3">
+    <div class="card-header"><span class="fw-semibold">Event Details</span></div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-8">
+          <%= f.label :name, class: "form-label" %>
+          <%= f.text_field :name, class: field_error_class(event, :name) %>
+          <%= field_error_feedback(event, :name) %>
+        </div>
+        <div class="col-md-4">
+          <%= f.label :mode, class: "form-label" %>
+          <%= f.select :mode, Event.modes.keys.map { |m| [ m.humanize, m ] }, {},
+                class: "form-select", data: { event_mode_target: "mode", action: "change->event-mode#toggle" } %>
+        </div>
 
-    <div class="col-md-6">
-      <%= f.label :starts_at, "Starts", class: "form-label" %>
-      <%= f.datetime_field :starts_at, class: "form-control" %>
-    </div>
-    <div class="col-md-6">
-      <%= f.label :ends_at, "Ends", class: "form-label" %>
-      <%= f.datetime_field :ends_at, class: "form-control" %>
-    </div>
+        <div class="col-12">
+          <%= f.label :description, class: "form-label" %>
+          <%= f.text_area :description, class: "form-control", rows: 3 %>
+        </div>
 
-    <div class="col-md-6" data-event-mode-target="onSiteField">
-      <%= f.label :address, class: "form-label" %>
-      <%= f.text_area :address, class: "form-control", rows: 2 %>
-      <small class="text-muted">Required for on-site/hybrid events.</small>
-    </div>
-    <div class="col-md-6" data-event-mode-target="onSiteField">
-      <%= f.label :map_url, "Google Maps link", class: "form-label" %>
-      <%= f.text_field :map_url, class: "form-control", placeholder: "https://maps.google.com/?q=..." %>
-      <small class="text-muted">Paste a Google Maps location URL — used to render the map on the public event page.</small>
-    </div>
-    <div class="col-md-6" data-event-mode-target="virtualField">
-      <%= f.label :meeting_link, class: "form-label" %>
-      <%= f.text_field :meeting_link, class: "form-control" %>
-      <small class="text-muted">Required for virtual/hybrid events.</small>
-    </div>
+        <div class="col-md-6">
+          <%= f.label :starts_at, "Starts", class: "form-label" %>
+          <%= f.datetime_field :starts_at, class: field_error_class(event, :starts_at) %>
+          <%= field_error_feedback(event, :starts_at) %>
+        </div>
+        <div class="col-md-6">
+          <%= f.label :ends_at, "Ends", class: "form-label" %>
+          <%= f.datetime_field :ends_at, class: field_error_class(event, :ends_at) %>
+          <%= field_error_feedback(event, :ends_at) %>
+        </div>
 
-    <div class="col-md-4">
-      <%= f.label :banner_orientation, class: "form-label" %>
-      <%= f.select :banner_orientation, Event.banner_orientations.keys.map { |o| [ o.humanize, o ] }, {}, class: "form-select" %>
+        <div class="col-md-6" data-event-mode-target="onSiteField">
+          <%= f.label :address, class: "form-label" %>
+          <%= f.text_area :address, class: field_error_class(event, :address), rows: 2 %>
+          <%= field_error_feedback(event, :address) %>
+          <small class="text-muted">Required for on-site/hybrid events.</small>
+        </div>
+        <div class="col-md-6" data-event-mode-target="onSiteField">
+          <%= f.label :map_url, "Google Maps link", class: "form-label" %>
+          <%= f.text_field :map_url, class: field_error_class(event, :map_url), placeholder: "https://maps.google.com/?q=..." %>
+          <%= field_error_feedback(event, :map_url) %>
+          <small class="text-muted">Required for on-site/hybrid events. Paste a Google Maps location URL — used to render the map on the public event page.</small>
+        </div>
+        <div class="col-md-6" data-event-mode-target="virtualField">
+          <%= f.label :meeting_link, class: "form-label" %>
+          <%= f.text_field :meeting_link, class: field_error_class(event, :meeting_link) %>
+          <%= field_error_feedback(event, :meeting_link) %>
+          <small class="text-muted">Required for virtual/hybrid events.</small>
+        </div>
+
+      </div>
     </div>
   </div>
 
-  <hr>
+  <%# Settings card — event-level toggles that used to be scattered across steps (Seat Limit was
+      the Tickets step's own "This event has a seat limit" field; moved here so ticket categories
+      and sessions can both key their own capacity fields off one value the organizer sets once,
+      early in the wizard, rather than each step defining its own limit). %>
+  <div class="card mb-3">
+    <div class="card-header"><span class="fw-semibold">Settings</span></div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="form-check form-switch mb-2">
+            <%= f.check_box :has_seat_limit, class: "form-check-input",
+                  data: { seat_limit_target: "toggle", action: "change->seat-limit#syncRequired" } %>
+            <%= f.label :has_seat_limit, "Seat Limit", class: "form-check-label" %>
+          </div>
 
-  <h6 class="text-muted text-uppercase font-size-12">Required participant fields</h6>
-  <div class="d-flex flex-wrap gap-3 mb-3">
-    <% Event::PARTICIPANT_FIELD_CATALOG.each do |field| %>
-      <div class="form-check">
-        <%= check_box_tag "event[participant_fields][#{field}]", "true", event.participant_fields[field],
-              id: "participant_field_#{field}", class: "form-check-input" %>
-        <%= label_tag "participant_field_#{field}", field.humanize, class: "form-check-label" %>
+          <div class="seat-limit-fields">
+            <%= f.label :seat_limit, "Number of seats", class: "form-label" %>
+            <%# required is JS-managed (seat_limit_controller#syncRequired), not set here — a
+                required field hidden via CSS is NOT exempt from the browser's own constraint
+                validation; see application.css for the visibility rule and the controller for why
+                `required` has to be actively kept in sync rather than left to CSS. %>
+            <%= f.number_field :seat_limit, min: 1, class: field_error_class(event, :seat_limit), data: { seat_limit_target: "limitInput" } %>
+            <%= field_error_feedback(event, :seat_limit) %>
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <div class="form-check form-switch">
+            <%= f.check_box :is_paid, class: "form-check-input" %>
+            <%= f.label :is_paid, "Paid Event", class: "form-check-label" %>
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <div class="form-check form-switch">
+            <%= f.check_box :send_registration_email, class: "form-check-input" %>
+            <%= f.label :send_registration_email, "Send a confirmation email", class: "form-check-label" %>
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <div class="form-check form-switch">
+            <%= f.check_box :participant_approval_required, class: "form-check-input" %>
+            <%= f.label :participant_approval_required, "Organizer must approve each participant before they're confirmed", class: "form-check-label" %>
+          </div>
+        </div>
+
       </div>
-    <% end %>
+    </div>
   </div>
 
   <div class="d-flex align-items-start gap-3 mt-4">

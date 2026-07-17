@@ -1,0 +1,43 @@
+<% content_for :page_title, "Export Participants" %>
+
+<% if @export_file.pending? || @export_file.processing? %>
+  <% content_for :head, tag.meta("http-equiv": "refresh", content: "3") %>
+<% end %>
+
+<%= render "shared/page_header",
+  icon: "bx-group",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) },
+            { label: "Participants", path: admin_event_participants_path(@event) }, { label: "Export" } ] %>
+
+<div class="row">
+  <div class="col-xl-7">
+    <div class="card">
+      <div class="card-body">
+        <% case @export_file.status %>
+        <% when "pending", "processing" %>
+          <div class="d-flex align-items-center gap-2">
+            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+            <span>Preparing your export…</span>
+          </div>
+        <% when "completed" %>
+          <div class="alert alert-success mb-3">
+            <i class="bx bx-check-circle me-1"></i> Export ready.
+          </div>
+          <%# download_admin_event_export_file_path, not rails_blob_path — that redirected
+              straight to Cloudinary's own public delivery URL, a real gem bug for "raw"
+              (non-image) files (CloudinaryRawFile's own comment has the full story); #download
+              streams the bytes through this app instead. data-action — download_progress
+              _controller.js (requirement.md revisit: "download will open modal and show the
+              progress bar...") intercepts the click, so this never actually navigates the page
+              at all; no target="_blank" needed anymore for that reason. %>
+          <%= link_to "Download .xlsx", download_admin_event_export_file_path(@event, @export_file),
+                class: "btn btn-primary", data: { action: "click->download-progress#start", download_progress_filename_param: "participants.xlsx" } %>
+        <% when "failed" %>
+          <div class="alert alert-danger mb-0">
+            <i class="bx bx-error-circle me-1"></i> Export failed — try again from the Participants list.
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

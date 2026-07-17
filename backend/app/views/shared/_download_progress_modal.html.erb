@@ -1,0 +1,27 @@
+<%# requirement.md revisit: "download will open modal and show the progress bar and once 100%
+    done then modal will close automatically and xlsx will download." Shared Bootstrap modal —
+    same "one instance per console, driven entirely by data-* on whatever link triggers it" shape
+    shared/_confirm_dialog.html.erb already established — for any download that streams real
+    bytes through this app rather than a plain, instant static link (Admin::ExportFilesController
+    #download, Admin::ImportFilesController#sample). Driven by download_progress_controller.js.
+    data-bs-backdrop="static"/data-bs-keyboard="false" — this one closes itself once the download
+    actually finishes, not on a stray click/Escape while it's still in flight.
+
+    Usage — on any download link:
+      data-action="click->download-progress#start"
+      data-download-progress-filename-param="participants.xlsx" (optional fallback filename, used
+        only if the response's own Content-Disposition header doesn't carry one) %>
+<div class="modal fade" id="downloadProgressModal" tabindex="-1" aria-hidden="true"
+     data-bs-backdrop="static" data-bs-keyboard="false" data-download-progress-target="modal">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-body text-center py-4">
+        <p class="text-muted font-size-14 mb-3" data-download-progress-target="label">Preparing your download&hellip;</p>
+        <div class="progress" style="height: 6px;">
+          <div class="progress-bar" role="progressbar" style="width: 0%" data-download-progress-target="bar"></div>
+        </div>
+        <p class="text-muted font-size-12 mt-2 mb-0" data-download-progress-target="percent">0%</p>
+      </div>
+    </div>
+  </div>
+</div>

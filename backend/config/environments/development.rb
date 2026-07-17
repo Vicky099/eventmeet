@@ -28,15 +28,31 @@ Rails.application.configure do
   # Change to :null_store to avoid any caching.
   config.cache_store = :memory_store
 
-  # Store uploaded files on the local file system (see config/storage.yml for options).
-  config.active_storage.service = :local
+  # Always Cloudinary, matching the sibling event_management project's own development config
+  # exactly (that project doesn't fall back to local disk in dev either) — see
+  # config/cloudinary.yml, config/storage.yml. Requires real CLOUD_NAME/API_KEY/API_SECRET values
+  # in config/application.yml (Figaro) to actually upload; fill those in with your own Cloudinary
+  # account's credentials.
+  config.active_storage.service = :cloudinary
 
   # MailCatcher (https://mailcatcher.me) — a local SMTP server that catches every outgoing email
   # instead of actually sending it, viewable at http://localhost:1080. Run `bin/mailcatcher` (or
   # add it to your Procfile.dev runner) before triggering anything that sends mail — Devise's
   # password-reset instructions (§4.9 item 1), later invite/notification emails (Phase 2+).
+  # Same active-in-dev-by-default choice shopmate-backend's own development.rb makes (Brevo is
+  # commented out there too, for the same reason: sending real email on every local password-reset
+  # test isn't what you want) — swap the two blocks below to test against real Brevo delivery.
   config.action_mailer.delivery_method = :smtp
   config.action_mailer.smtp_settings = { address: "localhost", port: 1025 }
+
+  # config.action_mailer.smtp_settings = {
+  #   address: "smtp-relay.brevo.com",
+  #   port: 587,
+  #   user_name: ENV["BREVO_SMTP_LOGIN"],
+  #   password: ENV["BREVO_SMTP_KEY"],
+  #   authentication: :login,
+  #   enable_starttls_auto: true
+  # }
 
   # Raise, now that there's a real local SMTP catcher configured to fail against if it's not
   # running — silent failures here just look like "the app is broken," not "start MailCatcher."

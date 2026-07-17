@@ -1,5 +1,4 @@
-# Phase 4 (requirement.md §3.2, baseline EventSchedularJob minus the auto-checkout piece — that
-# belongs in Phase 9 once Attendance exists). Ports the baseline's daily cron-triggered scheduler,
+# Phase 4 (requirement.md §3.2). Ports the baseline's daily cron-triggered scheduler,
 # but self-reschedules every RESCHEDULE_INTERVAL instead of depending on external cron/
 # sidekiq-cron (no such gem is installed, and this product's own flagship differentiator is
 # real-time behavior — a `live` transition landing within minutes, not up to a day late, fits
@@ -30,7 +29,13 @@ class EventSchedulerJob < ApplicationJob
         next if target == event.status
 
         begin
+          was_live = event.live?
           event.update!(status: target)
+          # Phase 9 checklist: "auto-checkout/mark-absent attendees when an event's live ->
+          # completed transition fires" — exactly this transition, not "any event that ends up
+          # completed" (an event published straight past its own end date, skipping `live`
+          # entirely, has no in-progress attendance to finalize).
+          EventCompletionService.finalize_attendance!(event) if was_live && target == "completed"
         rescue StandardError => e
           # One bad row shouldn't take down the whole tick — or, via Sidekiq's own default
           # retry-on-raise behavior interacting badly with the unconditional reschedule below,

@@ -1,0 +1,16 @@
+<% content_for :page_title, "New Talk" %>
+
+<%= render "shared/page_header",
+  icon: "bx-calendar-check",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: edit_admin_event_path(@event) },
+            { label: "Event Schedule", path: edit_admin_event_path(@event, step: "event_schedule") }, { label: "New Talk" } ] %>
+
+<div class="row">
+  <div class="col-xl-9">
+    <div class="card">
+      <div class="card-body">
+        <%= render "form", event: @event, schedule: @schedule %>
+      </div>
+    </div>
+  </div>
+</div>

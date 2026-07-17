@@ -1,0 +1,145 @@
+<%# Locals: event, badges, actions (optional, default true).
+    Extracted from index.html.erb so the event-setup wizard's Badge step (_badge_step.html.erb)
+    can show the exact same rows inline instead of just a "go look elsewhere" button — the whole
+    point being a tenant can see what's already designed without leaving the wizard. `actions:
+    false` drops the Edit/Remove column for the Review step, which is read-only by design (every
+    other section there is too — editing happens back on its own step, not from Review).
+
+    The eye-icon Preview column is deliberately NOT gated by `actions:` — it's read-only wherever
+    it appears (an <iframe> onto Admin::BadgesController#preview, never a form/link that changes
+    anything), so it belongs on Review's own read-only copy of this table just as much as the
+    editable ones. %>
+<% actions = local_assigns.fetch(:actions, true) %>
+<%# "Copy to..." (Admin::BadgesController#copy) — every ticket category/Default slot not already
+    claimed by one of `badges` (Badge's own uniqueness validation caps each slot at one badge) is
+    a valid copy target; the same list applies to every row, since it's a property of the event's
+    badges as a whole, not any one row. %>
+<% claimed_category_ids = badges.map(&:ticket_category_id) %>
+<% copy_targets = ([ [ "Default (every other participant)", nil ] ] + event.ticket_categories.map { |c| [ c.name, c.id ] })
+     .reject { |_label, id| claimed_category_ids.include?(id) } %>
+<% if badges.none? %>
+  <%= render "shared/empty_state", icon: "bx-id-card",
+        message: "No badges designed yet for this event.",
+        action_label: (actions ? "Design a badge" : nil), action_path: (actions ? new_admin_event_badge_path(event) : nil) %>
+<% else %>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Badge</th>
+          <th>Applies to</th>
+          <th>Type</th>
+          <th>Size (cm)</th>
+          <th class="text-end">Preview</th>
+          <% if actions %><th class="text-end">Actions</th><% end %>
+        </tr>
+      </thead>
+      <tbody>
+        <% badges.each do |badge| %>
+          <tr>
+            <td><%= link_to badge.name, edit_admin_event_badge_path(event, badge) %></td>
+            <td><%= badge.ticket_category&.name || "Default (every other participant)" %></td>
+            <td><%= badge.output_type.humanize %></td>
+            <td><%= badge.width_cm %> &times; <%= badge.height_cm %></td>
+            <td class="text-end">
+              <button type="button" class="btn btn-sm btn-outline-secondary" title="Preview"
+                      data-bs-toggle="modal" data-bs-target="#badge-preview-modal-<%= badge.id %>">
+                <i class="bx bx-show"></i>
+              </button>
+            </td>
+            <% if actions %>
+              <td class="text-end">
+                <div class="d-flex justify-content-end gap-2">
+                  <%# Only offered once there's actually somewhere left to copy *to* — every
+                      ticket category (and Default) already having its own badge means this
+                      badge has nothing left to duplicate onto. Opens a modal (a <select>, not a
+                      dropdown-per-target menu — reads better once there are more than a couple of
+                      categories) rather than acting immediately, same reasoning the confirm-dialog
+                      pattern elsewhere in this app already uses for anything that isn't instantly
+                      undoable. %>
+                  <% if copy_targets.any? %>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" title="Copy to another ticket category"
+                            data-bs-toggle="modal" data-bs-target="#badge-copy-modal-<%= badge.id %>">
+                      <i class="bx bx-copy"></i>
+                    </button>
+                  <% end %>
+                  <%= link_to edit_admin_event_badge_path(event, badge), class: "btn btn-sm btn-outline-primary", title: "Edit" do %>
+                    <i class="bx bx-edit"></i>
+                  <% end %>
+                  <%= button_to admin_event_badge_path(event, badge), method: :delete,
+                        class: "btn btn-sm btn-outline-danger", title: "Remove",
+                        data: { action: "click->confirm-dialog#show", title: "Remove Badge",
+                                message: "Remove #{badge.name}?", danger: "true" } do %>
+                    <i class="bx bx-trash"></i>
+                  <% end %>
+                </div>
+              </td>
+            <% end %>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+
+  <%# One modal per badge (not a single shared modal with a JS-swapped iframe src) — this table
+      only ever shows a handful of badges (Badge's own uniqueness validation caps it at one
+      default plus one per TicketCategory), so the simplicity of static, pre-built markup wins
+      over the extra Stimulus controller a shared/reused modal would need — every modal's iframe
+      `src` is set once, up front, no click-time JS required at all. Modals render *outside* the
+      <table> (a <div class="modal"> nested inside a <tr>/<td> is invalid HTML and Bootstrap's own
+      fixed positioning assumes a normal document-flow ancestor, not a table cell), in their own
+      loop over the same `badges` rather than nested inside the row loop above. %>
+  <% badges.each do |badge| %>
+    <div class="modal fade" id="badge-preview-modal-<%= badge.id %>" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+          <div class="modal-header border-0 pb-0">
+            <h5 class="modal-title fw-semibold"><%= badge.name %></h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body d-flex justify-content-center align-items-center pt-2">
+            <%# Sized in real px (the same 96px/2.54cm ratio the design canvas and the printed PDF
+                both resolve "cm" against) so the iframe's own box exactly matches the badge's true
+                physical proportions — no stretching/letterboxing to fit an arbitrary modal size. %>
+            <iframe src="<%= preview_admin_event_badge_path(event, badge) %>"
+                    style="width: <%= (badge.width_cm * 96 / 2.54).round %>px; height: <%= (badge.height_cm * 96 / 2.54).round %>px; max-width: 100%; border: 1px solid var(--bs-border-color);"
+                    title="<%= badge.name %> preview"></iframe>
+          </div>
+          <div class="modal-footer border-0 pt-3">
+            <p class="text-muted font-size-12 me-auto mb-0">Preview uses sample participant data — QR/barcode and photo won't match a real attendee.</p>
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <%# Copy-to modal (Admin::BadgesController#copy) — only rendered alongside a badge that
+        actually has somewhere left to copy to, same gate the trigger button above uses. %>
+    <% if actions && copy_targets.any? %>
+      <div class="modal fade" id="badge-copy-modal-<%= badge.id %>" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content border-0 shadow">
+            <%= form_with url: copy_admin_event_badge_path(event, badge), method: :post do |f| %>
+              <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-semibold">Copy "<%= badge.name %>"</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <p class="text-muted font-size-13">
+                  Creates a new badge from this one's design — you'll land on its editor to review
+                  and adjust it (tokens, size, etc.) before it's live for that category.
+                </p>
+                <%= label_tag "ticket_category_id_#{badge.id}", "Copy to", class: "form-label" %>
+                <%= select_tag :ticket_category_id, options_for_select(copy_targets), id: "ticket_category_id_#{badge.id}", class: "form-select" %>
+              </div>
+              <div class="modal-footer border-0 pt-3">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <%= f.submit "Copy", class: "btn btn-primary btn-sm" %>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </div>
+    <% end %>
+  <% end %>
+<% end %>

@@ -1,0 +1,66 @@
+<% content_for :page_title, "New Badge — #{@event.name}" %>
+
+<%= render "shared/page_header",
+  icon: "bx-id-card", crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: edit_admin_event_path(@event) }, { label: "New Badge" } ] %>
+
+<div class="card">
+  <div class="card-body">
+    <%= form_with model: @badge, url: admin_event_badges_path(@event) do |f| %>
+      <%# :base errors (e.g. "This event already has a default badge") have no field of their own
+          to attach to, so they're the one thing still shown as a top block — not a duplicate of
+          the per-field errors below, which is what the user asked to remove. %>
+      <% if @badge.errors[:base].any? %>
+        <div class="alert alert-danger">
+          <ul class="mb-0">
+            <% @badge.errors[:base].each do |message| %>
+              <li><%= message %></li>
+            <% end %>
+          </ul>
+        </div>
+      <% end %>
+
+      <div class="mb-3">
+        <%= f.label :name, class: "form-label" %>
+        <%= f.text_field :name, class: field_error_class(@badge, :name), placeholder: "e.g. VIP Badge" %>
+        <%= field_error_feedback(@badge, :name) %>
+      </div>
+
+      <div class="mb-3">
+        <%= label_tag :ticket_category_id, "Applies to", class: "form-label" %>
+        <%= select_tag "badge[ticket_category_id]",
+              options_for_select([ [ "Default (every other participant)", "" ] ] + @event.ticket_categories.map { |c| [ c.name, c.id ] }),
+              class: "form-select" %>
+        <small class="text-muted">Leave as Default unless this badge is only for one ticket category.</small>
+      </div>
+
+      <div class="mb-3">
+        <%= label_tag :badge_template_id, "Start from a template (optional)", class: "form-label" %>
+        <%= select_tag :badge_template_id,
+              options_for_select([ [ "Blank", "" ] ] + @badge_templates.map { |t| [ t.name, t.id ] }),
+              class: "form-select" %>
+      </div>
+
+      <div class="row g-3 mb-3">
+        <div class="col-md-4">
+          <%= f.label :output_type, class: "form-label" %>
+          <%= f.select :output_type, Badge.output_types.keys.map { |t| [ t.humanize, t ] }, {}, class: "form-select" %>
+        </div>
+        <div class="col-md-4">
+          <%= f.label :width_cm, "Width (cm)", class: "form-label" %>
+          <%= f.number_field :width_cm, step: 0.1, min: 0.1, class: field_error_class(@badge, :width_cm) %>
+          <%= field_error_feedback(@badge, :width_cm) %>
+        </div>
+        <div class="col-md-4">
+          <%= f.label :height_cm, "Height (cm)", class: "form-label" %>
+          <%= f.number_field :height_cm, step: 0.1, min: 0.1, class: field_error_class(@badge, :height_cm) %>
+          <%= field_error_feedback(@badge, :height_cm) %>
+        </div>
+      </div>
+
+      <div class="d-flex align-items-center gap-3">
+        <%= link_to "Cancel", edit_admin_event_path(@event, step: "badge"), class: "btn btn-outline-secondary" %>
+        <%= f.submit "Continue to design", class: "btn btn-primary ms-auto" %>
+      </div>
+    <% end %>
+  </div>
+</div>

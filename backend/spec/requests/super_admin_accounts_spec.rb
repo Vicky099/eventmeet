@@ -51,7 +51,10 @@ RSpec.describe "Platform Console tenant provisioning", type: :request do
       expect {
         perform_enqueued_jobs do
           post platform_accounts_path, params: {
-            account: { name: "Acme Events", subdomain_slug: slug, admin_email: "owner@acme.example" }
+            account: {
+              name: "Acme Events", subdomain_slug: slug, admin_email: "owner@acme.example",
+              contact_email: "contact@acme.example", contact_num: "+1 555 0100", sender_email: "sender@acme.example"
+            }
           }
         end
       }.to change(Account, :count).by(1).and change(User, :count).by(1).and change(AccountMembership, :count).by(1)

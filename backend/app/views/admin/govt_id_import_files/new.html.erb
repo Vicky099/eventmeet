@@ -1,0 +1,42 @@
+<% content_for :page_title, "Import Government IDs" %>
+
+<%= render "shared/page_header",
+  icon: "bx-id-card",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) },
+            { label: "Participants", path: admin_event_participants_path(@event) }, { label: "Govt IDs" } ] %>
+
+<div class="row">
+  <div class="col-xl-7">
+    <div class="card">
+      <div class="card-body">
+        <%# requirement.md revisit: "If we have govt id then we will upload that list this will
+            be stored in database somewhere. Then once participant registration start then the
+            government ID will start assign to participant." %>
+        <p class="text-muted">
+          Upload a .xlsx file with a header row and one Government ID per row. Each one is added
+          to this event's own pool and assigned automatically, one per participant: immediately to
+          any existing participant who doesn't have one yet (oldest-registered first), and from
+          then on to every new participant the moment they're added — manually, by import, or by
+          registration — until the pool runs out. A value already in the pool for this event is
+          skipped, not duplicated.
+        </p>
+        <p class="text-muted">
+          <strong><%= @available_count %></strong> available, <strong><%= @assigned_count %></strong> already assigned.
+        </p>
+
+        <%= link_to sample_admin_event_govt_id_import_files_path(@event), class: "btn btn-outline-secondary mb-3",
+              data: { action: "click->download-progress#start", download_progress_filename_param: "govt-id-import-template.xlsx" } do %>
+          <i class="bx bx-spreadsheet"></i> Download sample template
+        <% end %>
+
+        <%= form_with url: admin_event_govt_id_import_files_path(@event), local: true, multipart: true do %>
+          <div class="mb-3">
+            <%= label_tag :file, "XLSX file", class: "form-label" %>
+            <%= file_field_tag "govt_id_import_file[file]", id: "file", class: "form-control", accept: ".xlsx", required: true %>
+          </div>
+          <%= submit_tag "Start Import", class: "btn btn-primary" %>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

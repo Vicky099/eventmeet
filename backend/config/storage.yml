@@ -6,6 +6,18 @@ local:
   service: Disk
   root: <%= Rails.root.join("storage") %>
 
+# Credentials come from config/cloudinary.yml (CLOUD_NAME/API_KEY/API_SECRET, loaded via Figaro
+# from config/application.yml — gitignored, never committed) — the cloudinary gem reads that file
+# itself. Same three-env-var setup as the sibling event_management project, not a single
+# CLOUDINARY_URL connection string. `folder` here is a fixed root prefix shared by every upload
+# through this service, used only to separate environments sharing one Cloudinary account; actual
+# tenant-wise nesting comes from the blob key itself (e.g.
+# "acme/participants/<event_id>/photo/<uuid>-file.jpg"), which Cloudinary treats as folder path
+# segments via the "/" characters in the public_id.
+cloudinary:
+  service: Cloudinary
+  folder: "eventmeet/<%= Rails.env %>"
+
 # Use bin/rails credentials:edit to set the AWS secrets (as aws:access_key_id|secret_access_key)
 # amazon:
 #   service: S3

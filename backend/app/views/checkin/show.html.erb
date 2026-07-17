@@ -1,0 +1,61 @@
+<%# Phase 9 revisit (requirement.md §3.7, §5.6, §5.1: "a check-in volunteer"). The kiosk's one
+    job: scan a badge, pick a direction and (optionally) a session, see the result immediately —
+    everything here is sized and spaced for a thumb on a phone or tablet screen, not a mouse on a
+    desktop. checkin-controls (checkin_controls_controller.js) owns the two pill/chip pickers
+    below (Direction, Session) — each just toggles which pill/chip carries `.is-active` and writes
+    the chosen value into its paired hidden field, and persists the choice to localStorage
+    (keyed by event id) so it survives a page refresh — a physical check-in desk stays on
+    "Check out" (or a given session) for a whole shift, not reset to "Check in"/"Event entrance"
+    every time the operator reloads; scan-input (the same scan_input_controller.js
+    Admin::ScanEventsController's own form already used) owns autofocus + clear-and-refocus after
+    every scan. %>
+<% content_for :page_title, "Check-in — #{@event.name}" %>
+
+<div class="checkin-card" data-controller="checkin-controls" data-checkin-controls-event-id-value="<%= @event.id %>">
+  <h1 class="checkin-title">Scan a badge</h1>
+  <p class="checkin-subtitle">Point the scanner at the participant's badge, or type their ID below.</p>
+
+  <%= form_with url: checkin_scan_path(@event), method: :post, data: { controller: "scan-input", turbo_stream: true } do %>
+    <div class="checkin-field-group">
+      <span class="checkin-field-label">Direction</span>
+      <div class="checkin-pill-group" data-checkin-controls-target="pillGroup" data-field="scan_type">
+        <button type="button" class="checkin-pill is-active" data-value="check_in" data-action="click->checkin-controls#selectPill">
+          <i class="bx bx-log-in-circle"></i> Check in
+        </button>
+        <button type="button" class="checkin-pill" data-value="check_out" data-action="click->checkin-controls#selectPill">
+          <i class="bx bx-log-out-circle"></i> Check out
+        </button>
+      </div>
+      <%= hidden_field_tag :scan_type, "check_in", data: { checkin_controls_target: "hiddenField", field: "scan_type" }, id: nil %>
+    </div>
+
+    <% if @sessions.any? %>
+      <div class="checkin-field-group">
+        <span class="checkin-field-label">Session</span>
+        <div class="checkin-chip-row" data-checkin-controls-target="chipGroup" data-field="session_id">
+          <button type="button" class="checkin-chip is-active" data-value="" data-action="click->checkin-controls#selectChip">
+            Event entrance
+          </button>
+          <% @sessions.each do |session| %>
+            <button type="button" class="checkin-chip" data-value="<%= session.id %>" data-action="click->checkin-controls#selectChip">
+              <%= session.name %> <span class="checkin-chip-time"><%= session.starts_at.strftime("%H:%M") %></span>
+            </button>
+          <% end %>
+        </div>
+        <%= hidden_field_tag :session_id, "", data: { checkin_controls_target: "hiddenField", field: "session_id" }, id: nil %>
+      </div>
+    <% end %>
+
+    <div class="checkin-scan-input-wrap">
+      <i class="bx bx-barcode-reader checkin-scan-icon"></i>
+      <%= text_field_tag :identifier, nil, placeholder: "Scan or type hex ID / govt ID / RFID / client ID",
+            class: "checkin-scan-input", autocomplete: "off", data: { scan_input_target: "input" } %>
+    </div>
+
+    <%= submit_tag "Scan", class: "checkin-scan-submit" %>
+  <% end %>
+
+  <div id="scan-result" class="checkin-result-slot">
+    <%= render "result", result: nil %>
+  </div>
+</div>

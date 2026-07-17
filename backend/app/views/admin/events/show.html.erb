@@ -1,0 +1,160 @@
+<%# Phase 7.5 — Dynamic Registration Form Builder (requirement.md §5.14 v12). The event workspace's
+    own landing page ("Dashboard" in the event-scoped sidebar, AdminHelper#event_nav_items) — a
+    read-only overview plus a way back into the wizard (#edit) to keep configuring, distinct from
+    every wizard step itself (see Admin::EventsController's own class comment). %>
+<% content_for :page_title, @event.name %>
+
+<%= render "shared/page_header",
+  icon: "bx-calendar-event",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name } ] %>
+
+<div class="mb-3 d-flex align-items-center gap-2">
+  <span class="badge bg-info-subtle text-info"><%= @event.status.humanize %></span>
+  <span class="badge <%= approval_status_badge_class(@event.approval_status) %>"><%= @event.approval_status.humanize %></span>
+  <% if @event.published? %>
+    <span class="badge bg-success-subtle text-success"><i class="bx bx-check-circle"></i> Published</span>
+  <% end %>
+  <%= link_to "Continue Setup", edit_admin_event_path(@event), class: "btn btn-sm btn-outline-primary ms-auto" %>
+</div>
+
+<%# requirement.md revisit ("make sure all the values of dashboard are correct ... admin should
+    understand how many participant came event in realtime") — this landing page didn't
+    previously subscribe to the event's own live stream at all (only admin/scan_events/index.html
+    .erb did); the KPI tiles below and the Check-in Arrivals card further down both now update
+    live off the same broadcast every scan already triggers, no page reload needed here either. %>
+<%= turbo_stream_from @event %>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <%= render "shared/stat_widget", label: "Participants", value: @event.participants.count, icon: "bx-group", color: "primary" %>
+  </div>
+  <div class="col-md-3">
+    <%= render "shared/stat_widget", label: "Confirmed", value: @participant_status_counts["confirmed"], icon: "bx-check-circle", color: "success" %>
+  </div>
+  <div class="col-md-3">
+    <%= render "shared/stat_widget", label: "Pending", value: @participant_status_counts["pending"], icon: "bx-time-five", color: "warning" %>
+  </div>
+  <div class="col-md-3">
+    <%# **Bug fix**: previously EventLiveStats#checked_in_count — a cumulative *scan* counter (a
+        participant checking in twice counts twice, by design, for that model's own real-time-
+        counter concerns), not a real headcount; confirmed live it could read higher than
+        Participants itself once the same person got scanned more than once. Event
+        #checked_in_participant_count (app/models/event.rb) is the same real, distinct-participant
+        count admin/scan_events/_live_stats.html.erb already uses. %>
+    <%= render "shared/stat_widget", label: "Checked In", value: @event.checked_in_participant_count, icon: "bx-barcode", color: "info" %>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <%# Registration status (requirement.md §5.15-adjacent — "attractive analytics" on the event
+      workspace's landing page): a stacked bar, not a KPI-tile repeat of the row above — the point
+      here is the *proportion*, confirmed vs. pending, not just the two raw counts already shown.
+      dataviz skill's fixed status palette (good/warning), not this app's own Bootstrap theme —
+      see application.css's own comment on the same split for the ticket-category chart below.
+      Icon + label pairing (the legend line under the bar) is the mitigation the skill calls for
+      wherever a status color alone would sit under the 3:1 light-surface contrast floor. %>
+  <div class="col-lg-6">
+    <div class="card h-100 mb-0">
+      <div class="card-header"><span class="fw-semibold">Registration Status</span></div>
+      <div class="card-body">
+        <% total_participants = @participant_status_counts.values.sum %>
+        <% if total_participants.zero? %>
+          <p class="text-muted mb-0">No participants registered yet.</p>
+        <% else %>
+          <% confirmed = @participant_status_counts["confirmed"] %>
+          <% pending = @participant_status_counts["pending"] %>
+          <div class="status-bar" role="img" aria-label="<%= confirmed %> confirmed, <%= pending %> pending, out of <%= total_participants %> total">
+            <% if confirmed.positive? %>
+              <div class="status-bar-segment" style="width: <%= (confirmed.to_f / total_participants * 100).round(2) %>%; background: #0ca30c;" title="Confirmed: <%= confirmed %>"></div>
+            <% end %>
+            <% if pending.positive? %>
+              <div class="status-bar-segment" style="width: <%= (pending.to_f / total_participants * 100).round(2) %>%; background: #fab219;" title="Pending: <%= pending %>"></div>
+            <% end %>
+          </div>
+          <div class="d-flex gap-4 mt-2 font-size-13">
+            <span><span class="legend-dot" style="background: #0ca30c;"></span>Confirmed — <strong><%= confirmed %></strong></span>
+            <span><span class="legend-dot" style="background: #fab219;"></span>Pending — <strong><%= pending %></strong></span>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+  <%# Registrations by ticket category — a horizontal bar per category, real Participant count
+      (@category_participant_counts — see Admin::EventsController#show's own comment on why that's
+      NOT TicketCategory#sold_count) against total_count when the event has a seat limit (an
+      unlimited category shows the raw count instead, scaled against whichever category has the
+      most registrations so the bars stay meaningfully comparable to each other). Single series
+      (one number per category) — one hue (categorical slot 1 blue), not a color per bar; identity
+      already comes from the row's own label, not from color. Direct value labels on every row
+      (exact "N / capacity" or "N registered" text) are the reason a hover tooltip isn't
+      load-bearing here — a plain `title` attribute is a light-touch affordance on top of numbers
+      that are already fully legible without it. %>
+  <div class="col-lg-6">
+    <div class="card h-100 mb-0">
+      <div class="card-header"><span class="fw-semibold">Registrations by Ticket Category</span></div>
+      <div class="card-body">
+        <% if @ticket_categories.none? %>
+          <p class="text-muted mb-0">No ticket categories yet.</p>
+        <% else %>
+          <% registered_counts = @ticket_categories.index_with { |category| @category_participant_counts[category.id] || 0 } %>
+          <% max_registered = [ registered_counts.values.max, 1 ].max %>
+          <% @ticket_categories.each do |category| %>
+            <% registered = registered_counts[category] %>
+            <% percent = category.total_count ? (registered.to_f / category.total_count * 100) : (registered.to_f / max_registered * 100) %>
+            <div class="mb-3">
+              <div class="d-flex justify-content-between font-size-13 mb-1">
+                <span><%= category.name %></span>
+                <span class="text-muted">
+                  <%= registered %><%= category.total_count ? " / #{category.total_count}" : " registered" %>
+                </span>
+              </div>
+              <div class="bar-track" title="<%= category.name %>: <%= registered %><%= category.total_count ? " of #{category.total_count}" : " registered (unlimited)" %>">
+                <div class="bar-fill" style="width: <%= percent.clamp(0, 100).round(2) %>%;"></div>
+              </div>
+            </div>
+          <% end %>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%# requirement.md revisit: "add some more useful analytics ... add some graph which make the
+    impact and would be USP" + "add graph to show hour, day wise check-in ... admin should
+    understand how many participant came event in realtime." Funnel narrower (three plain
+    bar-track rows, done at a glance) than Arrivals (needs the room for up to 24 hourly columns). %>
+<div class="row g-3 mb-3">
+  <div class="col-lg-4">
+    <%= render "checkin_funnel", event: @event %>
+  </div>
+  <div class="col-lg-8">
+    <%= render "admin/scan_events/arrivals_chart", event: @event %>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><span class="fw-semibold">Event Details</span></div>
+  <div class="card-body">
+    <dl class="row mb-0">
+      <dt class="col-sm-3">Mode</dt>
+      <dd class="col-sm-9"><%= @event.mode.humanize %></dd>
+
+      <dt class="col-sm-3">Schedule</dt>
+      <dd class="col-sm-9">
+        <% if @event.starts_at && @event.ends_at %>
+          <%= @event.starts_at.to_fs(:long) %> &rarr; <%= @event.ends_at.to_fs(:long) %>
+        <% else %>
+          <span class="text-muted">Not set</span>
+        <% end %>
+      </dd>
+
+      <dt class="col-sm-3">Location</dt>
+      <dd class="col-sm-9 mb-0">
+        <% if @event.address.present? %><div><%= @event.address %></div><% end %>
+        <% if @event.meeting_link.present? %><div><%= external_link_to @event.meeting_link, @event.meeting_link %></div><% end %>
+        <% if @event.address.blank? && @event.meeting_link.blank? %><span class="text-muted">Not set</span><% end %>
+      </dd>
+    </dl>
+  </div>
+</div>

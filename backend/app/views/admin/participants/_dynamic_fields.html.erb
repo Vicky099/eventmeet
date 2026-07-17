@@ -1,0 +1,114 @@
+<%# Locals: participant, event.
+    requirement.md §5.4/§5.14 v12 revisit: "when i select the ticket category then the form
+    fields ... ideally it should check the fields configured and then show the form." This
+    partial is the part of the manual-entry form that actually depends on which ticket_category
+    is selected (everything Admin::ParticipantsController#dynamic_fields exists to re-render) —
+    wrapped in its own Turbo Frame so ticket_category_fields_controller.js can repoint its `src`
+    on the category <select>'s change event and get back just this fragment, server-rendered,
+    instead of a full page reload.
+
+    Rendered from two different contexts, which is why this uses a bare `fields_for` rather than
+    the caller's own form builder: (1) admin/participants/_form.html.erb, nested inside its real
+    `form_with model: participant do |f| ... end` — a plain `fields_for :participant, participant`
+    called from inside that block still produces the exact same `participant[...]` field names as
+    `f.fields_for` would; and (2) Admin::ParticipantsController#dynamic_fields' own bare
+    `render partial:` response to the Turbo Frame's GET — no enclosing `<form>` there at all
+    (its inputs belong to the *real* form already on the page; Turbo swaps only this frame's
+    content into place, so a second, actual `<form>` tag in the AJAX response would end up
+    nested inside the real one — invalid HTML, and exactly what `fields_for` avoids by never
+    emitting a `<form>` tag of its own in the first place). %>
+<%= turbo_frame_tag "participant_dynamic_fields", data: { ticket_category_fields_target: "frame" } do %>
+  <%= fields_for :participant, participant do |f| %>
+    <%# requirement.md v12 revisit: "position each and every field — order of the field should be
+        configurable" / "title, firstname & lastname in the default fields selection" / "add photo
+        and document in the default form" / "whatever fields we have enabled ... only those
+        fields will be present ... rest will be hidden." TicketCategory#effective_catalog_fields
+        (the organizer's own RegistrationForm#catalog_fields, or
+        RegistrationForm::BUILTIN_DEFAULT_CATALOG when no form's configured, unioned with whatever
+        that category's own badge design mandates and first_name/ticket_category-required-document
+        forced true) is the single source for both which fields show and their requiredness — a
+        field not in this filtered list doesn't render at all, not just optionally. %>
+    <div class="row g-3">
+      <% catalog_fields = (participant.ticket_category&.effective_catalog_fields || {}).merge("first_name" => true) %>
+      <% ordered_fields = participant.ticket_category&.ordered_catalog_fields || Event::PARTICIPANT_FIELD_CATALOG %>
+      <% ordered_fields.select { |field| catalog_fields[field] }.each do |field| %>
+        <% required = catalog_fields[field] %>
+        <div class="col-md-6">
+          <%= f.label field, safe_join([ field.humanize, (content_tag(:span, " *", class: "text-danger") if required) ].compact), class: "form-label" %>
+          <%# Nationality/Country are the two catalog fields with a fixed, correctly-spelled option
+              list worth constraining to (Participant.nationalities/.countries, the `countries` gem's
+              ISO 3166 data); Title keeps its own salutation placeholder; Photo/Document are file
+              uploads, not text (Photo specifically direct-to-Cloudinary via image_upload_controller.js
+              /Admin::DirectUploadsController, same as before — no `name=` on the input, the
+              resulting signed_id is injected under the real field name once the upload finishes).
+              Every other field (including first_name/last_name now) stays freeform text. %>
+          <% case field %>
+          <% when "title" %>
+            <%= f.text_field :title, class: field_error_class(participant, :title), placeholder: "Mr./Ms./Dr.", required: required %>
+          <% when "nationality" %>
+            <%= f.select :nationality, options_for_select(Participant.nationalities, participant.nationality),
+                  { include_blank: true }, class: field_error_class(participant, field, base: "form-select"), required: required %>
+          <% when "country" %>
+            <%= f.select :country, options_for_select(Participant.countries, participant.country),
+                  { include_blank: true }, class: field_error_class(participant, field, base: "form-select"), required: required %>
+          <% when "photo" %>
+            <div data-controller="image-upload">
+              <%= f.file_field :photo, name: nil, class: "form-control", accept: "image/*",
+                    data: { image_upload_target: "fileInput", action: "change->image-upload#fileSelected",
+                            direct_upload_url: admin_direct_uploads_path(scope: { type: "participant_photo", event_id: event.id }),
+                            blob_field_name: "participant[photo]" } %>
+              <%# Bug fix: a failed #create leaves the just-uploaded photo attached only in
+                  memory (apply_uploads ran before the failing #save) — that in-memory attachment
+                  dies with the request, so unless its signed_id rides along on the retry too, the
+                  photo (already sitting in Cloudinary) silently never gets attached at all. Only
+                  for the not-yet-persisted case — an already-saved participant's existing photo
+                  doesn't need this (apply_uploads already leaves it untouched when nothing new is
+                  submitted), and re-seeding it on every edit would just be unnecessary reattach
+                  churn. %>
+              <%= render "shared/upload_progress",
+                    field_name: "participant[photo]",
+                    blob_signed_id: (participant.photo.blob.signed_id if participant.photo.attached? && !participant.persisted?) %>
+              <% if participant.photo.attached? %><small class="text-muted">Current: <%= participant.photo.filename %></small><% end %>
+            </div>
+          <% when "document" %>
+            <%= f.file_field :document, class: field_error_class(participant, :document) %>
+            <% if participant.document.attached? %><small class="text-muted d-block">Current: <%= participant.document.filename %></small><% end %>
+          <% else %>
+            <%= f.text_field field, class: field_error_class(participant, field), required: required %>
+          <% end %>
+          <%= field_error_feedback(participant, field) %>
+        </div>
+      <% end %>
+    </div>
+
+    <% custom_fields = participant.ticket_category&.registration_form&.custom_fields || CustomField.none %>
+    <% if custom_fields.any? %>
+      <hr>
+      <h6 class="text-muted text-uppercase font-size-12">Additional fields</h6>
+      <div class="row g-3">
+        <% custom_fields.each do |field| %>
+          <div class="col-md-6">
+            <% name = "participant[custom_field_values][#{field.id}]" %>
+            <%= label_tag name, safe_join([ field.label, (content_tag(:span, " *", class: "text-danger") if field.required?) ].compact), class: "form-label" %>
+            <% value = participant.custom_field_values[field.id.to_s] %>
+            <% case field.field_type %>
+            <% when "dropdown" %>
+              <%= select_tag name, options_for_select(field.options_list, value), { include_blank: true, id: nil, class: "form-select" } %>
+            <% when "checkbox" %>
+              <div class="form-check">
+                <%= check_box_tag name, "1", value == true || value == "1", id: nil, class: "form-check-input" %>
+              </div>
+            <% when "file" %>
+              <%= file_field_tag name, id: nil, class: "form-control" %>
+              <% if value.present? %>
+                <small class="text-muted">A file is already attached — choose a new one to replace it.</small>
+              <% end %>
+            <% else %>
+              <%= text_field_tag name, value, id: nil, class: "form-control", required: field.required? %>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  <% end %>
+<% end %>

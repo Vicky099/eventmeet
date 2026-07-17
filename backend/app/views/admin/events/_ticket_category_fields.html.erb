@@ -1,0 +1,38 @@
+<%# Locals: f (a fields_for builder for one TicketCategory, real or unsaved), event.
+    Shared between the live list (existing categories) and the <template> the nested-fields
+    Stimulus controller clones for "Add another category" — same markup either way, so a newly
+    added row and a persisted one are visually identical while the form is still open. %>
+<div class="row g-2 align-items-end mb-2" data-nested-fields-target="row">
+  <div class="col-md-4">
+    <%= f.label :name, class: "form-label" %>
+    <%= f.text_field :name, class: field_error_class(f.object, :name) %>
+    <%= field_error_feedback(f.object, :name) %>
+  </div>
+  <%# A category's own capacity only exists as a concept once the event has a seat limit at all
+      (requirement.md §5.3 revisit — "Seat Limit" now lives on the Basic Info step's Settings
+      card, not here); no seat limit means every category is "unlimited", so there's nothing to
+      size here. Gated server-side off the persisted event.has_seat_limit? rather than a live
+      client-side toggle, since that toggle is no longer on this page. %>
+  <% if event.has_seat_limit? %>
+    <div class="col-md-2">
+      <%= f.label :total_count, "Total seats", class: "form-label" %>
+      <%= f.number_field :total_count, min: 1, required: true, class: field_error_class(f.object, :total_count) %>
+      <%= field_error_feedback(f.object, :total_count) %>
+    </div>
+  <% end %>
+  <div class="col-md-3 form-check mb-1">
+    <%= f.check_box :document_required, class: "form-check-input" %>
+    <%= f.label :document_required, "Document required", class: "form-check-label" %>
+  </div>
+  <div class="col-md-2">
+    <% if f.object.persisted? %>
+      <small class="text-muted">
+        <%= f.object.sold_count %> reserved<%= " / #{f.object.remain_count} remaining" unless f.object.unlimited? %>
+      </small>
+    <% end %>
+  </div>
+  <div class="col-auto">
+    <%= f.hidden_field :_destroy %>
+    <button type="button" class="btn btn-sm btn-outline-danger" data-action="nested-fields#remove">Remove</button>
+  </div>
+</div>

@@ -1,0 +1,60 @@
+<%# Locals: event, speaker. %>
+<%= form_with model: speaker, url: speaker.persisted? ? admin_event_speaker_path(event, speaker) : admin_event_speakers_path(event),
+      local: true, multipart: true do |f| %>
+  <div class="row g-3">
+    <div class="col-md-6">
+      <%= f.label :name, class: "form-label" %>
+      <%= f.text_field :name, class: field_error_class(speaker, :name), required: true %>
+      <%= field_error_feedback(speaker, :name) %>
+    </div>
+    <%# Uploads straight to Cloudinary with real progress (image_upload_controller.js) via
+        Admin::DirectUploadsController — no `name=` on the input; the resulting signed_id is
+        injected below under the real field name once the upload finishes. %>
+    <div class="col-md-6" data-controller="image-upload">
+      <%= f.label :photo, class: "form-label" %>
+      <%= f.file_field :photo, name: nil, class: "form-control", accept: "image/*",
+            data: { image_upload_target: "fileInput", action: "change->image-upload#fileSelected",
+                    direct_upload_url: admin_direct_uploads_path(scope: { type: "speaker_photo" }),
+                    blob_field_name: "speaker[photo]" } %>
+      <%= render "shared/upload_progress" %>
+      <% if speaker.photo.attached? %><small class="text-muted">Current: <%= speaker.photo.filename %></small><% end %>
+    </div>
+    <div class="col-md-4">
+      <%= f.label :email, class: "form-label" %>
+      <%= f.email_field :email, class: field_error_class(speaker, :email) %>
+      <%= field_error_feedback(speaker, :email) %>
+    </div>
+    <div class="col-md-4">
+      <%= f.label :contact_num, "Contact number", class: "form-label" %>
+      <%= f.text_field :contact_num, class: "form-control" %>
+    </div>
+    <%# Fixed, correctly-spelled option lists (the `countries` gem's ISO 3166 data, via
+        HasCountryFields — shared with Participant's own Nationality/Country fields,
+        app/views/admin/participants/_form.html.erb) instead of freeform text. %>
+    <div class="col-md-4">
+      <%= f.label :nationality, class: "form-label" %>
+      <%= f.select :nationality, options_for_select(Speaker.nationalities, speaker.nationality), { include_blank: true }, class: "form-select" %>
+    </div>
+    <div class="col-md-4">
+      <%= f.label :country, class: "form-label" %>
+      <%= f.select :country, options_for_select(Speaker.countries, speaker.country), { include_blank: true }, class: "form-select" %>
+    </div>
+    <div class="col-md-8">
+      <%= f.label :company, "Company name", class: "form-label" %>
+      <%= f.text_field :company, class: "form-control" %>
+    </div>
+    <div class="col-12">
+      <%= f.label :bio, "Speaker details", class: "form-label" %>
+      <%= f.text_area :bio, class: "form-control", rows: 4 %>
+    </div>
+    <div class="col-12">
+      <%= f.label :company_details, class: "form-label" %>
+      <%= f.text_area :company_details, class: "form-control", rows: 3 %>
+    </div>
+  </div>
+
+  <div class="d-flex align-items-center gap-3 mt-4">
+    <%= link_to "Cancel", edit_admin_event_path(event, step: "speaker"), class: "btn btn-outline-secondary" %>
+    <%= f.submit speaker.persisted? ? "Save" : "Add Speaker", class: "btn btn-primary ms-auto" %>
+  </div>
+<% end %>

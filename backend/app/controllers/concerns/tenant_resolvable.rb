@@ -9,6 +9,7 @@ module TenantResolvable
   included do
     before_action :resolve_tenant!
     around_action :with_tenant_database_context
+    around_action :with_tenant_time_zone
   end
 
   private
@@ -34,5 +35,19 @@ module TenantResolvable
     yield
   ensure
     ActiveRecord::Base.connection.execute("RESET app.current_account_id") if Current.account
+  end
+
+  # requirement.md revisit: "all the dates which are display in the UI should abey the tenant
+  # timezone." Time.use_zone (not a bare `Time.zone = ...`) — it saves/restores the previous
+  # thread-local zone around the block, the same "must never leak into the next request served on
+  # this connection" concern with_tenant_database_context's own comment already calls out, just
+  # for Time.zone instead of the Postgres session var. Every existing strftime/to_fs call on an AR
+  # timestamp attribute already renders correctly once this is set — Rails' own
+  # time_zone_aware_attributes (on by default, confirmed still on for this app) converts every
+  # such attribute from its UTC storage to Time.zone on read, with no per-view change needed.
+  def with_tenant_time_zone(&block)
+    return yield unless Current.account
+
+    Time.use_zone(Current.account.time_zone, &block)
   end
 end

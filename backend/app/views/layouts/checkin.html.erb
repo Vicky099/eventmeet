@@ -1,0 +1,61 @@
+<%# Phase 9 revisit (requirement.md §3.7, §5.6): the check-in kiosk's own layout — deliberately
+    NOT layouts/admin.html.erb's shared/_console_shell (no sidebar, no topbar, no account
+    switcher) — "the actual event level check-in page should be out of admin panel and admin
+    layout." Reuses shared/_head for the same asset pipeline (Bootstrap utilities, our own
+    application.css, importmap/Turbo) so this page can still lean on Bootstrap classes and this
+    app's existing CSS variables/components, but the body chrome below is purpose-built: a
+    sticky header carrying the event's own identity (not a generic app topbar), a single-column
+    mobile-first content well, and a minimal footer — sized and spaced for a phone or tablet
+    standing at a check-in desk, not a desktop admin console. %>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <%= render "shared/head" %>
+  </head>
+
+  <body class="checkin-body">
+    <header class="checkin-header">
+      <div class="checkin-header-inner">
+        <div class="checkin-brand">
+          <span class="checkin-brand-mark">EM</span>
+          <div class="checkin-brand-text">
+            <span class="checkin-brand-app">EventMeet Check-in</span>
+            <% if @event %>
+              <span class="checkin-brand-event"><%= @event.name %></span>
+            <% end %>
+          </div>
+        </div>
+
+        <%# Native <details>/<summary> disclosure — no Stimulus controller needed for a menu this
+            simple, and it's tap-friendly/keyboard-accessible on a mobile device by construction. %>
+        <% if user_signed_in? %>
+          <details class="checkin-user">
+            <summary class="checkin-user-avatar"><%= current_user.email.first.upcase %></summary>
+            <div class="checkin-user-menu">
+              <span class="checkin-user-email"><%= current_user.email %></span>
+              <%= button_to "Log out", destroy_user_session_path, method: :delete, class: "checkin-logout-btn" %>
+            </div>
+          </details>
+        <% end %>
+      </div>
+    </header>
+
+    <main class="checkin-main">
+      <%= yield %>
+    </main>
+
+    <footer class="checkin-footer">
+      <div class="checkin-footer-inner">
+        <%# ScanEventPolicy#index? — same owner?/event_manager?/checkin_staff? check that gates
+            this very page — is also what gates admin_event_scan_events_path, so anyone who can
+            see this kiosk can always see the dashboard too; no separate visibility check needed. %>
+        <% if @event %>
+          <%= link_to "← Full dashboard", admin_event_scan_events_path(@event), class: "checkin-footer-link" %>
+        <% end %>
+        <span class="checkin-footer-copy">&copy; <%= Date.current.year %> EventMeet</span>
+      </div>
+    </footer>
+
+    <%= render "shared/flash" %>
+  </body>
+</html>

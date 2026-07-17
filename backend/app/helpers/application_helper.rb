@@ -1,4 +1,5 @@
 module ApplicationHelper
+  include Pagy::Frontend
   # shared/_page_header's "Dashboard" breadcrumb crumb needs the right console's own root — this
   # is the one thing genuinely shared between Admin:: and SuperAdmin:: views (unlike home_path,
   # which layouts/admin.html.erb and layouts/super_admin.html.erb pass into console_shell as a
@@ -35,5 +36,22 @@ module ApplicationHelper
 
   def approval_status_badge_class(approval_status)
     APPROVAL_STATUS_BADGE_CLASSES.fetch(approval_status)
+  end
+
+  # Inline per-field validation errors (red text directly below the field, not just the form's
+  # own top-of-page summary list) — Bootstrap's standard `is-invalid`/`invalid-feedback` pair:
+  # `field_error_class` goes on the input itself, `field_error_feedback` renders the message
+  # right after it. `d-block` on the feedback div, not relying on Bootstrap's own
+  # `.is-invalid ~ .invalid-feedback` CSS auto-show — this only ever renders the div at all when
+  # there's a real error, so nothing depends on the sibling-selector/DOM-order details of
+  # wherever a field's other help text (`<small>`, etc.) happens to sit.
+  def field_error_class(record, field, base: "form-control")
+    record.errors[field].any? ? "#{base} is-invalid" : base
+  end
+
+  def field_error_feedback(record, field)
+    return if record.errors[field].none?
+
+    content_tag(:div, record.errors[field].join(", "), class: "invalid-feedback d-block")
   end
 end

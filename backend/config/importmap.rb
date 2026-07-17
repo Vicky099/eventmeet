@@ -14,3 +14,7 @@ pin_all_from "app/javascript/controllers", under: "controllers"
 # would, just through the asset pipeline instead of a hand-written <script src>.
 pin "bootstrap", to: "bootstrap.min.js" # @5.3.3 — Bootstrap's own JS (dropdowns, etc.)
 pin "metismenujs" # @1.4.0 — collapsible sidebar menu; file is already named metismenujs.js
+pin "grapesjs" # @0.23.2
+pin "grapesjs-preset-webpage" # @1.0.3
+pin "grapesjs-blocks-basic" # @1.0.2
+pin "@rails/activestorage", to: "@rails--activestorage.js" # @8.1.300

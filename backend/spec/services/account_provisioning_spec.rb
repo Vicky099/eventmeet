@@ -8,7 +8,10 @@ RSpec.describe AccountProvisioning, type: :model do
 
   def call(name: "Acme Events", subdomain_slug: "acme-#{SecureRandom.hex(3)}", admin_email: "owner@acme.example")
     described_class.call(
-      account_attributes: { name: name, subdomain_slug: subdomain_slug },
+      account_attributes: {
+        name: name, subdomain_slug: subdomain_slug,
+        contact_email: "contact@acme.example", contact_num: "+1 555 0100", sender_email: "sender@acme.example"
+      },
       admin_email: admin_email
     )
   end

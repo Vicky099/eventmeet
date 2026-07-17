@@ -1,0 +1,54 @@
+<%# Locals: event, participant.
+    Confirmed requirement (requirement.md §5.4/§5.14 v12 revisit): "whatever fields we have
+    enabled in [the registration form] only those fields will be present while registration — the
+    rest will be hidden." A catalog field's effective boolean now means "on the form at all," not
+    just "required but still shown." Every field that *does* render is therefore always required
+    (nothing renders in an optional-but-visible state anymore) — TicketCategory
+    #effective_catalog_fields (the organizer's own RegistrationForm#catalog_fields, or
+    RegistrationForm::BUILTIN_DEFAULT_CATALOG when no form's configured, unioned with whatever
+    that category's own badge design mandates and first_name/ticket_category-required-document
+    forced true) is still the single source for both which fields show and their requiredness.
+
+    requirement.md §5.4/§5.14 v12 revisit: "when i select the ticket category then the form
+    fields are not able to view below. ideally it should check the fields configured and then
+    show the form." The catalog-fields + custom-fields section is extracted into
+    admin/participants/_dynamic_fields (see that partial's own comment for why it uses a bare
+    `fields_for` rather than this form's own `f`) and wrapped in a Turbo Frame — the
+    ticket-category <select> below reads its `data-ticket-category-fields-*` attributes to repoint
+    that frame's `src` on change (ticket_category_fields_controller.js, mirroring the existing
+    slug_check_controller.js src-repoint pattern), so the server re-renders just that fragment
+    against the newly selected (in-memory-only, not saved) category instead of a full page reload. %>
+<%= form_with model: participant, url: participant.persisted? ? admin_event_participant_path(event, participant) : admin_event_participants_path(event),
+      local: true, multipart: true do |f| %>
+  <%# :base errors (duplicate-participant detection, missing custom field values) have no field of
+      their own to attach to, so they're the one thing still shown as a top block — not a
+      duplicate of the per-field errors below, which is what the user asked to remove. %>
+  <% if participant.errors[:base].any? %>
+    <div class="alert alert-danger">
+      <ul class="mb-0">
+        <% participant.errors[:base].each do |message| %>
+          <li><%= message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <div data-controller="ticket-category-fields"
+       data-ticket-category-fields-url-value="<%= dynamic_fields_admin_event_participants_path(event) %>"
+       data-ticket-category-fields-participant-id-value="<%= participant.persisted? ? participant.id : nil %>">
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        <%= f.label :ticket_category_id, "Ticket category", class: "form-label" %>
+        <%= f.select :ticket_category_id, event.ticket_categories.order(:created_at).map { |c| [ c.name, c.id ] }, { include_blank: "None" },
+              class: "form-select", data: { action: "change->ticket-category-fields#refresh" } %>
+      </div>
+    </div>
+
+    <%= render "dynamic_fields", participant: participant, event: event %>
+  </div>
+
+  <div class="d-flex align-items-start gap-3 mt-4">
+    <%= f.submit participant.persisted? ? "Save" : "Add Participant", class: "btn btn-primary" %>
+    <%= link_to "Cancel", admin_event_participants_path(event), class: "btn btn-outline-secondary" %>
+  </div>
+<% end %>

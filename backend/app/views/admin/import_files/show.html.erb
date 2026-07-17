@@ -1,0 +1,53 @@
+<% content_for :page_title, "Import Participants" %>
+
+<%# Plain meta-refresh polling while the job's still running — no Turbo Stream/broadcast wiring
+    exists yet (that's Phase 9's territory), and a 3s refresh is plenty for a job whose whole
+    point is running in the background while the admin waits on this one page. %>
+<% if @import_file.pending? || @import_file.processing? %>
+  <% content_for :head, tag.meta("http-equiv": "refresh", content: "3") %>
+<% end %>
+
+<%= render "shared/page_header",
+  icon: "bx-group",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) },
+            { label: "Participants", path: admin_event_participants_path(@event) }, { label: "Import" } ] %>
+
+<div class="row">
+  <div class="col-xl-7">
+    <div class="card">
+      <div class="card-body">
+        <% case @import_file.status %>
+        <% when "pending", "processing" %>
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+            <span>Importing… <%= @import_file.percent_complete %>%<% if @import_file.total_rows %> (<%= @import_file.processed_rows %> / <%= @import_file.total_rows %> rows)<% end %></span>
+          </div>
+          <div class="progress" style="height: 8px;">
+            <div class="progress-bar" role="progressbar" style="width: <%= @import_file.percent_complete %>%"></div>
+          </div>
+        <% when "completed" %>
+          <div class="alert alert-success">
+            <i class="bx bx-check-circle me-1"></i> Import complete —
+            <%= pluralize(@import_file.created_count, "participant") %> created,
+            <%= @import_file.duplicate_count %> duplicate(s) skipped,
+            <%= @import_file.error_count %> error(s).
+          </div>
+          <% if @import_file.row_errors.any? %>
+            <h6 class="text-muted text-uppercase font-size-12">Row errors</h6>
+            <ul>
+              <% @import_file.row_errors.each do |error| %>
+                <li>Row <%= error["row"] %>: <%= error["message"] %></li>
+              <% end %>
+            </ul>
+          <% end %>
+          <%= link_to "View Participants", admin_event_participants_path(@event), class: "btn btn-primary" %>
+        <% when "failed" %>
+          <div class="alert alert-danger">
+            <i class="bx bx-error-circle me-1"></i> Import failed<% if @import_file.row_errors.first %>: <%= @import_file.row_errors.first["message"] %><% end %>.
+          </div>
+          <%= link_to "Try Again", new_admin_event_import_file_path(@event), class: "btn btn-outline-primary" %>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

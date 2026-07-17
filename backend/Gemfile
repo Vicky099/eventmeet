@@ -41,8 +41,19 @@ gem "kamal", require: false
 # Add HTTP asset caching/compression and X-Sendfile acceleration to Puma [https://github.com/basecamp/thruster/]
 gem "thruster", require: false
 
+# Loads config/application.yml into ENV at boot (gitignored, one per developer machine/deploy
+# target — never committed). Matches the sibling event_management project's own env-var-management
+# approach; see config/cloudinary.yml for why this app now configures Cloudinary the same way that
+# project does (CLOUD_NAME/API_KEY/API_SECRET) instead of the single CLOUDINARY_URL var.
+gem "figaro"
+
 # Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
 gem "image_processing", "~> 1.2"
+# Active Storage service for participant photos/documents (requirement.md §4.2: tenant-namespaced
+# storage) — provides the "Cloudinary" ActiveStorage service adapter registered in
+# config/storage.yml. Credentials come from CLOUD_NAME/API_KEY/API_SECRET (config/cloudinary.yml +
+# Figaro), never committed — same three-variable setup as the sibling event_management project.
+gem "cloudinary"
 
 # --- Multi-tenant admin/platform console foundation (Phase 0) ---
 
@@ -54,10 +65,32 @@ gem "doorkeeper"
 gem "pundit"
 # Friendly/SEO slugs for events and tenant subdomains — requirement.md §3.2, §4.3
 gem "friendly_id"
-# Pagination for participant/event lists
-gem "pagy"
+# Pagination for participant/event lists. Pinned to the 8.x line deliberately — v9 (later
+# re-numbered to the 43.x calendar-versioned line) was a ground-up rewrite that drops the classic
+# Pagy::Backend/Pagy::Frontend mixins and the `pagy(scope)`/`pagy_nav` helpers entirely in favor
+# of a class-based API (Pagy::Offset.new(...).records(...)) — a breaking change discovered only
+# once Phase 7 actually tried to use it. 8.6 is the last release on the familiar classic API.
+gem "pagy", "~> 8.6"
 # Default throttle on public endpoints — requirement.md §7.4, §4.9 item 2
 gem "rack-attack"
+# Phase 7 — Participant Lifecycle (requirement.md §3.11, §5.4): bulk XLSX participant
+# import/export, ported from the baseline's own gem choices.
+gem "roo"
+gem "caxlsx"
+# Phase 8 — Badge Design & Printing (requirement.md §3.6, §5.5, §4.10). Grover renders the
+# token-substituted badge HTML to a correctly-sized PDF via headless Chrome (Puppeteer under the
+# hood — needs the `puppeteer-core` npm package and a Chrome/Chromium executable available at
+# runtime; see config/initializers/grover.rb). rqrcode/barby generate the two independent
+# scannable-code slots (§3.6: "an internal ID code and a separate government-ID code").
+gem "grover", "~> 1.2"
+gem "rqrcode"
+gem "barby"
+gem "chunky_png"
+
+# ISO 3166 country/nationality data — backs the Nationality/Country dropdowns on the participant
+# form (app/views/admin/participants/_form.html.erb), replacing freeform text entry for those two
+# fields with a fixed, correctly-spelled list.
+gem "countries"
 
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
@@ -88,4 +121,7 @@ group :test do
   gem "capybara"
   # Drives Capybara system specs with Playwright instead of Selenium
   gem "capybara-playwright-driver"
+  # Phase 8 — asserting a downloaded badge PDF's actual page dimensions (MediaBox) match its
+  # configured physical size; pure-Ruby, no native deps.
+  gem "pdf-reader"
 end

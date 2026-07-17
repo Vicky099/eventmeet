@@ -1,0 +1,24 @@
+<%# Phase 9 (requirement.md §5.15): "a live sparkline of registration/check-in velocity."
+    dataviz-skill spec for a single-series stat-tile sparkline — 2px line, round join/cap, a
+    ~10%-opacity area wash under it, no axes/gridlines/legend (one series needs none), themed via
+    Bootstrap's own `--bs-primary` CSS var so it tracks light/dark automatically instead of a
+    hardcoded hex.
+
+    Locals: series — Array<[Time, Integer]>, chronological, from LiveMetricBucket.sparkline_series. %>
+<%
+  values = series.map { |_, count| count }
+  max = [ values.max.to_i, 1 ].max
+  width = 240
+  height = 40
+  step = values.size > 1 ? width.to_f / (values.size - 1) : width.to_f
+  points = values.each_with_index.map { |v, i| [ i * step, height - (v.to_f / max * height) ] }
+  line = points.map { |x, y| "#{x.round(1)},#{y.round(1)}" }.join(" ")
+  area = "0,#{height} #{line} #{(points.last&.first || width).round(1)},#{height}"
+%>
+<svg viewBox="0 0 <%= width %> <%= height %>" width="100%" height="<%= height %>" preserveAspectRatio="none"
+     role="img" aria-label="Check-ins per minute over the last <%= series.size %> minutes">
+  <polygon points="<%= area %>" fill="var(--bs-primary)" opacity="0.1"></polygon>
+  <polyline points="<%= line %>" fill="none" stroke="var(--bs-primary)" stroke-width="2"
+            stroke-linejoin="round" stroke-linecap="round"></polyline>
+</svg>
+<div class="text-muted" style="font-size: 12px;"><%= values.sum %> check-in<%= "s" unless values.sum == 1 %> in the last <%= series.size %> min</div>

@@ -12,16 +12,6 @@
   <%# data-turbo="false" — this also crosses the auth boundary (signed out -> signed back in on
       success). See the equivalent comment in app/views/admin/sessions/new.html.erb. %>
   <%= form_for(resource, as: resource_name, url: password_path(resource_name), html: { method: :put, data: { turbo: "false" } }) do |f| %>
-    <% if resource.errors.any? %>
-      <div class="alert alert-danger" role="alert">
-        <ul class="mb-0">
-          <% resource.errors.full_messages.each do |message| %>
-            <li><%= message %></li>
-          <% end %>
-        </ul>
-      </div>
-    <% end %>
-
     <%= f.hidden_field :reset_password_token %>
 
     <div class="mb-3">
@@ -30,11 +20,13 @@
         <small class="text-muted">(<%= @minimum_password_length %> characters minimum)</small>
       <% end %>
       <%= render "shared/password_field", form: f, field: :password, placeholder: "New password", autocomplete: "new-password", autofocus: true %>
+      <%= field_error_feedback(resource, :password) %>
     </div>
 
     <div class="mb-3">
       <%= f.label :password_confirmation, "Confirm new password", class: "form-label" %>
       <%= render "shared/password_field", form: f, field: :password_confirmation, placeholder: "Confirm new password", autocomplete: "new-password", autofocus: false %>
+      <%= field_error_feedback(resource, :password_confirmation) %>
     </div>
 
     <div class="mt-3">

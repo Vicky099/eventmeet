@@ -1,0 +1,40 @@
+<%# requirement.md revisit: "Export sidebar button will provide a UI where admin can select the
+    fields which he wants to export from the participant. also have some feature on ui like total
+    time spent in session, in which session how much time and all. selecting on that ui and click
+    on generate will generate and download the excel sheet." @field_groups
+    (ParticipantExportFields.groups, shared with ParticipantExportJob) is the single source for
+    both the checkboxes below and what the actual workbook build knows how to fill in — a field
+    can never appear here that the job can't produce, or vice versa. %>
+<% content_for :page_title, "Export Participants — #{@event.name}" %>
+
+<%= render "shared/page_header",
+  icon: "bx-download",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) }, { label: "Export" } ] %>
+
+<p class="text-muted">Pick the columns for this export, then generate the spreadsheet.</p>
+
+<%= form_with url: admin_event_export_files_path(@event), method: :post, local: true do %>
+  <% @field_groups.each do |group| %>
+    <div class="card mb-3">
+      <div class="card-header"><span class="fw-semibold"><%= group[:name] %></span></div>
+      <div class="card-body">
+        <div class="row g-2">
+          <% group[:fields].each do |field| %>
+            <% dom_id = "field_#{field[:key].parameterize}" %>
+            <div class="col-md-4 col-sm-6">
+              <div class="form-check">
+                <%= check_box_tag "fields[]", field[:key], @default_keys.include?(field[:key]), id: dom_id, class: "form-check-input" %>
+                <%= label_tag dom_id, field[:label], class: "form-check-label" %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  <% end %>
+
+  <div class="d-flex align-items-start gap-3">
+    <%= submit_tag "Generate", class: "btn btn-primary" %>
+    <%= link_to "Cancel", admin_event_participants_path(@event), class: "btn btn-outline-secondary" %>
+  </div>
+<% end %>

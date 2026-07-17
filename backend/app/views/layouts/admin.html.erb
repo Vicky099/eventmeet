@@ -5,9 +5,18 @@
   </head>
 
   <body>
+    <%# Phase 7.5 (requirement.md §5.14 v12) — @event is only ever a real, persisted record here
+        via EventScoped or Admin::EventsController's own #show/#edit/etc. (never #index/#new,
+        where there's no specific event yet to be "inside") — #persisted? is what actually gates
+        this, not bare presence, so a brand-new unsaved @event (Admin::EventsController#new/
+        a failed #create re-render) correctly still shows the account-level sidebar. %>
     <%= render layout: "shared/console_shell", locals: {
       home_path: user_root_path,
-      nav_items: admin_nav_items,
+      nav_items: @event&.persisted? ? event_nav_items(@event) : admin_nav_items,
+      back_link: @event&.persisted? ? {
+        label: "Back to Events", path: admin_events_path,
+        context: @event.name, context_subtitle: @event.status.humanize
+      } : nil,
       footer_text: "EventMeet",
       user_dropdown: user_signed_in? ? {
         email: current_user.email,

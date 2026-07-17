@@ -1,0 +1,45 @@
+<%# Locals: event, session. %>
+<%= form_with model: session, url: session.persisted? ? admin_event_session_path(event, session) : admin_event_sessions_path(event),
+      local: true do |f| %>
+  <div class="row g-3">
+    <div class="col-md-6">
+      <%= f.label :name, class: "form-label" %>
+      <%= f.text_field :name, class: field_error_class(session, :name), required: true %>
+      <%= field_error_feedback(session, :name) %>
+    </div>
+    <div class="col-md-3">
+      <%= f.label :track, "Track", class: "form-label" %>
+      <%= f.text_field :track, class: "form-control", placeholder: "e.g. Track A" %>
+    </div>
+    <div class="col-md-3">
+      <%= f.label :room, class: "form-label" %>
+      <%= f.text_field :room, class: "form-control", placeholder: "e.g. Room 101" %>
+    </div>
+    <div class="col-md-4">
+      <%= f.label :starts_at, "Starts", class: "form-label" %>
+      <%= f.datetime_field :starts_at, class: field_error_class(session, :starts_at) %>
+      <%= field_error_feedback(session, :starts_at) %>
+    </div>
+    <div class="col-md-4">
+      <%= f.label :ends_at, "Ends", class: "form-label" %>
+      <%= f.datetime_field :ends_at, class: field_error_class(session, :ends_at) %>
+      <%= field_error_feedback(session, :ends_at) %>
+    </div>
+    <%# Only shown once the event itself has a seat limit (Basic Info step's Settings card) — a
+        session's own capacity is only a meaningful concept to cap when the event it belongs to
+        caps seats at all, same reasoning as ticket categories' "Total seats" field
+        (_ticket_category_fields.html.erb). %>
+    <% if event.has_seat_limit? %>
+      <div class="col-md-4">
+        <%= f.label :seat_limit, "Seat limit", class: "form-label" %>
+        <%= f.number_field :seat_limit, class: field_error_class(session, :seat_limit), min: 1, placeholder: "Unlimited" %>
+        <%= field_error_feedback(session, :seat_limit) %>
+      </div>
+    <% end %>
+  </div>
+
+  <div class="d-flex align-items-center gap-3 mt-4">
+    <%= link_to "Cancel", edit_admin_event_path(event, step: "sessions"), class: "btn btn-outline-secondary" %>
+    <%= f.submit session.persisted? ? "Save" : "Add Session", class: "btn btn-primary ms-auto" %>
+  </div>
+<% end %>

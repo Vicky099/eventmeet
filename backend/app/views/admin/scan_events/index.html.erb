@@ -1,0 +1,160 @@
+<%# Phase 9 — Check-in, Attendance & Real-Time Live Dashboards (requirement.md §3.7, §5.6, §5.15),
+    revisited: read-only real-time dashboard only — the actual scan station now lives at
+    checkin_event_path, its own standalone screen/layout entirely (see CheckinController) rather
+    than a form embedded in this page. "Scan" here is a link out to that screen, not a POST. %>
+<% content_for :page_title, "Check-in — #{@event.name}" %>
+
+<%= render layout: "shared/page_header",
+  locals: { icon: "bx-barcode", crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) }, { label: "Check-in" } ] } do %>
+  <%= link_to checkin_event_path(@event), class: "btn btn-primary" do %>
+    <i class="bx bx-barcode-reader"></i> Scan
+  <% end %>
+<% end %>
+
+<%# Phase 9 (requirement.md §5.15) — subscribes this page to the same stream
+    LiveDashboard.broadcast_event_stats writes to; every scan (from the kiosk, any other desk, or
+    any new registration) patches the live-stats node below with no page reload. Deliberately
+    plain prose, no embedded output tag of any kind in this comment — an ERB comment's parser
+    stops at the first tag-closer it meets, which turns anything after that point into literal
+    page text instead of a comment. %>
+<%= turbo_stream_from @event %>
+
+<div class="mb-4">
+  <%= render "live_stats", event: @event %>
+</div>
+
+<%# requirement.md revisit: "add graph to show hour, day wise check-in. based on this admin
+    should understand how many participant came event in realtime." %>
+<div class="mb-4">
+  <%= render "arrivals_chart", event: @event %>
+</div>
+
+<%# requirement.md revisit: "overall how much full" — Event#seat_limit caps *registration*
+    (Phase 6), the same capacity concept the Tickets step and the event dashboard's own "Event
+    Details" already surface; shown here too since a check-in desk operator is exactly who needs
+    "are we oversold/at capacity" at a glance. Real Participant count, not a denormalized counter
+    — same reasoning as @category_stats below and Admin::EventsController#show's own fix. %>
+<% if @event.has_seat_limit? %>
+  <div class="mb-4">
+    <%= render layout: "shared/card", locals: { title: "Overall Capacity", icon: "bx-buildings" } do %>
+      <% registered = @event.participants.count %>
+      <% percent = (registered.to_f / @event.seat_limit * 100).clamp(0, 100) %>
+      <div class="d-flex justify-content-between font-size-13 mb-1">
+        <span>Registered</span>
+        <span class="text-muted"><%= registered %> / <%= @event.seat_limit %></span>
+      </div>
+      <div class="bar-track" title="<%= registered %> of <%= @event.seat_limit %> seats registered">
+        <div class="bar-fill" style="width: <%= percent.round(2) %>%;"></div>
+      </div>
+    <% end %>
+  </div>
+<% end %>
+
+<%# requirement.md revisit: "ticket category wise check-ins ... category wise ticket sold data."
+    Per category: how many registered (against that category's own total_count, when the event
+    has a seat limit) alongside how many of those have actually checked in — the same registered/
+    capacity fill bar the event dashboard already uses (application.css's .bar-track/.bar-fill),
+    plus a second, independent number for check-ins (a category can be fully sold and still show
+    a low check-in count — two different questions, not one bar doing double duty). %>
+<% if @category_stats.any? %>
+  <div class="mb-4">
+    <%= render layout: "shared/card", locals: { title: "Check-ins by Ticket Category", icon: "bx-id-card" } do %>
+      <% @category_stats.each do |row| %>
+        <div class="mb-3">
+          <div class="d-flex justify-content-between font-size-13 mb-1">
+            <span><%= row[:category].name %></span>
+            <span class="text-muted">
+              <%= row[:checked_in] %> checked in
+              &middot; <%= row[:registered] %><%= row[:category].total_count ? " / #{row[:category].total_count}" : "" %> registered
+            </span>
+          </div>
+          <% if row[:category].total_count %>
+            <% percent = (row[:registered].to_f / row[:category].total_count * 100).clamp(0, 100) %>
+            <div class="bar-track" title="<%= row[:category].name %>: <%= row[:registered] %> of <%= row[:category].total_count %> registered">
+              <div class="bar-fill" style="width: <%= percent.round(2) %>%;"></div>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    <% end %>
+  </div>
+<% end %>
+
+<%# Phase 11 backfill (requirement.md §5.15: "the same mechanism extends to per-session
+    occupancy") — each row's badge trio is its own turbo_stream_from, patched independently by
+    LiveDashboard.broadcast_session_stats on every session-level scan; no page reload here either.
+    The fill bar underneath a capacity-limited session's badges is a plain per-request render
+    (not live-patched) — same "the live badge is the thing that updates instantly, the
+    surrounding row layout doesn't need to" split Session Occupancy already had before this bar
+    existed. %>
+<% if @sessions.any? %>
+  <div class="mb-4">
+    <%= render layout: "shared/card", locals: { title: "Session Occupancy", icon: "bx-grid-alt" } do %>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Session</th>
+              <th>Time</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @sessions.each do |session| %>
+              <tr>
+                <td><%= session.name %></td>
+                <td><%= session.starts_at.strftime("%H:%M") %>&ndash;<%= session.ends_at.strftime("%H:%M") %></td>
+                <td style="min-width: 220px;">
+                  <%= turbo_stream_from session %>
+                  <%= render "session_live_stats", session: session, stats: session.live_stats! %>
+                  <% unless session.unlimited? %>
+                    <% percent = (session.live_stats!.occupancy_count.to_f / session.seat_limit * 100).clamp(0, 100) %>
+                    <div class="bar-track mt-2" style="max-width: 200px;" title="<%= session.name %>: <%= session.live_stats!.occupancy_count %> of <%= session.seat_limit %> seats occupied">
+                      <div class="bar-fill" style="width: <%= percent.round(2) %>%;"></div>
+                    </div>
+                  <% end %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  </div>
+<% end %>
+
+<div>
+  <%= render layout: "shared/card", locals: { title: "Recent Scans", icon: "bx-history" } do %>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Participant</th>
+            <th>Direction</th>
+            <th>Session</th>
+            <th>Source</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @recent_scans.each do |scan| %>
+            <tr>
+              <td><%= scan.participant.name %></td>
+              <td>
+                <span class="badge <%= scan.check_in? ? "bg-success-subtle text-success" : "bg-secondary-subtle text-secondary" %>">
+                  <%= scan.scan_type.humanize %>
+                </span>
+              </td>
+              <td><%= scan.session&.name || "Event-level" %></td>
+              <td><%= scan.source.humanize %></td>
+              <td><%= scan.scanned_at.strftime("%H:%M:%S") %></td>
+            </tr>
+          <% end %>
+          <% if @recent_scans.none? %>
+            <tr><td colspan="5" class="text-center text-muted py-4">No scans yet.</td></tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% end %>
+</div>

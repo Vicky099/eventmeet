@@ -1,0 +1,16 @@
+<% content_for :page_title, "New Session" %>
+
+<%= render "shared/page_header",
+  icon: "bx-list-ul",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: edit_admin_event_path(@event) },
+            { label: "Sessions", path: edit_admin_event_path(@event, step: "sessions") }, { label: "New Session" } ] %>
+
+<div class="row">
+  <div class="col-xl-9">
+    <div class="card">
+      <div class="card-body">
+        <%= render "form", event: @event, session: @session %>
+      </div>
+    </div>
+  </div>
+</div>

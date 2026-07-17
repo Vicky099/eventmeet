@@ -4,20 +4,66 @@
     a persisted one — the "platform" prefix matches config/routes.rb's `scope ... as: "platform"`
     the same way it would a real `namespace :platform`, even though this controller lives under
     SuperAdmin::. %>
-<%= form_with model: [ :platform, account ], local: true do |f| %>
-  <% if account.errors.any? %>
-    <div class="alert alert-danger">
-      <ul class="mb-0">
-        <% account.errors.full_messages.each do |message| %>
-          <li><%= message %></li>
-        <% end %>
-      </ul>
-    </div>
-  <% end %>
-
+<%= form_with model: [ :platform, account ], local: true, multipart: true do |f| %>
   <div class="mb-3">
     <%= f.label :name, class: "form-label" %>
-    <%= f.text_field :name, class: "form-control", autofocus: true %>
+    <%= f.text_field :name, class: field_error_class(account, :name), autofocus: true %>
+    <%= field_error_feedback(account, :name) %>
+  </div>
+
+  <%# requirement.md revisit: "While registering the Tenant, we should capture ... contact email,
+      contact num, Logo, sender email." Presence is only enforced on create (Account's own
+      validation) — an already-provisioned tenant can leave these blank on an edit that's about
+      something else entirely, so no asterisk/required attribute here regardless of which form
+      this partial is rendering. %>
+  <%# row/col-md-6 pairing — same "two related short fields share a row" convention
+      admin/events/_basic_info_step.html.erb already uses. %>
+  <div class="row g-3 mb-3">
+    <div class="col-md-6">
+      <%= f.label :contact_email, class: "form-label" %>
+      <%= f.email_field :contact_email, class: field_error_class(account, :contact_email) %>
+      <%= field_error_feedback(account, :contact_email) %>
+    </div>
+
+    <div class="col-md-6">
+      <%= f.label :contact_num, "Contact Number", class: "form-label" %>
+      <%= f.text_field :contact_num, class: field_error_class(account, :contact_num) %>
+      <%= field_error_feedback(account, :contact_num) %>
+    </div>
+  </div>
+
+  <div class="mb-3">
+    <%= f.label :logo, class: "form-label" %>
+    <% if account.logo.attached? %>
+      <%# Not image_tag(attachment) — see super_admin/accounts/show.html.erb's own comment for
+          the full story (confirmed live, both places). %>
+      <div class="mb-2">
+        <%= tag.img src: account.logo.url, style: "max-height: 60px;", alt: "#{account.name} logo" %>
+      </div>
+    <% end %>
+    <%= f.file_field :logo, class: "form-control", accept: "image/*" %>
+    <% if account.logo.attached? %>
+      <small class="text-muted">Choose a new file to replace the current logo.</small>
+    <% end %>
+  </div>
+
+  <%# requirement.md revisit: "we should capture the event timezone and all the dates which are
+      display in the UI should abey the tenant timezone." Every date/time shown anywhere in this
+      tenant's admin console (and its outgoing email) renders in whatever's picked here —
+      TenantResolvable#with_tenant_time_zone / ApplicationMailer#mail. %>
+  <div class="row g-3 mb-3">
+    <div class="col-md-6">
+      <%= f.label :sender_email, "Sender Email", class: "form-label" %>
+      <%= f.email_field :sender_email, class: field_error_class(account, :sender_email) %>
+      <small class="text-muted d-block">Outgoing email to this tenant's own users sends from here once set.</small>
+      <%= field_error_feedback(account, :sender_email) %>
+    </div>
+
+    <div class="col-md-6">
+      <%= f.label :time_zone, "Timezone", class: "form-label" %>
+      <%= f.time_zone_select :time_zone, nil, { default: "UTC" }, class: field_error_class(account, :time_zone, base: "form-select") %>
+      <%= field_error_feedback(account, :time_zone) %>
+    </div>
   </div>
 
   <%# exclude_id — only set once the account is persisted, so an edit form's own unchanged slug
@@ -27,10 +73,11 @@
        <%= "data-slug-check-exclude-id-value=#{account.id}".html_safe if account.persisted? %>>
     <%= f.label :subdomain_slug, "Subdomain", class: "form-label" %>
     <div class="input-group">
-      <%= f.text_field :subdomain_slug, class: "form-control",
+      <%= f.text_field :subdomain_slug, class: field_error_class(account, :subdomain_slug),
             data: { slug_check_target: "input", action: "input->slug-check#check" } %>
       <span class="input-group-text">.<%= Rails.application.config.x.platform_domain %></span>
     </div>
+    <%= field_error_feedback(account, :subdomain_slug) %>
     <div class="mt-1">
       <%= turbo_frame_tag "slug_availability", data: { slug_check_target: "frame" } %>
     </div>

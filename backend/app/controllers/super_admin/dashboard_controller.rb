@@ -8,6 +8,10 @@ module SuperAdmin
       @tenant_count = Account.count
       # Event/approval_status doesn't exist until Phase 4/5 — nothing to count yet.
       @pending_approval_count = 0
+      # Phase 9 (requirement.md §5.15) — read on demand for first paint, same "cache read now,
+      # broadcast on change" split EventLiveStats already uses; LiveDashboard.broadcast_platform_pulse
+      # keeps every already-open dashboard's copy fresh after that.
+      @live_pulse = LiveDashboard.platform_pulse
     end
   end
 end

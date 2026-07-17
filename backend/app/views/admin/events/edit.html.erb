@@ -4,7 +4,7 @@
   icon: "bx-calendar-event",
   crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name } ] %>
 
-<div class="mb-3 d-flex gap-2">
+<div class="mb-3 d-flex align-items-center gap-2">
   <span class="badge bg-info-subtle text-info"><%= @event.status.humanize %></span>
   <span class="badge <%= approval_status_badge_class(@event.approval_status) %>"><%= @event.approval_status.humanize %></span>
   <% if @event.published? %>
@@ -19,66 +19,104 @@
     (Event#basic_info_complete?). %>
 <% steps = [
   { key: "basic_info", label: "Basic Info", icon: "bx-info-circle" },
-  { key: "agenda", label: "Agenda", icon: "bx-list-ul" },
+  { key: "sessions", label: "Sessions", icon: "bx-grid-alt" },
+  { key: "speaker", label: "Speaker", icon: "bx-microphone" },
+  { key: "event_schedule", label: "Event Schedule", icon: "bx-calendar-check" },
   { key: "tickets", label: "Ticket Categories", icon: "bx-purchase-tag-alt" },
   { key: "badge", label: "Badge", icon: "bx-id-card" },
   { key: "review", label: "Review", icon: "bx-check-double" },
 ] %>
 
-<div class="card">
-  <div class="card-body">
-    <ul class="wizard-nav mb-4">
-      <% steps.each do |step| %>
-        <li class="wizard-list-item">
-          <%= link_to edit_admin_event_path(@event, step: step[:key]),
-                class: "list-item text-decoration-none #{'active' if @step == step[:key]}" do %>
-            <div class="step-icon" data-bs-toggle="tooltip" data-bs-placement="top" title="<%= step[:label] %>">
-              <i class="bx <%= step[:icon] %>"></i>
-            </div>
-            <div class="step-title text-muted"><%= step[:label] %></div>
-          <% end %>
-        </li>
-      <% end %>
-    </ul>
+<%# User feedback: the stepper nav and the step's own content used to share one card, with a big
+    centered "Basic Info"/"Review"/etc. heading repeating what the stepper's own label right above
+    it already said. The stepper now lives in its own card, and every step's content renders as its
+    own card (or, where a step naturally has several distinct blocks — Basic Info's event details/
+    required fields/custom fields, Review's several read-only sections — several separate cards,
+    one per block) instead of one undifferentiated card body. No step repeats its own name as a
+    heading in the content area anymore — the stepper is the only place that name needs to appear.
+    (An <hr> briefly separated the stepper card from the content below; removed on further
+    feedback — the card's own `mb-3` margin is enough spacing on its own, without a second visible
+    rule doing the same job.) Basic Info's own Complete/Incomplete indicator (once shown above its
+    first card) was removed the same round — same reasoning as the step-name heading: readable
+    from the form itself (every required field is right there), not something that needed its own
+    separate line to repeat.
 
-    <% case @step
-       when "basic_info" %>
-      <div class="text-center mb-4">
-        <h5>Basic Info</h5>
-        <% if @event.basic_info_complete? %>
-          <p class="text-success mb-0"><i class="bx bx-check-circle"></i> Complete</p>
-        <% else %>
-          <p class="text-warning mb-0"><i class="bx bx-error-circle"></i> Incomplete</p>
+    Later feedback: the vendored template's own `.wizard-nav`/`.step-icon` classes (used above
+    originally) render 56px circles with `flex-grow: 1` steps that stretch to fill the entire card
+    width — with only 5 steps in a wide card that's a lot of both height and width for very little
+    information. Rebuilt to match shopmate-backend's own product-creation stepper
+    (app/views/admin/products/_wizard_progress_header.html.erb in that sibling repo) instead: much
+    smaller 34px circles, a single thin connecting line behind them (one absolutely-positioned div,
+    not a per-step connector), and steps that only take as much horizontal room as they need
+    (`min-width` on the row + `overflow-auto`, not `flex-grow` stretching to fill the card) rather
+    than spreading out to fill whatever width the card happens to be. Kept EventMeet's own
+    per-step boxicon glyphs (shopmate's own version uses plain numbers instead, since its wizard is
+    sequentially gated and EventMeet's isn't).
+
+    Later feedback still: a third "done" state was added after all — green + a checkmark glyph
+    (Event#step_complete?) for any non-active step that already has real content. Unlike
+    shopmate's wizard_step/furthest_allowed_step, this isn't a gate (every step stays freely
+    navigable regardless of completion) — purely an at-a-glance progress indicator. %>
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="overflow-auto">
+      <div class="d-flex justify-content-between align-items-start position-relative" style="min-width: <%= steps.size * 90 %>px;">
+        <div class="position-absolute" style="top: 17px; left: 5%; right: 5%; height: 2px; background: var(--bs-border-color); z-index: 0;"></div>
+
+        <%# Completed state (green + checkmark, Event#step_complete?) only applies to a step
+            that's NOT the one currently being viewed — the active step keeps its own blue
+            styling regardless of completion, so "I'm looking at this step right now" always
+            wins over "this step already has content." %>
+        <% steps.each do |step| %>
+          <% active = @step == step[:key]
+             complete = !active && @event.step_complete?(step[:key]) %>
+          <div class="text-center position-relative flex-grow-1" style="z-index: 1; min-width: 80px;">
+            <%= link_to edit_admin_event_path(@event, step: step[:key]), class: "text-decoration-none d-block" do %>
+              <div class="mx-auto rounded-circle d-flex align-items-center justify-content-center mb-1 <%= active ? "bg-primary text-white" : complete ? "bg-success text-white" : "bg-white border border-2 border-secondary text-muted" %>"
+                   style="width: 34px; height: 34px; font-size: 16px;"
+                   data-bs-toggle="tooltip" data-bs-placement="top" title="<%= step[:label] %><%= " (complete)" if complete %>">
+                <i class="bx <%= complete ? "bx-check" : step[:icon] %>"></i>
+              </div>
+              <p class="mb-0 font-size-11 <%= active ? "fw-bold text-primary" : complete ? "fw-medium text-success" : "text-muted" %>" style="line-height: 1.2; word-break: break-word;">
+                <%= step[:label] %>
+              </p>
+            <% end %>
+          </div>
         <% end %>
       </div>
-      <%= render "basic_info_step", event: @event %>
-    <% when "agenda" %>
-      <div class="text-center mb-4"><h5>Agenda</h5></div>
-      <%= render "shared/empty_state", icon: "bx-list-ul",
-            message: "Multi-day, multi-track agenda planning lands in Phase 11." %>
-      <div class="d-flex align-items-start gap-3 mt-4">
-        <%= link_to "Previous", edit_admin_event_path(@event, step: "basic_info"), class: "btn btn-outline-secondary" %>
-        <%= link_to "Next", edit_admin_event_path(@event, step: "tickets"), class: "btn btn-primary ms-auto" %>
-      </div>
-    <% when "tickets" %>
-      <div class="text-center mb-4"><h5>Ticket Categories</h5></div>
-      <%= render "shared/empty_state", icon: "bx-purchase-tag-alt",
-            message: "Capacity-based ticket categories land in Phase 6." %>
-      <div class="d-flex align-items-start gap-3 mt-4">
-        <%= link_to "Previous", edit_admin_event_path(@event, step: "agenda"), class: "btn btn-outline-secondary" %>
-        <%= link_to "Next", edit_admin_event_path(@event, step: "badge"), class: "btn btn-primary ms-auto" %>
-      </div>
-    <% when "badge" %>
-      <div class="text-center mb-4"><h5>Badge</h5></div>
-      <%= render "shared/empty_state", icon: "bx-id-card",
-            message: "The visual badge designer lands in Phase 8." %>
-      <div class="d-flex align-items-start gap-3 mt-4">
-        <%= link_to "Previous", edit_admin_event_path(@event, step: "tickets"), class: "btn btn-outline-secondary" %>
-        <%= link_to "Next", edit_admin_event_path(@event, step: "review"), class: "btn btn-primary ms-auto" %>
-      </div>
-    <% when "review" %>
-      <div class="text-center mb-4"><h5>Review</h5></div>
-      <%= render "review_step", event: @event %>
-    <% end %>
+    </div>
   </div>
 </div>
+
+<% case @step
+   when "basic_info" %>
+  <%= render "basic_info_step", event: @event %>
+<% when "sessions" %>
+  <%= render "sessions_step", event: @event %>
+  <div class="d-flex align-items-start gap-3 mt-4">
+    <%= link_to "Previous", edit_admin_event_path(@event, step: "basic_info"), class: "btn btn-outline-secondary" %>
+    <%= link_to "Next", edit_admin_event_path(@event, step: "speaker"), class: "btn btn-primary ms-auto" %>
+  </div>
+<% when "speaker" %>
+  <%= render "speaker_step", event: @event %>
+  <div class="d-flex align-items-start gap-3 mt-4">
+    <%= link_to "Previous", edit_admin_event_path(@event, step: "sessions"), class: "btn btn-outline-secondary" %>
+    <%= link_to "Next", edit_admin_event_path(@event, step: "event_schedule"), class: "btn btn-primary ms-auto" %>
+  </div>
+<% when "event_schedule" %>
+  <%= render "event_schedule_step", event: @event %>
+  <div class="d-flex align-items-start gap-3 mt-4">
+    <%= link_to "Previous", edit_admin_event_path(@event, step: "speaker"), class: "btn btn-outline-secondary" %>
+    <%= link_to "Next", edit_admin_event_path(@event, step: "tickets"), class: "btn btn-primary ms-auto" %>
+  </div>
+<% when "tickets" %>
+  <%= render "tickets_step", event: @event %>
+<% when "badge" %>
+  <%= render "badge_step", event: @event %>
+  <div class="d-flex align-items-start gap-3 mt-4">
+    <%= link_to "Previous", edit_admin_event_path(@event, step: "tickets"), class: "btn btn-outline-secondary" %>
+    <%= link_to "Next", edit_admin_event_path(@event, step: "review"), class: "btn btn-primary ms-auto" %>
+  </div>
+<% when "review" %>
+  <%= render "review_step", event: @event %>
+<% end %>

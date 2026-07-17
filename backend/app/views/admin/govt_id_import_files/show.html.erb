@@ -1,0 +1,41 @@
+<% content_for :page_title, "Import Government IDs" %>
+
+<% if @govt_id_import_file.pending? || @govt_id_import_file.processing? %>
+  <% content_for :head, tag.meta("http-equiv": "refresh", content: "3") %>
+<% end %>
+
+<%= render "shared/page_header",
+  icon: "bx-id-card",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) },
+            { label: "Participants", path: admin_event_participants_path(@event) }, { label: "Govt IDs" } ] %>
+
+<div class="row">
+  <div class="col-xl-7">
+    <div class="card">
+      <div class="card-body">
+        <% case @govt_id_import_file.status %>
+        <% when "pending", "processing" %>
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+            <span>Importing… <%= @govt_id_import_file.percent_complete %>%<% if @govt_id_import_file.total_rows %> (<%= @govt_id_import_file.processed_rows %> / <%= @govt_id_import_file.total_rows %> rows)<% end %></span>
+          </div>
+          <div class="progress" style="height: 8px;">
+            <div class="progress-bar" role="progressbar" style="width: <%= @govt_id_import_file.percent_complete %>%"></div>
+          </div>
+        <% when "completed" %>
+          <div class="alert alert-success">
+            <i class="bx bx-check-circle me-1"></i> Import complete —
+            <%= pluralize(@govt_id_import_file.created_count, "Govt ID") %> added to the pool,
+            <%= @govt_id_import_file.duplicate_count %> already present.
+          </div>
+          <%= link_to "New Import", new_admin_event_govt_id_import_file_path(@event), class: "btn btn-primary" %>
+        <% when "failed" %>
+          <div class="alert alert-danger">
+            <i class="bx bx-error-circle me-1"></i> Import failed<% if @govt_id_import_file.row_errors.first %>: <%= @govt_id_import_file.row_errors.first["message"] %><% end %>.
+          </div>
+          <%= link_to "Try Again", new_admin_event_govt_id_import_file_path(@event), class: "btn btn-outline-primary" %>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

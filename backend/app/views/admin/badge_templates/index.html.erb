@@ -1,0 +1,58 @@
+<% content_for :page_title, "Badge Templates" %>
+
+<%= render layout: "shared/page_header",
+  locals: { icon: "bx-id-card", crumbs: [ { label: "Badge Templates" } ] } do %>
+  <%= link_to "New Template", new_admin_badge_template_path, class: "btn btn-sm btn-primary" %>
+<% end %>
+
+<div class="card">
+  <div class="card-header">
+    <span class="fw-semibold">Badge Templates</span>
+  </div>
+  <div class="card-body">
+    <% if @badge_templates.none? %>
+      <%= render "shared/empty_state", icon: "bx-id-card",
+            message: "No reusable badge templates yet.",
+            action_label: "New Template", action_path: new_admin_badge_template_path %>
+    <% else %>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Size (cm)</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @badge_templates.each do |template| %>
+              <tr>
+                <td><%= link_to template.name, edit_admin_badge_template_path(template) %></td>
+                <td><%= template.output_type.humanize %></td>
+                <td><%= template.width_cm %> &times; <%= template.height_cm %></td>
+                <td class="text-end">
+                  <div class="d-flex justify-content-end gap-2">
+                    <%= link_to edit_admin_badge_template_path(template), class: "btn btn-sm btn-outline-primary", title: "Edit" do %>
+                      <i class="bx bx-edit"></i>
+                    <% end %>
+                    <%= button_to admin_badge_template_path(template), method: :delete,
+                          class: "btn btn-sm btn-outline-danger", title: "Remove",
+                          data: { action: "click->confirm-dialog#show", title: "Remove Badge Template",
+                                  message: "Remove #{template.name}? Badges already built from it are unaffected.", danger: "true" } do %>
+                      <i class="bx bx-trash"></i>
+                    <% end %>
+                  </div>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  </div>
+</div>
+
+<div class="d-flex justify-content-end mt-3">
+  <%== pagy_nav(@pagy) if @badge_templates.any? %>
+</div>

@@ -1,0 +1,55 @@
+<% content_for :page_title, "Sessions — #{@event.name}" %>
+
+<%= render layout: "shared/page_header",
+  locals: { icon: "bx-grid-alt", crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: edit_admin_event_path(@event) }, { label: "Sessions" } ] } do %>
+  <%= link_to "New Session", new_admin_event_session_path(@event), class: "btn btn-sm btn-primary" %>
+<% end %>
+
+<div class="card">
+  <div class="card-body">
+    <% if @sessions.none? %>
+      <%= render "shared/empty_state", icon: "bx-grid-alt",
+            message: "No sessions yet — add a breakout room/track with its own seat capacity.",
+            action_label: "New Session", action_path: new_admin_event_session_path(@event) %>
+    <% else %>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Track</th>
+              <th>Room</th>
+              <th>Time</th>
+              <th>Capacity</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @sessions.each do |session| %>
+              <tr>
+                <td><%= link_to session.name, edit_admin_event_session_path(@event, session) %></td>
+                <td><%= session.track.presence || "—" %></td>
+                <td><%= session.room.presence || "—" %></td>
+                <td><%= session.starts_at.strftime("%b %-d, %H:%M") %>&ndash;<%= session.ends_at.strftime("%H:%M") %></td>
+                <td><%= render "admin/scan_events/session_live_stats", session: session, stats: session.live_stats! %></td>
+                <td class="text-end">
+                  <div class="d-flex justify-content-end gap-2">
+                    <%= link_to edit_admin_event_session_path(@event, session), class: "btn btn-sm btn-outline-primary", title: "Edit" do %>
+                      <i class="bx bx-edit"></i>
+                    <% end %>
+                    <%= button_to admin_event_session_path(@event, session), method: :delete,
+                          class: "btn btn-sm btn-outline-danger", title: "Remove",
+                          data: { action: "click->confirm-dialog#show", title: "Remove Session",
+                                  message: "Remove #{session.name}?", danger: "true" } do %>
+                      <i class="bx bx-trash"></i>
+                    <% end %>
+                  </div>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  </div>
+</div>

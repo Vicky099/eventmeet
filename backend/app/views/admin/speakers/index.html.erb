@@ -1,0 +1,66 @@
+<% content_for :page_title, "Speakers — #{@event.name}" %>
+
+<%= render layout: "shared/page_header",
+  locals: { icon: "bx-microphone", crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: edit_admin_event_path(@event) }, { label: "Speakers" } ] } do %>
+  <%= link_to "New Speaker", new_admin_event_speaker_path(@event), class: "btn btn-sm btn-primary" %>
+<% end %>
+
+<div class="card">
+  <div class="card-header">
+    <span class="fw-semibold">Speakers</span>
+  </div>
+  <div class="card-body">
+    <% if @speakers.none? %>
+      <%= render "shared/empty_state", icon: "bx-microphone",
+            message: "No speakers yet — add one to start building the schedule.",
+            action_label: "New Speaker", action_path: new_admin_event_speaker_path(@event) %>
+    <% else %>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Name</th>
+              <th>Company</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @speakers.each do |speaker| %>
+              <tr>
+                <td>
+                  <% if speaker.photo.attached? %>
+                    <%# Not image_tag(attachment) — 500s the moment it's exercised against a real
+                        attached photo ("no implicit conversion of ActiveStorage::Attached::One
+                        into String"), compounded by this app's config/cloudinary.yml
+                        `enhance_image_tag: true` mangling any URL string fed to image_tag instead
+                        (see checkin/_result.html.erb's own comment, where this was first caught
+                        live). A bare <img> via `tag.img` sidesteps image_tag entirely. %>
+                    <%= tag.img src: speaker.photo.url, class: "rounded-circle", style: "width: 32px; height: 32px; object-fit: cover;" %>
+                  <% else %>
+                    <i class="bx bx-user-circle font-size-24 text-muted"></i>
+                  <% end %>
+                </td>
+                <td><%= link_to speaker.name, edit_admin_event_speaker_path(@event, speaker) %></td>
+                <td><%= speaker.company %></td>
+                <td class="text-end">
+                  <div class="d-flex justify-content-end gap-2">
+                    <%= link_to edit_admin_event_speaker_path(@event, speaker), class: "btn btn-sm btn-outline-primary", title: "Edit" do %>
+                      <i class="bx bx-edit"></i>
+                    <% end %>
+                    <%= button_to admin_event_speaker_path(@event, speaker), method: :delete,
+                          class: "btn btn-sm btn-outline-danger", title: "Remove",
+                          data: { action: "click->confirm-dialog#show", title: "Remove Speaker",
+                                  message: "Remove #{speaker.name}?", danger: "true" } do %>
+                      <i class="bx bx-trash"></i>
+                    <% end %>
+                  </div>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  </div>
+</div>

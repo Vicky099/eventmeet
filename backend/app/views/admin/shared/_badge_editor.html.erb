@@ -1,0 +1,146 @@
+<%# Locals: object (a Badge or BadgeTemplate — both include HasBadgeMapping, same
+    content/mapping/output_type/size shape), url, method (:patch — always editing an already-
+    created row; #new/#create build a blank/from-template one first and redirect straight here),
+    back_path.
+    Phase 8 — Badge Design & Printing (requirement.md §4.10, §5.5): GrapesJS canvas + the
+    non-canvas fields (name/type/size/mapping/background) share one form and one Save button
+    — badge_editor_controller#save fills the hidden content field from the canvas, then submits
+    normally, so there's exactly one save action, not a separate "save layout" vs. "save
+    settings." %>
+<% content_for :head do %>
+  <%= stylesheet_link_tag "vendor/grapesjs.min" %>
+<% end %>
+
+<%# badge_editor_width_cm_value/height_cm_value seed the canvas frame's *initial* real print
+    size (see badge_editor_controller.js — it's set to the exact CSS px equivalent Grover/Chrome
+    use for physical "cm" units, so what's visible while designing is what actually prints, not an
+    arbitrary larger editing area a token could easily be positioned outside of).
+    badge_editor_background_image_url_value seeds the canvas with whatever background is already
+    attached (rails_blob_path — an ordinary browser tab viewing this page has the session/auth
+    context to resolve it, unlike BadgePdfService's/the preview modal's own standalone renders,
+    which is why those two use #background_image_data_uri instead). %>
+<%# Admin::DirectUploadsController's `scope[type]` — Badge's background_image lives under
+    events/<event_id>/badges/background_image, BadgeTemplate's under badge_templates/
+    background_image (account-level, no event) — see that controller's SCOPE_SEGMENTS. %>
+<% background_upload_scope = object.is_a?(BadgeTemplate) ? { type: "badge_template_background_image" } : { type: "badge_background_image", event_id: object.event_id } %>
+<%= form_with model: object, url: url, method: method,
+      data: { controller: "badge-editor", badge_editor_width_cm_value: object.width_cm, badge_editor_height_cm_value: object.height_cm,
+              badge_editor_background_image_url_value: (rails_blob_path(object.background_image) if object.background_image.attached?) } do |f| %>
+  <%# :base errors (e.g. "This event already has a default badge") have no field of their own
+      to attach to, so they're the one thing still shown as a top block — not a duplicate of
+      the per-field errors below, which is what the user asked to remove. %>
+  <% if object.errors[:base].any? %>
+    <div class="alert alert-danger">
+      <ul class="mb-0">
+        <% object.errors[:base].each do |message| %>
+          <li><%= message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-3">
+      <%= f.label :name, class: "form-label" %>
+      <%= f.text_field :name, class: field_error_class(object, :name) %>
+      <%= field_error_feedback(object, :name) %>
+    </div>
+    <div class="col-md-2">
+      <%= f.label :output_type, class: "form-label" %>
+      <%= f.select :output_type, object.class.output_types.keys.map { |t| [ t.humanize, t ] }, {}, class: "form-select" %>
+    </div>
+    <div class="col-md-2">
+      <%= f.label :width_cm, "Width (cm)", class: "form-label" %>
+      <%= f.number_field :width_cm, step: 0.1, min: 0.1, class: field_error_class(object, :width_cm),
+            data: { badge_editor_target: "widthInput", action: "input->badge-editor#resizeCanvas" } %>
+      <%= field_error_feedback(object, :width_cm) %>
+    </div>
+    <div class="col-md-2">
+      <%= f.label :height_cm, "Height (cm)", class: "form-label" %>
+      <%= f.number_field :height_cm, step: 0.1, min: 0.1, class: field_error_class(object, :height_cm),
+            data: { badge_editor_target: "heightInput", action: "input->badge-editor#resizeCanvas" } %>
+      <%= field_error_feedback(object, :height_cm) %>
+    </div>
+    <div class="col-md-3" data-controller="image-upload">
+      <%= f.label :background_image, "Background image", class: "form-label" %>
+      <%# change->badge-editor#previewBackgroundImage — the canvas below reflects a picked file
+          immediately, a local FileReader preview independent of the actual upload (see that
+          method's own comment for why it's a plain DOM style on the canvas iframe's body, not a
+          GrapesJS-tracked one). change->image-upload#fileSelected is the real upload: straight to
+          Cloudinary, with progress (image_upload_controller.js) — no `name=` on this input, since
+          the raw file is never itself form-submitted, only the signed_id that upload produces,
+          injected below under the real field name once it finishes. %>
+      <%= f.file_field :background_image, name: nil, class: "form-control", accept: "image/*",
+            data: { badge_editor_target: "backgroundInput", image_upload_target: "fileInput",
+                    direct_upload_url: admin_direct_uploads_path(scope: background_upload_scope),
+                    blob_field_name: "#{object.model_name.param_key}[background_image]",
+                    action: "change->badge-editor#previewBackgroundImage change->image-upload#fileSelected" } %>
+      <%= render "shared/upload_progress" %>
+      <% if object.background_image.attached? %>
+        <small class="text-muted">Current: <%= object.background_image.filename %></small>
+      <% end %>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <% %w[OTHER1 OTHER2 OTHER3].each do |key| %>
+      <div class="col-md-3">
+        <%= label_tag "mapping_#{key}", "$#{key}$ shows", class: "form-label" %>
+        <%= select_tag "#{object.model_name.param_key}[mapping][#{key}]",
+              options_for_select([ [ "(unused)", "" ] ] + HasBadgeMapping::MAPPABLE_FIELDS.map { |field| [ field.humanize, field ] }, object.mapping[key]),
+              class: "form-select" %>
+      </div>
+    <% end %>
+  </div>
+
+  <div class="d-flex align-items-center gap-1 mb-2">
+    <span class="text-muted font-size-13">How to design this badge</span>
+    <button type="button" class="btn btn-link p-0 text-muted" data-bs-toggle="modal" data-bs-target="#badge-editor-help-modal" title="How to design this badge">
+      <i class="bx bx-info-circle font-size-16"></i>
+    </button>
+  </div>
+
+  <div class="d-flex justify-content-center bg-light rounded py-3 mb-3">
+    <div data-badge-editor-target="canvas"></div>
+  </div>
+  <%= f.hidden_field :content, data: { badge_editor_target: "contentField" } %>
+
+  <div class="d-flex align-items-center gap-3">
+    <%= link_to "Cancel", back_path, class: "btn btn-outline-secondary" %>
+    <button type="button" class="btn btn-primary ms-auto" data-action="badge-editor#save">Save badge</button>
+  </div>
+<% end %>
+
+<%# The instructional copy that used to sit inline above the canvas — moved into an on-demand
+    modal (triggered by the "i" icon above) so the editor's own canvas/toolbar gets more room by
+    default. A plain Bootstrap modal (no Stimulus needed), same data-bs-toggle="modal" pattern as
+    the badge preview modal in admin/badges/_badges_table.html.erb. Sits outside the <form> —
+    nothing inside it submits anything, so it doesn't need to be a form descendant. %>
+<div class="modal fade" id="badge-editor-help-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-semibold">How to design this badge</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted font-size-13 mb-0">
+          Drag a token block (Title, Full Name, First/Last Name, Designation, Org ID, Govt ID, Photo,
+          Logo, QR Code, Barcode, Other Field 1-3) from the "Badge Tokens" category onto the canvas —
+          each one becomes live participant data, a QR code, or a barcode when the badge is actually
+          printed. A generic "Text" block (plain static text — a title/label that doesn't change per
+          participant) is also available in the palette's other categories. Click a placed token to
+          select it, then drag its <i class="bx bx-move"></i> move handle to position it anywhere on
+          the badge, or drag a corner handle to resize it — every token is freely positioned and
+          resizable, not locked into a fixed layout. The canvas below is shown at the badge's exact
+          printed size — anything placed outside its edges won't appear on the printed badge.
+          Upload the actual background image file above first — the background covers the whole
+          badge automatically, no need to drag it onto the canvas.
+        </p>
+      </div>
+      <div class="modal-footer border-0 pt-3">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>

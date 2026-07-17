@@ -1,0 +1,16 @@
+You're registered for <%= @event.name %>
+
+Hi <%= @participant.first_name %>,
+
+Your registration for <%= @event.name %> is confirmed.
+
+When: <%= @event.starts_at.strftime("%B %-d, %Y %H:%M") %> - <%= @event.ends_at.strftime("%B %-d, %Y %H:%M") %>
+<% if @event.address.present? -%>
+Where: <%= @event.address %>
+<% end -%>
+<% if @event.meeting_link.present? -%>
+Meeting link: <%= @event.meeting_link %>
+<% end -%>
+Your registration ID: <%= @participant.client_participant_id %>
+
+See you there!

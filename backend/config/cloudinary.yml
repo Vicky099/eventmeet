@@ -1,0 +1,34 @@
+# Phase 8/Cloudinary integration — mirrors the sibling event_management project's own
+# config/cloudinary.yml exactly (same three env var names: CLOUD_NAME/API_KEY/API_SECRET), loaded
+# via Figaro from config/application.yml (gitignored, per-developer-machine) in development/test,
+# or real environment variables set on the deploy target in production/staging. The cloudinary gem
+# reads this file itself (Cloudinary.config, lib/cloudinary.rb#import_settings_from_file) — no
+# Rails initializer needed to wire it up.
+development:
+  cloud_name: <%= ENV["CLOUD_NAME"] %>
+  api_key: <%= ENV["API_KEY"] %>
+  api_secret: <%= ENV["API_SECRET"] %>
+  enhance_image_tag: true
+  static_image_support: false
+  secure: false
+test:
+  cloud_name: <%= ENV["CLOUD_NAME"] %>
+  api_key: <%= ENV["API_KEY"] %>
+  api_secret: <%= ENV["API_SECRET"] %>
+  enhance_image_tag: true
+  static_image_support: false
+  secure: false
+production:
+  cloud_name: <%= ENV["CLOUD_NAME"] %>
+  api_key: <%= ENV["API_KEY"] %>
+  api_secret: <%= ENV["API_SECRET"] %>
+  enhance_image_tag: true
+  static_image_support: true
+  secure: true
+staging:
+  cloud_name: <%= ENV["CLOUD_NAME"] %>
+  api_key: <%= ENV["API_KEY"] %>
+  api_secret: <%= ENV["API_SECRET"] %>
+  enhance_image_tag: true
+  static_image_support: true
+  secure: true

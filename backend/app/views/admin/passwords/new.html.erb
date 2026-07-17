@@ -8,22 +8,13 @@
 
 <div class="p-2 mt-4">
   <%= form_for(resource, as: resource_name, url: password_path(resource_name), html: { method: :post }) do |f| %>
-    <% if resource.errors.any? %>
-      <div class="alert alert-danger" role="alert">
-        <ul class="mb-0">
-          <% resource.errors.full_messages.each do |message| %>
-            <li><%= message %></li>
-          <% end %>
-        </ul>
-      </div>
-    <% end %>
-
     <div class="mb-3">
       <%= f.label :email, class: "form-label" %>
       <div class="position-relative input-custom-icon">
-        <%= f.email_field :email, autofocus: true, autocomplete: "email", class: "form-control", placeholder: "Enter email" %>
+        <%= f.email_field :email, autofocus: true, autocomplete: "email", class: field_error_class(resource, :email), placeholder: "Enter email" %>
         <span class="bx bx-mail-send"></span>
       </div>
+      <%= field_error_feedback(resource, :email) %>
     </div>
 
     <div class="mt-3">

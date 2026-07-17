@@ -1,17 +1,25 @@
 module Admin
-  # Phase 4 — Event Lifecycle (requirement.md §3.2, §5.2, revisited for the stepper wizard). The
-  # wizard (Basic Info/Agenda/Ticket Categories/Badge/Review) all hosts off the single `edit`
-  # action, `params[:step]` selecting which one renders — no separate read-only `show`, since
-  # every step is either directly editable (Basic Info, so far) or a read-only summary (Review)
-  # that's part of the same workspace, not a distinct page.
+  # Phase 4 — Event Lifecycle (requirement.md §3.2, §5.2, revisited for the stepper wizard,
+  # further revisited to split Agenda into three distinct steps). The wizard (Basic Info/
+  # Sessions/Speaker/Event Schedule/Ticket Categories/Badge/Review) all hosts off the single
+  # `edit` action, `params[:step]` selecting which one renders — setup/authoring stays entirely
+  # there. `#show` (Phase 7.5, requirement.md §5.14 v12) is a *different* thing: the event
+  # workspace's own landing page — reachable from the Events index and every event-scoped nav
+  # entry (AdminHelper#event_nav_items) — a read-only overview + a way back into `#edit` to keep
+  # configuring, not a copy of any wizard step.
   class EventsController < BaseController
-    # Order matters — it's also the Next/Previous adjacency (#next_step below). Agenda/Tickets/
-    # Badge don't have real forms yet (Phase 11/6/8 stubs), so #update never actually sees
-    # `step: "agenda"` etc. today; STEPS already includes them so the nav and Next/Previous chain
-    # are complete now instead of needing a second pass once those phases land.
-    STEPS = %w[basic_info agenda tickets badge review].freeze
+    # Order matters — it's also the Next/Previous adjacency (#next_step below). Sessions/Speaker/
+    # Event Schedule (Admin::EventSessionsController/Admin::SpeakersController/
+    # Admin::SchedulesController) and Badge (Admin::BadgesController) never submit a form on this
+    # controller at all — each renders its own management UI directly in the step panel (or, for
+    # Badge specifically, a GrapesJS canvas that genuinely doesn't fit in one — confirmed with
+    # user it stays a dedicated page) via its own create/update/destroy actions, which redirect
+    # back to this same step rather than a separate page — so #update never actually sees
+    # `step: "sessions"`/`"speaker"`/`"event_schedule"`/`"badge"`. Tickets (Phase 6) is the one
+    # step besides Basic Info with a real form here, same "Next saves it" shape.
+    STEPS = %w[basic_info sessions speaker event_schedule tickets badge review].freeze
 
-    before_action :set_event, only: [ :edit, :update, :duplicate, :publish, :submit_for_review ]
+    before_action :set_event, only: [ :show, :edit, :update, :duplicate, :publish, :submit_for_review ]
 
     def index
       authorize Event
@@ -34,6 +42,31 @@ module Admin
       else
         render :new, status: :unprocessable_content
       end
+    end
+
+    # The event-workspace landing page (see the class comment above) — real data, not a stub:
+    # status/approval badges (same as the wizard's own top row), a few live counts, and the core
+    # setup details, plus a way into #edit to keep configuring. EventPolicy#show? (any member) is
+    # the same permissive check every other read view in this controller already uses.
+    #
+    # Registration status/ticket-category counts are computed fresh here (plain COUNT queries),
+    # not read off EventLiveStats — confirmed live: that denormalized counter had drifted stale
+    # against this exact event's real participant rows (registered_count read 6 against an actual
+    # count of 1), almost certainly test/console data manipulated outside the normal
+    # create/destroy callback path rather than a bug in the counter itself, but it's exactly the
+    # kind of drift this read-only overview shouldn't risk surfacing — this page isn't the
+    # high-frequency live check-in view (Admin::ScanEventsController#index) EventLiveStats exists
+    # to serve cheaply, so a couple of real queries costs nothing meaningful here.
+    def show
+      authorize @event
+      @participant_status_counts = Participant.statuses.keys.index_with { |status| @event.participants.public_send(status).count }
+      @ticket_categories = @event.ticket_categories.order(:created_at)
+      # Real Participant rows, not TicketCategory#sold_count — that column is derived solely from
+      # ticket_reservations (the public self-registration hold/checkout flow) and never moves for a
+      # participant added straight from the admin console's own "Add Participant" form (or CSV
+      # import), so it under-counts real registrations on precisely the path this overview is meant
+      # to reflect.
+      @category_participant_counts = @event.participants.group(:ticket_category_id).count
     end
 
     def edit
@@ -60,12 +93,18 @@ module Admin
     end
 
     # The Review step's Publish button (requirement.md §5.2 revisited) — moves the event out of
-    # Draft via Event#publish!. Distinct from approval_status/Super Admin review (still Phase 5):
-    # this only controls the event's own draft/scheduled-live lifecycle, not public visibility.
+    # Draft via Event#publish!. Gated on the Super Admin's approval, not just basic_info_complete?
+    # — the tenant only ever sees/can use this button once `@event.approved?`, so publishing is
+    # now the last step in the chain: submit for review -> Super Admin approves -> tenant
+    # publishes. (basic_info_complete? is checked too, but is effectively always true by the time
+    # an event is approved — submit_for_review already required it, and nothing un-completes those
+    # fields afterward — kept as a defensive belt-and-suspenders check, not a real gap.)
     def publish
       authorize @event, :update?
 
-      if @event.basic_info_complete?
+      if !@event.approved?
+        redirect_to edit_admin_event_path(@event, step: "review"), alert: "This event must be approved by a Super Admin before it can be published."
+      elsif @event.basic_info_complete?
         @event.publish!
         redirect_to edit_admin_event_path(@event, step: "review"), notice: "#{@event.name} published."
       else
@@ -127,16 +166,21 @@ module Admin
       STEPS[[ STEPS.index(step) + 1, STEPS.size - 1 ].min]
     end
 
-    # participant_fields arrives as individual "event[participant_fields][field]" => "true"/nil
-    # checkbox params (app/views/admin/events/_basic_info_step.html.erb) — normalized against the
-    # fixed catalog here rather than mass-assigned, so an unchecked box (which submits nothing at
-    # all) reliably clears to false instead of leaving the previous value untouched.
+    # ticket_categories_attributes — the Tickets step's own nested rows (Event
+    # accepts_nested_attributes_for :ticket_categories); :id/:_destroy are what let an existing
+    # row be updated or removed in the same batch instead of only ever appending new ones.
+    # Deliberately no :participant_fields / :custom_fields_attributes here — the Basic Info step
+    # no longer edits either. `participant_fields` stays a real Event column, still read by the
+    # manual participant-entry form and CSV import (Phase 7.5 moves it onto RegistrationForm);
+    # `custom_fields_attributes` refers to nothing on Event at all anymore — CustomField was
+    # rescoped onto RegistrationForm (Phase 7.5), managed from its own Design Registration Form
+    # screen instead.
     def event_params
-      permitted = params.require(:event).permit(:name, :mode, :starts_at, :ends_at, :address, :meeting_link, :map_url, :banner_orientation)
-      permitted[:participant_fields] = Event::PARTICIPANT_FIELD_CATALOG.index_with do |field|
-        params.dig(:event, :participant_fields, field) == "true"
-      end
-      permitted
+      params.require(:event).permit(
+        :name, :description, :mode, :starts_at, :ends_at, :address, :meeting_link, :map_url, :banner_orientation,
+        :has_seat_limit, :seat_limit, :participant_approval_required, :is_paid, :send_registration_email,
+        ticket_categories_attributes: [ :id, :name, :total_count, :document_required, :_destroy ]
+      )
     end
   end
 end

@@ -1,0 +1,50 @@
+<% content_for :page_title, "Import Participants" %>
+
+<%= render "shared/page_header",
+  icon: "bx-group",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) },
+            { label: "Participants", path: admin_event_participants_path(@event) }, { label: "Import" } ] %>
+
+<div class="row">
+  <div class="col-xl-7">
+    <div class="card">
+      <div class="card-body">
+        <p class="text-muted">
+          Upload a .xlsx file with a header row. Recognized columns (case-insensitive): Title, First
+          Name, Last Name, Email, Contact Number, Company, Department, Position, Nationality,
+          Country, Govt ID, RF ID, Ticket Category. Rows that match an existing participant (by
+          government ID, then email+name, then email, then phone) are skipped as duplicates, not
+          overwritten.
+        </p>
+        <p class="text-muted">
+          <%# requirement.md revisit: "it should be name of ticket category. find category by
+              name and then attach that category to participant." %>
+          <strong>Ticket Category</strong> must exactly match (case-insensitive) one of this
+          event's own ticket category names<%= " — #{@event.ticket_categories.order(:created_at).pluck(:name).to_sentence}" if @event.ticket_categories.any? %>.
+          Leave it blank for no category; an unrecognized name is reported as a row error, not
+          silently dropped.
+        </p>
+
+        <%# requirement.md revisit: "Import will provide the sample CSV import download option
+            and then in that format admin will enter the user data." A ready-made template, header
+            row + one filled-in example row, in exactly the column order/labels the paragraph
+            above describes — download it, fill in real rows below the example, upload it back.
+            data-action — download_progress_controller.js (requirement.md revisit: "download will
+            open modal and show the progress bar...") intercepts the click, same as the export
+            page's own download link. %>
+        <%= link_to sample_admin_event_import_files_path(@event), class: "btn btn-outline-secondary mb-3",
+              data: { action: "click->download-progress#start", download_progress_filename_param: "participant-import-template.xlsx" } do %>
+          <i class="bx bx-spreadsheet"></i> Download sample template
+        <% end %>
+
+        <%= form_with url: admin_event_import_files_path(@event), local: true, multipart: true do %>
+          <div class="mb-3">
+            <%= label_tag :file, "XLSX file", class: "form-label" %>
+            <%= file_field_tag "import_file[file]", id: "file", class: "form-control", accept: ".xlsx", required: true %>
+          </div>
+          <%= submit_tag "Start Import", class: "btn btn-primary" %>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

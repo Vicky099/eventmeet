@@ -1,0 +1,72 @@
+<%# requirement.md revisit: "add graph to show hour, day wise check-in. based on this admin
+    should understand how many participant came event in realtime." Two column charts — By Hour
+    (today only, the "what's happening right now" question) and By Day (the whole event's
+    history, only shown once there's more than one day of it — a single-day event's own "by day"
+    chart would just be one bar repeating what "By Hour" already says). Plain HTML/CSS columns
+    (dataviz skill: single-series magnitude, one hue, no legend box needed), not SVG/a JS charting
+    library — same "no second JS framework" convention every other chart on these two dashboards
+    already follows (application.css's own .bar-track/.bar-fill, the sparkline partial). Direct
+    value-at-the-cap labels on every column (skill: "Bars → value at the tip. Columns → value on
+    the cap" — the one case direct-labeling every mark is correct, not "never a number on every
+    point") plus a CSS-only hover/focus tooltip (`[data-tooltip]:hover::after` in application.css)
+    for the exact hour/day range — no Stimulus controller needed for a tooltip this simple.
+
+    Rendered from admin/scan_events/index.html.erb, admin/events/show.html.erb, and
+    LiveDashboard.broadcast_event_stats (on every scan, so this updates live on both dashboards
+    with no page reload — the whole point of "in realtime"). Event#hourly_checkin_counts/
+    #daily_checkin_counts (app/models/event.rb) are the same real, distinct-scan-per-hour/day
+    queries either render path uses.
+
+    Locals: event (Event). %>
+<% hourly_counts = event.hourly_checkin_counts %>
+<% daily_counts = event.daily_checkin_counts %>
+<div id="arrivals-chart-<%= event.id %>">
+  <div class="card mb-0">
+    <div class="card-header"><span class="fw-semibold">Check-in Arrivals</span></div>
+    <div class="card-body">
+      <% if daily_counts.values.sum.zero? %>
+        <p class="text-muted mb-0">No check-ins recorded yet.</p>
+      <% else %>
+        <% peak_hour, peak_count = hourly_counts.max_by { |_, count| count } || [ nil, 0 ] %>
+        <%# The "USP" quick-glance callout — the one number this whole card exists to surface
+            without making the reader parse a chart first. %>
+        <% if peak_count.positive? %>
+          <p class="arrivals-peak mb-3">
+            <span class="legend-dot" style="background: #2a78d6;"></span>
+            Busiest hour today &mdash; <strong><%= format("%02d:00", peak_hour) %>&ndash;<%= format("%02d:00", (peak_hour + 1) % 24) %></strong>
+            with <strong><%= peak_count %></strong> check-in<%= peak_count == 1 ? "" : "s" %>
+          </p>
+        <% end %>
+
+        <h6 class="text-muted text-uppercase font-size-12 mb-2">By Hour &mdash; Today (<%= hourly_counts.values.sum %> total)</h6>
+        <% max_hourly = [ hourly_counts.values.max.to_i, 1 ].max %>
+        <div class="arrival-bars">
+          <% (0..Time.current.hour).each do |hour| %>
+            <% count = hourly_counts[hour] || 0 %>
+            <div class="arrival-bar-col" tabindex="0"
+                 data-tooltip="<%= format("%02d:00", hour) %>-<%= format("%02d:00", (hour + 1) % 24) %>: <%= count %> check-in<%= count == 1 ? "" : "s" %>">
+              <span class="arrival-bar-value"><%= count if count.positive? %></span>
+              <div class="arrival-bar" style="height: <%= (count.to_f / max_hourly * 100).clamp(0, 100).round(2) %>%;"></div>
+              <span class="arrival-bar-label"><%= format("%02d", hour) %></span>
+            </div>
+          <% end %>
+        </div>
+
+        <% if daily_counts.keys.size > 1 %>
+          <h6 class="text-muted text-uppercase font-size-12 mt-4 mb-2">By Day</h6>
+          <% max_daily = [ daily_counts.values.max.to_i, 1 ].max %>
+          <div class="arrival-bars">
+            <% daily_counts.sort.each do |date, count| %>
+              <div class="arrival-bar-col" tabindex="0"
+                   data-tooltip="<%= date.strftime("%B %-d") %>: <%= count %> check-in<%= count == 1 ? "" : "s" %>">
+                <span class="arrival-bar-value"><%= count if count.positive? %></span>
+                <div class="arrival-bar" style="height: <%= (count.to_f / max_daily * 100).clamp(0, 100).round(2) %>%;"></div>
+                <span class="arrival-bar-label"><%= date.strftime("%b %-d") %></span>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+</div>

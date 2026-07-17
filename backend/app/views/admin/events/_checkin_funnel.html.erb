@@ -1,0 +1,35 @@
+<%# requirement.md revisit: "add some more useful analytics ... add some graph which make the
+    impact and would be USP." The three headline numbers already on this page (Participants,
+    Checked In, and scan_events' own Currently In Venue) told as one story instead of three
+    separate tiles a reader has to mentally connect themselves — "you registered N, M% of them
+    showed up, and P% of those are still here right now." One hue throughout (dataviz skill:
+    magnitude/proportion of a single quantity funneling down, not three different categorical
+    identities) — reuses .bar-track/.bar-fill verbatim (application.css), the same mark this
+    page's own "Registrations by Ticket Category" chart and scan_events' "Overall Capacity" bar
+    already use, so a reader who's seen either of those already knows how to read this one.
+
+    Locals: event (Event). %>
+<% registered = event.participants.count %>
+<div class="card h-100 mb-0">
+  <div class="card-header"><span class="fw-semibold">Check-in Funnel</span></div>
+  <div class="card-body">
+    <% if registered.zero? %>
+      <p class="text-muted mb-0">No participants registered yet.</p>
+    <% else %>
+      <% checked_in = event.checked_in_participant_count %>
+      <% in_venue = event.currently_in_venue_count %>
+      <% [ [ "Registered", registered ], [ "Checked In", checked_in ], [ "Currently In Venue", in_venue ] ].each do |label, value| %>
+        <% percent = (value.to_f / registered * 100).clamp(0, 100) %>
+        <div class="mb-3">
+          <div class="d-flex justify-content-between font-size-13 mb-1">
+            <span><%= label %></span>
+            <span class="text-muted"><%= value %> &middot; <%= percent.round %>%</span>
+          </div>
+          <div class="bar-track" title="<%= label %>: <%= value %> of <%= registered %> registered (<%= percent.round %>%)">
+            <div class="bar-fill" style="width: <%= percent.round(2) %>%;"></div>
+          </div>
+        </div>
+      <% end %>
+    <% end %>
+  </div>
+</div>

@@ -1,0 +1,12 @@
+<%# Phase 11 backfill (requirement.md §5.15) — LiveDashboard.broadcast_session_stats replaces this
+    exact node (target: "live-stats-session-#{session.id}") on every session-level check-in/out;
+    admin/sessions/index.html.erb renders it directly for first paint on each session's row.
+
+    Locals: session (Session), stats (SessionLiveStats) %>
+<div id="live-stats-session-<%= session.id %>" class="d-flex align-items-center gap-2">
+  <span class="badge bg-success-subtle text-success">In: <%= stats.checked_in_count %></span>
+  <span class="badge bg-secondary-subtle text-secondary">Out: <%= stats.checked_out_count %></span>
+  <span class="badge <%= !session.unlimited? && stats.occupancy_count >= session.seat_limit ? "bg-danger-subtle text-danger" : "bg-warning-subtle text-warning" %>">
+    Occupancy: <%= stats.occupancy_count %><%= session.unlimited? ? "" : " / #{session.seat_limit}" %>
+  </span>
+</div>

@@ -1,6 +1,6 @@
 # Multi-Tenant Event Management Platform — Requirements Document
 
-**Status:** Draft v10
+**Status:** Draft v12
 **Author:** Architecture (drafted with Claude Code)
 **Source baseline:** Feature audit of the existing single-tenant Rails event management application in this repository
 **Purpose:** Define the requirements for a new, multi-tenant SaaS event management platform, using the current system's proven feature set as the functional baseline and extending it with the capabilities a modern, competitive product needs.
@@ -72,6 +72,11 @@
 
 **v11 decision (corrects a v3/v8 assumption once the actual template arrived):**
 - **The admin console template supplied to the workspace ("webadmin") is built on Bootstrap 5, not Tailwind CSS.** §5.14's process (template arrives in the workspace, is the starting point for every admin screen, gets Stimulus-ized rather than pulling in a second reactive JS framework) stands unchanged — only the CSS framework it names was wrong, because it was written before any template existed to check against. Every "Tailwind" reference against the **admin console** elsewhere in this document (§4.3's UI row, §4.10, §5.14, §9's Phase 1 roadmap, §10.3/§10.4/§10.10/§10.12's decision-log entries) should be read as **Bootstrap 5** — those entries are left as-was below since they're a historical log of what was decided at the time, not a live spec. The **public Next.js site's** independent Tailwind-based design system (§4.8) is unrelated and unaffected — it was never tied to this template. Concretely: `tailwindcss-rails` is dropped from the Rails admin app; the template's own precompiled Bootstrap/CSS/JS bundle is served as vendor assets instead. See `backend/doc/implementation.md` Phase 0.4/Phase 1 for the integration record.
+
+**v12 decision (refines the registration-form-builder item first recorded in v1/§5.4, scoping it to ticket category, and adds the event-workspace navigation structure):**
+- **The registration form builder is scoped per ticket category, not per event.** The earlier, simpler mechanism it replaces — an event-level fixed "Required Participant Fields" catalog plus an event-level list of organizer-defined custom fields (both built in Phase 4/7, §8) — is retired as the thing organizers configure directly; a proper per-category dynamic form builder (organizer adds field name + type per field) takes over that job. A ticket category with no form of its own falls back to a **default form**; an organizer who wants one form for every category can explicitly mark it **shared across categories** instead of building one per category. **Whatever fields are placed on a ticket category's badge design (§5.5) are automatically mandatory on that category's registration form**, enforced by the form builder itself, not left to the organizer to keep in sync by hand. See §5.4 (rewritten).
+- **Admin Console navigation is now two-tiered.** The account-level sidebar (Dashboard/Events/Reports/Settings/Profile) is what's shown outside of any specific event. Once inside an event's own workspace (post-creation, the event's show/edit page), the sidebar switches to that event's context: Dashboard, **Design Registration Form**, Participants, Export, Import, Check In. See new §5.14 subsection.
+- The event-level catalog/custom-field UI this replaces has already been pulled out of the event builder's Basic Info step (the columns/model/associations themselves are untouched for now — still read by admin manual participant entry and CSV import — only the organizer-facing configuration UI is gone), as groundwork ahead of the ticket-category-scoped rework landing. See `backend/doc/implementation.md` Phase 7.
 
 ---
 
@@ -426,7 +431,12 @@ Each module below states the requirement; items carried from §3 are marked **[b
 ### 5.4 Registration & Participant Management
 - **[baseline, re-platformed]** Public self-registration is delivered by the Next.js public event site (§4.8) via the BFF pattern (§4.9), not server-rendered by Rails as in the baseline — Rails becomes the API/data layer; admin manual entry stays in the Rails admin console. Dedupe validations, multiple identifier types, photo/document upload logic (§3.4) are preserved as backend rules regardless of which app is submitting.
 - **[baseline]** Bulk XLSX import with fuzzy dedupe matching; bulk export with attendance/session detail.
-- **[new]** **Registration form builder** (drag-and-drop, conditional fields, multi-page forms) instead of a fixed field catalog.
+- **[new, refined v12]** **Registration form builder, scoped per ticket category** — not one fixed field catalog at the event level. The event-level mechanism this replaces (a fixed "Required Participant Fields" catalog plus an event-level list of organizer-defined custom fields, both from Phase 4/7's earlier build) is retired as the organizer-facing configuration surface. In its place:
+  - Each **ticket category** gets its own dynamically-designed registration form — the organizer adds fields (name, type, required/optional) directly against that category, from a dedicated **Design Registration Form** screen in the event workspace (§5.14).
+  - A ticket category with **no form of its own uses a default form**, rather than requiring every category to be explicitly designed before it can accept registrations.
+  - An organizer who wants identical registration across every category can mark the form **shared across categories**, instead of duplicating the same field set per category.
+  - **Whatever fields are placed on a ticket category's badge design (§5.5) are automatically required on that category's registration form** — enforced by the form builder itself (it reads the badge's configured fields and force-marks the matching form fields required), not left to the organizer to notice and set manually.
+  - Drag-and-drop layout, conditional fields, and multi-page forms remain aspirational richness for the builder's UI, not yet re-confirmed at this level of detail — the scoping/fallback/shared-form/badge-mandatory mechanics above are the confirmed part of this decision.
 - **[new]** **Approval-based registration** (organizer must approve before ticket/badge is issued) for invite-only or vetted events.
 - **[new]** Attendee self-service portal: view/edit own registration, download badge/receipt, cancel/transfer ticket.
 - **[new]** **Ticket transfer** (attendee A reassigns their ticket to attendee B).
@@ -513,6 +523,7 @@ Deferred scope, to be revisited once a first *inbound/consuming* connector is ac
 - The admin console UI is built on a **tenant-provided Tailwind CSS template** (to be supplied) rather than a from-scratch design. Implementation must budget for a dedicated template-integration pass: extracting the template's layout/components into the Rails view layer, wiring its interactive elements to Stimulus controllers (the baseline app already uses `stimulus-rails`/Turbo — avoid introducing a second JS framework, e.g. Alpine.js, purely because the supplied template ships with it; port its interactions to Stimulus for consistency unless the team decides otherwise), and establishing a shared component/partial library so new admin screens are built by composing existing pieces rather than re-implementing markup per screen.
 - Since the specific template hasn't been delivered yet, this document defines the *integration approach* only — page-by-page specifics, and the rest of the build sequencing, will be defined in a separate implementation plan once this requirements doc is reviewed and the template is in hand.
 - **Working process confirmed, v8:** the template will be added directly to the project workspace. Before any UI work on a given screen, check the template first and pick/adapt the relevant existing component rather than designing new markup from scratch — the template is the starting point for every admin screen, not a reference to occasionally consult.
+- **[new, v12] Two-tiered sidebar navigation.** The account-level sidebar — shown whenever the admin isn't inside a specific event's own workspace — is: Dashboard, Events, Reports, Settings, Profile. Once the admin opens a specific event (post-creation, that event's own show/edit page), the sidebar switches to an **event-scoped** nav instead: Dashboard, **Design Registration Form**, Participants, Export, Import, Check In — every item here operates on that one event, not the account as a whole. "Design Registration Form" is where the per-ticket-category form builder from §5.4 lives.
 
 ### 5.15 Real-Time Analytics & Live Dashboards **[new — confirmed flagship MVP requirement, v7]**
 
@@ -775,3 +786,13 @@ All six items originally listed here are now closed — see §10.14.
 | 3 | Quotation revision limit (§10.15 #3) | 3 rejections; on the 3rd, `Quotation` moves to `cancelled` — §4.6, §8 |
 
 No new open questions raised by v10 — every item logged in this decisions log through §10.16 is now resolved.
+
+### 10.17 Resolved in v12
+
+| # | Question (source) | Decision |
+|---|---|---|
+| 1 | What replaces the event-level "Required Participant Fields"/custom-field builder from Phase 4/7? | A per-**ticket-category** dynamic registration form builder, with a default-form fallback for unconfigured categories and an explicit shared-across-categories option — §5.4 |
+| 2 | How does a category's badge design interact with its registration form? | Any field configured onto the category's badge is auto-required on that category's registration form, enforced by the form builder — §5.4, §5.5 |
+| 3 | How should admin console navigation distinguish account-level screens from a specific event's screens? | Two-tiered sidebar: account-level (Dashboard/Events/Reports/Settings/Profile) outside an event, event-scoped (Dashboard/Design Registration Form/Participants/Export/Import/Check In) once inside one — §5.14 |
+
+No new open questions raised by v12.
