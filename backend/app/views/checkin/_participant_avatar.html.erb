@@ -1,0 +1,16 @@
+<%# Locals: participant. Factored out of _result.html.erb (Phase 10 revisit) once a second result
+    branch (print-only) needed the exact same photo-or-initial treatment — the Cloudinary
+    enhance_image_tag caveat below only wants to live in one place. %>
+<% if participant.photo.attached? %>
+  <%# NOT image_tag — confirmed live this app's config/cloudinary.yml sets `enhance_image_tag:
+      true`, which globally monkey-patches Rails' own image_tag to run *every* source through
+      Cloudinary::Utils.cloudinary_url unconditionally — meant for this app's own static pipeline
+      assets, not an already-attached ActiveStorage attachment; feeding it one 500s. #url —
+      ActiveStorage's own standard Blob#url, resolves straight to the real Cloudinary delivery
+      URL, no image_tag involved. %>
+  <%= tag.img src: participant.photo.url, class: "checkin-result-photo" %>
+<% else %>
+  <div class="checkin-result-photo checkin-result-photo-placeholder">
+    <%= participant.name.first.upcase %>
+  </div>
+<% end %>

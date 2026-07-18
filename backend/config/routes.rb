@@ -128,6 +128,13 @@ Rails.application.routes.draw do
             # default). Participant-scoped, not Badge-scoped, since that's the actual unit an
             # admin downloads from the participant list/detail.
             get :badge, defaults: { format: :pdf }
+            # Phase 10 — Print Agent (Electron) Integration, revisited (requirement.md §5.5.1):
+            # the manual Print button on the participant list/show — dispatches to the event's
+            # default print station if one's paired and online, otherwise falls back to the same
+            # inline PDF #badge already streams. GET (not a button_to POST), same "GET with a
+            # deliberate side effect" precedent #badge already sets, opened target="_blank" the
+            # same way #badge's own "Download badge" link already is.
+            get :print
             # requirement.md revisit: "a participant show page where we can show the profile of
             # participant" — a plain download link for their own uploaded document, on the show
             # page. Not a raw blob URL (CloudinaryRawFile's own comment: the "raw" resource-type
@@ -231,6 +238,24 @@ Rails.application.routes.draw do
         # the Admin::EventsController wizard/STEPS — reached from the event workspace's own
         # "Design Registration Form" nav entry instead (§5.14), never from event creation/editing.
         resources :registration_forms, controller: "admin/registration_forms", except: [ :show ]
+        # Phase 10 — Print Agent (Electron) Integration (requirement.md §5.5.1, §8). The
+        # admin-facing management surface: create a station, generate/regenerate its pairing
+        # code, revoke a paired agent, plus the event-wide auto-print/default-station settings
+        # (collection :update_settings, not a separate page — a couple of fields alongside the
+        # station list itself).
+        resources :print_stations, controller: "admin/print_stations" do
+          member do
+            post :generate_pairing_code
+            post :revoke
+          end
+          collection do
+            patch :update_settings
+          end
+        end
+        # Phase 10 revisit — Bulk Print (requirement.md §3.6/§5.5's baseline "bulk print queue").
+        # Only :new/:create/:show — a run is started once and then only ever watched, same
+        # "no :edit/:update" shape :quotations already takes for a request-then-respond flow.
+        resources :bulk_print_runs, controller: "admin/bulk_print_runs", only: [ :new, :create, :show ]
       end
 
       # Phase 8 — Badge Design & Printing (requirement.md §5.5): "badge template library with
@@ -280,6 +305,17 @@ Rails.application.routes.draw do
     scope path: "checkin", as: "checkin" do
       get ":event_id", to: "checkin#show", as: :event
       post ":event_id/scan", to: "checkin#scan", as: :scan
+    end
+
+    # Phase 10 — Print Agent (Electron) Integration (requirement.md §5.5.1, §4.9 item 3). The
+    # Electron agent's own two HTTP touchpoints — deliberately outside `scope path: "admin"` and
+    # the Admin:: namespace, same "no Devise session here" reasoning the checkin scope above
+    # already established, just for a background daemon instead of a browser tab. Still inside
+    # the tenant subdomain constraint — the agent hits the same `{tenant_slug}.{platform_domain}.com`
+    # host its pairing code was generated on.
+    scope path: "print_agent", as: "print_agent" do
+      post "pair", to: "print_agent#pair"
+      get "print_jobs/:id/badge", to: "print_agent#badge", as: :badge
     end
   end
 

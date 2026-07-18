@@ -215,6 +215,56 @@ RSpec.describe "Admin Console badges", type: :request do
     end
   end
 
+  # Phase 10 — Print Agent (Electron) Integration, revisited (requirement.md §5.5.1): the manual
+  # Print action — falls back to the same inline PDF #badge already streams when no station is
+  # paired/online for the event (confirmed fallback behavior), dispatches a PrintJob otherwise.
+  describe "GET /admin/events/:event_id/participants/:id/print" do
+    before { sign_in_with_role(:owner) }
+
+    it "falls back to streaming the PDF inline when no station is paired" do
+      event = create_event
+      Current.account = account
+      create(:badge, account: account, event: event, ticket_category: nil)
+      participant = create(:participant, account: account, event: event)
+
+      get print_admin_event_participant_path(event, participant)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq("application/pdf")
+      Current.account = account
+      expect(ScanEvent.last).to have_attributes(scan_type: "print", source: "manual")
+    end
+
+    it "dispatches to the event's default online station instead of streaming a PDF" do
+      event = create_event
+      Current.account = account
+      create(:badge, account: account, event: event, ticket_category: nil)
+      participant = create(:participant, account: account, event: event)
+      station = create(:print_station, :online, account: account, event: event)
+      event.update!(default_print_station: station)
+
+      get print_admin_event_participant_path(event, participant)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq("text/html")
+      expect(response.body).to include(station.name)
+      Current.account = account
+      expect(PrintJob.sole.status).to eq("sent")
+    end
+
+    it "redirects with an alert instead of a broken download when no badge is configured" do
+      event = create_event
+      Current.account = account
+      participant = create(:participant, account: account, event: event)
+
+      get print_admin_event_participant_path(event, participant)
+
+      expect(response).to redirect_to(admin_event_participants_path(event))
+      follow_redirect!
+      expect(response.body).to include("No badge has been designed")
+    end
+  end
+
   # requirement.md revisit: "a participant show page where we can show ... his badge with all
   # filled data." participant_id repoints this at that real participant's own data instead of
   # the sample one — Admin::ParticipantsController#show's own iframe.

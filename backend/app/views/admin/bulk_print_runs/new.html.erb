@@ -1,0 +1,40 @@
+<% content_for :page_title, "Bulk Print — #{@event.name}" %>
+
+<%= render "shared/page_header",
+  icon: "bx-layer",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) }, { label: "Bulk Print" } ] %>
+
+<% if @print_stations.none? %>
+  <div class="card">
+    <div class="card-body">
+      <%= render "shared/empty_state", icon: "bx-printer",
+            message: "No print station is online for this event — pair one from Print Stations first.",
+            action_label: "Print Stations", action_path: admin_event_print_stations_path(@event) %>
+    </div>
+  </div>
+<% else %>
+  <p class="text-muted">
+    Prints up to the batch limit below, skipping anyone already printed — safe to run again after
+    a paper jam or a printer running out of pages; it picks up right where the last run left off.
+  </p>
+
+  <%= form_with model: @bulk_print_run, url: admin_event_bulk_print_runs_path(@event), method: :post, local: true do |f| %>
+    <div class="card mb-3">
+      <div class="card-body">
+        <div class="mb-3">
+          <%= f.label :print_station_id, "Print station", class: "form-label" %>
+          <%= f.select :print_station_id, options_from_collection_for_select(@print_stations, :id, :name), {}, class: "form-select" %>
+        </div>
+        <div class="mb-0">
+          <%= f.label :limit, "Batch limit", class: "form-label" %>
+          <%= f.number_field :limit, value: 50, min: 1, class: "form-control" %>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex align-items-start gap-3">
+      <%= f.submit "Start Bulk Print", class: "btn btn-sm btn-primary" %>
+      <%= link_to "Cancel", admin_event_participants_path(@event), class: "btn btn-sm btn-outline-secondary" %>
+    </div>
+  <% end %>
+<% end %>

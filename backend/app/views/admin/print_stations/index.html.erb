@@ -1,0 +1,103 @@
+<% content_for :page_title, "Print Stations — #{@event.name}" %>
+
+<%= render layout: "shared/page_header",
+  locals: { icon: "bx-printer", crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) }, { label: "Print Stations" } ] } do %>
+  <%= link_to "New Station", new_admin_event_print_station_path(@event), class: "btn btn-sm btn-primary" %>
+<% end %>
+
+<%# requirement.md §5.5.1: "auto-print on/off toggle per event," plus which station a manual
+    Print click/check-in targets when nothing more specific is picked. %>
+<div class="card mb-3">
+  <div class="card-header"><span class="fw-semibold">Print Settings</span></div>
+  <div class="card-body">
+    <%= form_with model: @event, url: update_settings_admin_event_print_stations_path(@event), method: :patch, local: true do |f| %>
+      <div class="row g-3 align-items-end">
+        <div class="col-auto">
+          <div class="form-check form-switch">
+            <%= f.check_box :auto_print_enabled, class: "form-check-input", role: "switch" %>
+            <%= f.label :auto_print_enabled, "Auto-print on check-in", class: "form-check-label" %>
+          </div>
+        </div>
+        <div class="col-auto">
+          <%= f.label :default_print_station_id, "Default station", class: "form-label" %>
+          <%= f.select :default_print_station_id, options_from_collection_for_select(@event.print_stations, :id, :name, @event.default_print_station_id),
+                { include_blank: "None — fall back to PDF download" }, class: "form-select" %>
+        </div>
+        <div class="col-auto">
+          <%= f.submit "Save", class: "btn btn-sm btn-primary" %>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><span class="fw-semibold">Stations</span></div>
+  <div class="card-body">
+    <% if @print_stations.none? %>
+      <%= render "shared/empty_state", icon: "bx-printer",
+            message: "No print stations yet.",
+            action_label: "New Station", action_path: new_admin_event_print_station_path(@event) %>
+    <% else %>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Printer</th>
+              <th>Status</th>
+              <th>Pairing code</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @print_stations.each do |station| %>
+              <tr>
+                <td><%= link_to station.name, edit_admin_event_print_station_path(@event, station) %></td>
+                <td><%= station.printer_name.presence || "OS default" %></td>
+                <td>
+                  <% if station.online? %>
+                    <span class="badge bg-success-subtle text-success"><i class="bx bx-wifi"></i> Online</span>
+                  <% elsif station.current_agent %>
+                    <span class="badge bg-secondary-subtle text-secondary"><i class="bx bx-wifi-off"></i> Offline</span>
+                  <% else %>
+                    <span class="badge bg-warning-subtle text-warning">Not paired</span>
+                  <% end %>
+                </td>
+                <td>
+                  <% if station.pairing_code_active? %>
+                    <code><%= station.pairing_code %></code>
+                    <span class="text-muted small">expires <%= time_ago_in_words(station.pairing_code_expires_at) %></span>
+                  <% else %>
+                    <span class="text-muted">—</span>
+                  <% end %>
+                </td>
+                <td class="text-end">
+                  <div class="d-flex justify-content-end gap-2">
+                    <%= button_to "Generate code", generate_pairing_code_admin_event_print_station_path(@event, station),
+                          method: :post, class: "btn btn-sm btn-outline-secondary" %>
+                    <% if station.current_agent %>
+                      <%= button_to "Revoke", revoke_admin_event_print_station_path(@event, station), method: :post,
+                            class: "btn btn-sm btn-outline-warning",
+                            data: { action: "click->confirm-dialog#show", title: "Revoke Pairing",
+                                    message: "Revoke #{station.name}'s pairing? The Electron agent will need a new code to reconnect.", danger: "true" } %>
+                    <% end %>
+                    <%= link_to edit_admin_event_print_station_path(@event, station), class: "btn btn-sm btn-outline-primary", title: "Edit" do %>
+                      <i class="bx bx-edit"></i>
+                    <% end %>
+                    <%= button_to admin_event_print_station_path(@event, station), method: :delete,
+                          class: "btn btn-sm btn-outline-danger", title: "Remove",
+                          data: { action: "click->confirm-dialog#show", title: "Remove Print Station",
+                                  message: "Remove #{station.name}?", danger: "true" } do %>
+                      <i class="bx bx-trash"></i>
+                    <% end %>
+                  </div>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  </div>
+</div>

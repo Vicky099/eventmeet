@@ -1,0 +1,78 @@
+<% content_for :page_title, "Bulk Print — #{@event.name}" %>
+
+<%# Same meta-refresh-while-running convention ExportFile/ImportFile's own progress pages
+    already use (Phase 7's own comment: "no Turbo Stream/broadcast wiring... a 3s refresh is
+    plenty") — this run is exactly that same shape (an async Sidekiq job an admin is watching). %>
+<% if @bulk_print_run.pending? || @bulk_print_run.processing? %>
+  <% content_for :head, tag.meta("http-equiv": "refresh", content: "3") %>
+<% end %>
+
+<%= render "shared/page_header",
+  icon: "bx-layer",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) }, { label: "Bulk Print" } ] %>
+
+<div class="row">
+  <div class="col-xl-7">
+    <div class="card mb-3">
+      <div class="card-body">
+        <% case @bulk_print_run.status %>
+        <% when "pending", "processing" %>
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+            <span>Printing via <%= @bulk_print_run.print_station.name %>…</span>
+          </div>
+        <% when "completed" %>
+          <div class="alert alert-success mb-3">
+            <i class="bx bx-check-circle me-1"></i> Batch finished.
+          </div>
+        <% when "failed" %>
+          <div class="alert alert-danger mb-3">
+            <i class="bx bx-error-circle me-1"></i> This run failed — check the failed jobs below, or start a new run.
+          </div>
+        <% end %>
+
+        <div class="progress mb-2" style="height: 10px;">
+          <div class="progress-bar" role="progressbar" style="width: <%= @bulk_print_run.percent_complete %>%;"></div>
+        </div>
+        <p class="mb-0">
+          <strong><%= @bulk_print_run.completed_count %></strong> / <%= @bulk_print_run.limit %> printed
+        </p>
+
+        <%# requirement.md revisit: "we should know what was the last participant badge" — the
+            whole point of this page when a printer runs out of paper mid-batch. %>
+        <% if @bulk_print_run.last_printed_participant %>
+          <p class="text-muted mb-0">
+            Last printed: <%= link_to @bulk_print_run.last_printed_participant.name, admin_event_participant_path(@event, @bulk_print_run.last_printed_participant) %>
+          </p>
+        <% end %>
+      </div>
+    </div>
+
+    <% if @bulk_print_run.failed_jobs.any? %>
+      <div class="card mb-0">
+        <div class="card-header"><span class="fw-semibold">Failed</span></div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Participant</th>
+                  <th>Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% @bulk_print_run.failed_jobs.each do |job| %>
+                  <tr>
+                    <td><%= link_to job.participant.name, admin_event_participant_path(@event, job.participant) %></td>
+                    <td class="text-muted"><%= job.error_message.presence || "Unknown error" %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+          <p class="text-muted small mt-2 mb-0">Start a new Bulk Print run to retry — it skips everyone already succeeded.</p>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</div>

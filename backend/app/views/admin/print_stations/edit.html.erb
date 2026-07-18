@@ -1,0 +1,26 @@
+<% content_for :page_title, @print_station.name %>
+
+<%= render "shared/page_header",
+  icon: "bx-printer",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) },
+            { label: "Print Stations", path: admin_event_print_stations_path(@event) }, { label: @print_station.name } ] %>
+
+<%= form_with model: @print_station, url: admin_event_print_station_path(@event, @print_station), method: :patch, local: true do |f| %>
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="mb-3">
+        <%= f.label :name, class: "form-label" %>
+        <%= f.text_field :name, class: "form-control" %>
+      </div>
+      <div class="mb-0">
+        <%= f.label :printer_name, "Printer name (optional)", class: "form-label" %>
+        <%= f.text_field :printer_name, class: "form-control", placeholder: "Leave blank to use the OS default printer" %>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex align-items-start gap-3">
+    <%= f.submit "Save", class: "btn btn-sm btn-primary" %>
+    <%= link_to "Cancel", admin_event_print_stations_path(@event), class: "btn btn-sm btn-outline-secondary" %>
+  </div>
+<% end %>

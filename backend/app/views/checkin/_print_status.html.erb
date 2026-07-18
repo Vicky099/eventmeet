@@ -1,0 +1,8 @@
+<%# Locals: print_result — PrintTriggerService::Result, always either dispatched or fallback here
+    (debounced/no_badge are handled by their own callers before this ever renders). %>
+<% if print_result.dispatched? %>
+  <i class="bx bx-printer"></i> Printing at <%= print_result.station.name %>
+<% else %>
+  <i class="bx bx-printer"></i> No station paired —
+  <%= link_to "download badge", badge_admin_event_participant_path(@event, print_result.participant), target: "_blank", rel: "noopener" %>
+<% end %>

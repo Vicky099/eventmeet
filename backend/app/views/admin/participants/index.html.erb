@@ -82,14 +82,14 @@
                   <% if participant.pending? %>
                     <%= button_to "Approve", approve_admin_event_participant_path(@event, participant), method: :patch, class: "btn btn-sm btn-outline-success" %>
                   <% end %>
-                  <%# Phase 13 — Communications (requirement.md §3.10): "Resend invitation per
-                      participant." Hidden with no email on file — the send is a harmless no-op
-                      either way, but a button that never does anything is worse than no button. %>
-                  <% if participant.email.present? %>
-                    <%= button_to resend_admin_event_participant_path(@event, participant), method: :post,
-                          class: "btn btn-sm btn-outline-secondary", title: "Resend invitation" do %>
-                      <i class="bx bx-envelope"></i>
-                    <% end %>
+                  <%# Phase 10 — Print Agent (Electron) Integration, revisited (requirement.md
+                      §5.5.1): replaces the "Resend invitation" row action — this is now Print
+                      (dispatches to the event's default paired station, or falls back to the
+                      same inline PDF the Download badge link below already streams). Resend
+                      invitation stays on the participant show page (Admin::ParticipantsController
+                      #print's own comment). %>
+                  <%= link_to print_admin_event_participant_path(@event, participant), class: "btn btn-sm btn-outline-secondary", title: "Print", target: "_blank", rel: "noopener" do %>
+                    <i class="bx bx-printer"></i>
                   <% end %>
                   <%# Phase 8 — requirement.md §3.6 "on-demand single-badge download endpoint."
                       target: "_blank" — a PDF opening in a new tab, not navigating away from the

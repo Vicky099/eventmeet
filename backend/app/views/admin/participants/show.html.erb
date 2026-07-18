@@ -24,6 +24,10 @@
     <% if @participant.email.present? %>
       <%= button_to "Resend invitation", resend_admin_event_participant_path(@event, @participant), method: :post, class: "btn btn-sm btn-outline-secondary" %>
     <% end %>
+    <%# Phase 10 — Print Agent (Electron) Integration, revisited (requirement.md §5.5.1). %>
+    <%= link_to print_admin_event_participant_path(@event, @participant), class: "btn btn-sm btn-outline-secondary", target: "_blank", rel: "noopener" do %>
+      <i class="bx bx-printer"></i> Print
+    <% end %>
     <%= link_to badge_admin_event_participant_path(@event, @participant), class: "btn btn-sm btn-outline-secondary", target: "_blank", rel: "noopener" do %>
       <i class="bx bx-id-card"></i> Download badge
     <% end %>

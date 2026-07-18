@@ -38,6 +38,12 @@ class Account < ApplicationRecord
   # its own entry here — it belongs_to :event, so it already cascades transitively through
   # `has_many :events` above, same as every other Event-child table.
   has_many :quotations, dependent: :destroy
+  # Phase 10 — Print Agent (Electron) Integration (requirement.md §5.5.1). Already cascades
+  # transitively through `has_many :events, dependent: :destroy` above (PrintStation belongs_to
+  # :event) — this association exists only so PrintAgentController#pair can look a pairing code
+  # up across every event in the tenant that arrived on (`Current.account.print_stations.find_by`),
+  # not because it needs its own destroy behavior.
+  has_many :print_stations
 
   validates :name, presence: true
   validates :subdomain_slug, presence: true,

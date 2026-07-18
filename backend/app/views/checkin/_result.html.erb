@@ -1,4 +1,7 @@
-<%# Locals: result — ScanService::Result or nil (nothing scanned yet this page load). Mirrors
+<%# Locals: result — ScanService::Result or nil (nothing scanned yet this page load).
+    print_result — PrintTriggerService::Result or nil, present whenever a print was also
+    attempted (Direction: Print only, or Direction: Check in/out with Also print on / the
+    event's own auto_print_enabled toggle, Phase 10 revisit — requirement.md §5.5.1). Mirrors
     admin/scan_events/_scan_result's own state handling (not_found/session_full/debounced/ok) but
     styled as a full-width banner with the participant's own photo when there is one — a kiosk
     operator matching a face to a badge is the whole point of a check-in desk, so surfacing it
@@ -28,32 +31,41 @@
       <span><%= result.participant.name %> was just scanned — ignoring this repeat within 30 seconds.</span>
     </div>
   </div>
+<% elsif result.print_only? %>
+  <%# Phase 10 revisit (requirement.md §5.5.1): "an option to only print badge and not mark the
+      attendance check-in" — its own branch since there's no scan_event/session/redirect_url to
+      read here, only whatever PrintTriggerService reported. %>
+  <% if print_result.debounced? %>
+    <div class="checkin-result is-warning">
+      <i class="bx bx-time-five checkin-result-icon"></i>
+      <div class="checkin-result-body">
+        <strong>Already printed</strong>
+        <span><%= result.participant.name %>'s badge was just printed — ignoring this repeat within 30 seconds.</span>
+      </div>
+    </div>
+  <% elsif print_result.no_badge? %>
+    <div class="checkin-result is-danger">
+      <i class="bx bx-x-circle checkin-result-icon"></i>
+      <div class="checkin-result-body">
+        <strong>No badge designed</strong>
+        <span>No badge has been designed for this event yet.</span>
+      </div>
+    </div>
+  <% else %>
+    <div class="checkin-result is-success">
+      <%= render "participant_avatar", participant: result.participant %>
+      <div class="checkin-result-body">
+        <strong><%= result.participant.name %></strong>
+        <span><%= render "print_status", print_result: print_result %></span>
+      </div>
+    </div>
+  <% end %>
 <% else %>
   <%# Check in stays the "good" green; check out is a distinct "leaving" state, not an error —
       the warning amber (already used for the debounce banner above) reads as "notable, not bad,"
       the right register for "this person just left." %>
   <div class="checkin-result <%= result.scan_event.check_out? ? "is-warning" : "is-success" %>">
-    <% if result.participant.photo.attached? %>
-      <%# NOT image_tag — confirmed live this app's config/cloudinary.yml sets
-          `enhance_image_tag: true`, which globally monkey-patches Rails' own `image_tag` (the
-          cloudinary gem's ActionView::Helpers::AssetTagHelper#image_tag_with_cloudinary override,
-          active whenever ActiveStorage's :cloudinary service is in use) to run *every* image_tag
-          source through Cloudinary::Utils.cloudinary_url(source, type: :asset) unconditionally —
-          meant for serving this app's own *static pipeline assets* through Cloudinary's CDN, not
-          an already-attached ActiveStorage attachment; feeding it one just mangles it into a
-          bogus lookup and 500s ("no implicit conversion of ActiveStorage::Attached::One into
-          String" if passed the attachment directly, Propshaft::MissingAssetError once mangled if
-          passed an already-correct URL string instead). #url — ActiveStorage's own standard
-          Blob#url (delegated through Attached::One), calling the configured service's #url
-          directly rather than going through the redirect-controller route — resolves straight to
-          the real, working Cloudinary delivery URL, no image_tag involved. A bare <img> via
-          `tag.img` is what actually renders it. %>
-      <%= tag.img src: result.participant.photo.url, class: "checkin-result-photo" %>
-    <% else %>
-      <div class="checkin-result-photo checkin-result-photo-placeholder">
-        <%= result.participant.name.first.upcase %>
-      </div>
-    <% end %>
+    <%= render "participant_avatar", participant: result.participant %>
     <div class="checkin-result-body">
       <strong><%= result.participant.name %></strong>
       <span>
@@ -61,6 +73,11 @@
         <% if result.participant.ticket_category %> · <%= result.participant.ticket_category.name %><% end %>
         · <%= result.scan_event.scanned_at.strftime("%H:%M:%S") %>
       </span>
+      <%# Phase 10 revisit (requirement.md §5.5.1): "also print" outcome, shown alongside the
+          check-in/out confirmation rather than replacing it — this scan still happened either way. %>
+      <% if print_result %>
+        <span class="d-block"><%= render "print_status", print_result: print_result %></span>
+      <% end %>
       <% if result.redirect_url %>
         <%# requirement.md §3.7: "Virtual event redirect-on-check-in." %>
         <%= link_to "Open meeting link →", result.redirect_url, target: "_blank", rel: "noopener", class: "checkin-result-link" %>

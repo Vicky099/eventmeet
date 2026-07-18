@@ -8,7 +8,7 @@ module Admin
   # — a read-only profile/activity/badge view, distinct from #edit (the manual-entry form).
   class ParticipantsController < BaseController
     include EventScoped
-    before_action :set_participant, only: [ :show, :edit, :update, :destroy, :approve, :badge, :resend, :document ]
+    before_action :set_participant, only: [ :show, :edit, :update, :destroy, :approve, :badge, :print, :resend, :document ]
 
     # requirement.md §5.4: "Admin search/filter across identifier fields; paginated listing."
     def index
@@ -157,6 +157,28 @@ module Admin
 
       pdf = BadgePdfService.render(badge: badge, participant: @participant)
       send_data pdf, filename: "badge-#{@participant.hex_id}.pdf", type: "application/pdf", disposition: "inline"
+    end
+
+    # Phase 10 — Print Agent (Electron) Integration, revisited (requirement.md §5.5.1): the
+    # participant list/show Print button — dispatches to the event's default print station when
+    # one's paired and online, otherwise falls back to the same inline PDF #badge already
+    # streams (confirmed fallback behavior). Same "GET with a deliberate side effect" shape
+    # #badge already established.
+    def print
+      authorize @participant, :show?
+      result = PrintTriggerService.call(event: @event, participant: @participant, source: :manual)
+
+      case result.status
+      when :dispatched
+        render :print_dispatched, locals: { station: result.station }
+      when :fallback
+        pdf = BadgePdfService.render(badge: result.badge, participant: @participant)
+        send_data pdf, filename: "badge-#{@participant.hex_id}.pdf", type: "application/pdf", disposition: "inline"
+      when :debounced
+        redirect_to admin_event_participants_path(@event), alert: "#{@participant.name} was just printed — try again shortly."
+      when :no_badge
+        redirect_to admin_event_participants_path(@event), alert: "No badge has been designed for this event yet."
+      end
     end
 
     # requirement.md revisit: "a participant show page where we can show the profile of

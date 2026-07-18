@@ -65,6 +65,19 @@ RSpec.describe "Admin Console participants", type: :request do
 
       expect(response.body).to include(participant.hex_id)
     end
+
+    # Phase 10 — Print Agent (Electron) Integration, revisited (requirement.md §5.5.1): "Remove
+    # resend invitation action from table and place the print instead."
+    it "shows a Print action instead of Resend invitation in each row" do
+      event = create_event
+      Current.account = account
+      participant = create(:participant, account: account, event: event, email: "alice@example.com")
+
+      get admin_event_participants_path(event)
+
+      expect(response.body).to include(print_admin_event_participant_path(event, participant))
+      expect(response.body).not_to include(resend_admin_event_participant_path(event, participant))
+    end
   end
 
   # requirement.md revisit: "a participant show page where we can show the profile of

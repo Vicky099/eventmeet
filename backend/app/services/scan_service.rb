@@ -10,6 +10,11 @@ class ScanService
     def not_found? = status == :not_found
     def debounced? = status == :debounced
     def session_full? = status == :session_full
+    # Phase 10 revisit — Print Agent (Electron) Integration (requirement.md §5.5.1): CheckinController
+    # builds this status directly (not via ScanService.call — see that controller's own comment on
+    # why "Print only" bypasses this service entirely) purely so checkin/_result.html.erb has one
+    # consistent Result shape to branch on regardless of which direction was scanned.
+    def print_only? = status == :print_only
   end
 
   # requirement.md §3.7: "Toggle check-in/check-out with a 30-second anti-double-scan debounce."

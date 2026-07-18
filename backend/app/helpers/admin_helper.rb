@@ -55,7 +55,12 @@ module AdminHelper
       # requirement.md revisit: "in upload we should have a separate sample xlsx file to upload
       # the govtID" — its own upload flow, its own nav entry, same as Import/Export above.
       { path: new_admin_event_govt_id_import_file_path(event), icon: "bx-id-card", label: "Govt IDs" },
-      { path: admin_event_scan_events_path(event), icon: "bx-barcode", label: "Check In" }
+      { path: admin_event_scan_events_path(event), icon: "bx-barcode", label: "Check In" },
+      # Phase 10 — Print Agent (Electron) Integration (requirement.md §5.5.1): pairing/printer
+      # management, plus the auto-print/default-station settings.
+      { path: admin_event_print_stations_path(event), icon: "bx-printer", label: "Print Stations" },
+      # Phase 10 revisit — Bulk Print (requirement.md §3.6/§5.5's baseline "bulk print queue").
+      { path: new_admin_event_bulk_print_run_path(event), icon: "bx-layer", label: "Bulk Print" }
     ]
   end
 end

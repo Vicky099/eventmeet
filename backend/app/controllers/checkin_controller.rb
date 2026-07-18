@@ -27,12 +27,42 @@ class CheckinController < ApplicationController
   # Mirrors Admin::ScanEventsController#create exactly (same ScanService call, same optional
   # session_id resolution) — the only thing that moved is which screen this response renders back
   # into (checkin/_result, not admin/scan_events/_scan_result).
+  #
+  # Phase 10 revisit — Print Agent (Electron) Integration (requirement.md §5.5.1): scan_type
+  # "print" ("Print only," requirement.md: "an option to only print badge and not mark the
+  # attendance check-in") bypasses ScanService entirely rather than calling it with scan_type:
+  # "print" — ScanService would itself write a `print` ScanEvent for the debounce/log, and
+  # PrintTriggerService's *own* debounce check would then immediately see that fresh row and
+  # report :debounced on every single call. Going straight to PrintTriggerService keeps exactly
+  # one print ScanEvent written per action, same as every other print path in this app.
+  #
+  # check_in/check_out still go through ScanService unchanged; "also print" (requirement.md: "if
+  # admin selected print then it will make check-in and print badge") is a second, independent
+  # call to PrintTriggerService afterward, only on a successful scan — never on a debounced/
+  # not_found/session_full result, and it also fires unconditionally when the event's own
+  # auto_print_enabled toggle is on (the real Phase 10 checklist "auto-print" flow; the kiosk
+  # toggle is the per-operator manual override on top of it).
   def scan
     authorize @event, :create?, policy_class: ScanEventPolicy
     session = @event.sessions.find_by(id: params[:session_id]) if params[:session_id].present?
-    @result = ScanService.call(
-      event: @event, identifier: params[:identifier], scan_type: params[:scan_type], source: :manual, session: session
-    )
+
+    if params[:scan_type] == "print"
+      participant = Participant.find_by_identifier(@event, params[:identifier])
+      if participant.nil?
+        @result = ScanService::Result.new(status: :not_found)
+      else
+        @print_result = PrintTriggerService.call(event: @event, participant: participant, source: :kiosk)
+        @result = ScanService::Result.new(status: :print_only, participant: participant)
+      end
+    else
+      @result = ScanService.call(
+        event: @event, identifier: params[:identifier], scan_type: params[:scan_type], source: :manual, session: session
+      )
+      if @result.ok? && (params[:print] == "1" || @event.auto_print_enabled?)
+        @print_result = PrintTriggerService.call(event: @event, participant: @result.participant, source: :kiosk)
+      end
+    end
+
     @sessions = @event.sessions.order(:starts_at)
 
     respond_to do |format|

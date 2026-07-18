@@ -32,6 +32,12 @@ gem "solid_cache"
 gem "sidekiq"
 gem "redis"
 
+# Phase 10 — Print Agent (Electron) Integration (requirement.md §5.5.1, §4.9 item 3): the
+# station-scoped JWT a paired print agent authenticates its Action Cable connection with.
+# Doorkeeper's own tokens are opaque bearer tokens (unrelated) — nothing else in this app issues
+# a JWT today.
+gem "jwt"
+
 # Real cron scheduling for EventSchedulerJob/InvoiceGenerationJob (config/schedule.yml) — reverses
 # this app's earlier Phase 0 "no cron gem, self-reschedule instead" decision (those two jobs' own
 # comments still explain the old reasoning) once that pattern's own real gap became a live

@@ -8,5 +8,5 @@
     replaces only the wrapper's *contents*, leaving the wrapper — id, class, spacing — in place
     across every subsequent scan. %>
 <%= turbo_stream.update "scan-result" do %>
-  <%= render "result", result: @result %>
+  <%= render "result", result: @result, print_result: @print_result %>
 <% end %>

@@ -42,5 +42,19 @@ module Eventmeet
     # `PARTITION BY`/child partitions at all, so db/schema.rb is replaced by a raw pg_dump
     # (db/structure.sql) as the source of truth for `db:schema:load`/test-DB setup.
     config.active_record.schema_format = :sql
+
+    # requirement.md §4.2: every tenant-scoped model (Participant, Badge/BadgeTemplate, Speaker —
+    # anything with an attached photo/logo) raises TenantScoped::MissingTenantContextError if
+    # queried with no Current.account set, by design (the whole point of that guard). Rails'
+    # default `belongs_to :record, touch: true` on ActiveStorage::Attachment (on since Rails
+    # 7.1, config.active_storage.touch_attachment_records — HTTP freshness-caching support this
+    # app doesn't use anywhere, confirmed: no fresh_when/stale? calls in app/) does exactly that:
+    # ActiveStorage::AnalyzeJob (Rails' own background job, enqueued automatically whenever an
+    # image/video is attached, with no way for this app's own "jobs must set Current.account
+    # explicitly" convention to reach it) touches the blob's owning record after analyzing it —
+    # loading that record, unscoped, is what raised live. This app has no use for the caching
+    # feature this touch exists to support, so the correct fix is turning it off, not threading
+    # tenant context through a framework-internal job this app doesn't control.
+    config.active_storage.touch_attachment_records = false
   end
 end

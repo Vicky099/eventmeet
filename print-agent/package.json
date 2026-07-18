@@ -1,0 +1,16 @@
+{
+  "name": "eventmeet-print-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Phase 10 (requirement.md §5.5.1) — minimal Electron print agent: pairs with an EventMeet tenant, receives print jobs over Action Cable, and silent-prints the rendered badge PDF. Dev-mode only for now — see doc/print-agent-protocol.md in the backend repo for packaging/auto-update scope notes.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

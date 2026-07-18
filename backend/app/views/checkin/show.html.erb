@@ -25,8 +25,32 @@
         <button type="button" class="checkin-pill" data-value="check_out" data-action="click->checkin-controls#selectPill">
           <i class="bx bx-log-out-circle"></i> Check out
         </button>
+        <%# Phase 10 — Print Agent (Electron) Integration, revisited (requirement.md §5.5.1):
+            "an option to only print badge and not mark the attendance check-in." ScanService
+            already skips Attendance creation for any scan_type other than check_in/check_out —
+            this reuses that behavior unchanged. %>
+        <button type="button" class="checkin-pill" data-value="print" data-action="click->checkin-controls#selectPill">
+          <i class="bx bx-printer"></i> Print only
+        </button>
       </div>
       <%= hidden_field_tag :scan_type, "check_in", data: { checkin_controls_target: "hiddenField", field: "scan_type" }, id: nil %>
+    </div>
+
+    <%# Phase 10 — Print Agent (Electron) Integration, revisited (requirement.md §5.5.1): "if
+        admin selected print then it will make check-in and print badge." Hidden automatically
+        when Direction is "Print only" (checkin_controls_controller.js#syncPrintToggleVisibility)
+        — printing is already what that direction does. %>
+    <div class="checkin-field-group" data-checkin-controls-target="printToggleWrap">
+      <span class="checkin-field-label">Also print</span>
+      <div class="checkin-pill-group" data-checkin-controls-target="pillGroup" data-field="print">
+        <button type="button" class="checkin-pill is-active" data-value="0" data-action="click->checkin-controls#selectPill">
+          Off
+        </button>
+        <button type="button" class="checkin-pill" data-value="1" data-action="click->checkin-controls#selectPill">
+          <i class="bx bx-printer"></i> On
+        </button>
+      </div>
+      <%= hidden_field_tag :print, "0", data: { checkin_controls_target: "hiddenField", field: "print" }, id: nil %>
     </div>
 
     <% if @sessions.any? %>
@@ -57,6 +81,6 @@
   <% end %>
 
   <div id="scan-result" class="checkin-result-slot">
-    <%= render "result", result: nil %>
+    <%= render "result", result: nil, print_result: nil %>
   </div>
 </div>

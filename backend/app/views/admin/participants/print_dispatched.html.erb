@@ -1,0 +1,11 @@
+<%# Phase 10 — Print Agent (Electron) Integration, revisited (requirement.md §5.5.1). Rendered
+    inline in the tab the Print link opens (target="_blank", same as the pre-existing "Download
+    badge" link) when the badge was actually dispatched to a paired station rather than
+    downloaded — there's no PDF to show for that outcome, just confirmation it was sent. %>
+<% content_for :page_title, "Print job sent" %>
+
+<div class="d-flex flex-column align-items-center justify-content-center text-center" style="min-height: 60vh;">
+  <i class="bx bx-printer font-size-40 text-success mb-2"></i>
+  <h5 class="mb-1">Print job sent to <%= station.name %></h5>
+  <p class="text-muted mb-0"><%= @participant.name %>'s badge is printing now.</p>
+</div>

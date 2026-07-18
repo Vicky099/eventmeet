@@ -124,6 +124,14 @@ class Event < ApplicationRecord
   # otherwise block the whole Event destroy; clearing schedules first leaves nothing to restrict.
   has_many :schedules, dependent: :destroy
   has_many :speakers, dependent: :destroy
+  # Phase 10 — Print Agent (Electron) Integration (requirement.md §5.5.1, §8). default_print_station
+  # is what a manual Print click and check-in's print actions target when nothing more specific
+  # is given (PrintTriggerService) — optional, since a station can exist without being the
+  # default yet (or ever, if the org prints the same way it does today via PDF download).
+  belongs_to :default_print_station, class_name: "PrintStation", optional: true
+  has_many :print_stations, dependent: :destroy
+  has_many :print_jobs, dependent: :destroy
+  has_many :bulk_print_runs, dependent: :destroy
   # The Super Admin who approved it (SuperAdmin::EventReviewsController#approve) — optional since
   # it's nil for the whole unsubmitted/pending/rejected lifetime, not just historically before
   # Phase 5.

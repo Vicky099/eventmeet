@@ -255,6 +255,23 @@ CREATE TABLE public.badges (
 
 
 --
+-- Name: bulk_print_runs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.bulk_print_runs (
+    id uuid NOT NULL,
+    account_id uuid NOT NULL,
+    event_id uuid NOT NULL,
+    print_station_id uuid NOT NULL,
+    created_by_id uuid NOT NULL,
+    "limit" integer NOT NULL,
+    status integer DEFAULT 0 NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: custom_fields; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -354,7 +371,9 @@ CREATE TABLE public.events (
     send_registration_email boolean DEFAULT false NOT NULL,
     scheduled_report_frequency integer DEFAULT 0 NOT NULL,
     last_report_sent_at timestamp(6) without time zone,
-    quotation_id uuid
+    quotation_id uuid,
+    auto_print_enabled boolean DEFAULT false NOT NULL,
+    default_print_station_id uuid
 );
 
 
@@ -632,6 +651,64 @@ CREATE TABLE public.participants (
     title character varying,
     first_name character varying,
     last_name character varying
+);
+
+
+--
+-- Name: print_agents; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.print_agents (
+    id uuid NOT NULL,
+    account_id uuid NOT NULL,
+    event_id uuid NOT NULL,
+    print_station_id uuid NOT NULL,
+    jti character varying NOT NULL,
+    paired_at timestamp(6) without time zone NOT NULL,
+    revoked_at timestamp(6) without time zone,
+    connected boolean DEFAULT false NOT NULL,
+    last_seen_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: print_jobs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.print_jobs (
+    id uuid NOT NULL,
+    account_id uuid NOT NULL,
+    event_id uuid NOT NULL,
+    print_station_id uuid NOT NULL,
+    participant_id uuid NOT NULL,
+    bulk_print_run_id uuid,
+    sequence integer,
+    status integer DEFAULT 0 NOT NULL,
+    source integer DEFAULT 0 NOT NULL,
+    error_message text,
+    sent_at timestamp(6) without time zone,
+    completed_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: print_stations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.print_stations (
+    id uuid NOT NULL,
+    account_id uuid NOT NULL,
+    event_id uuid NOT NULL,
+    name character varying NOT NULL,
+    printer_name character varying,
+    pairing_code character varying,
+    pairing_code_expires_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
 );
 
 
@@ -1126,6 +1203,14 @@ ALTER TABLE ONLY public.badges
 
 
 --
+-- Name: bulk_print_runs bulk_print_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bulk_print_runs
+    ADD CONSTRAINT bulk_print_runs_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: custom_fields custom_fields_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1251,6 +1336,30 @@ ALTER TABLE ONLY public.oauth_applications
 
 ALTER TABLE ONLY public.participants
     ADD CONSTRAINT participants_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: print_agents print_agents_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.print_agents
+    ADD CONSTRAINT print_agents_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: print_jobs print_jobs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.print_jobs
+    ADD CONSTRAINT print_jobs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: print_stations print_stations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.print_stations
+    ADD CONSTRAINT print_stations_pkey PRIMARY KEY (id);
 
 
 --
@@ -1782,6 +1891,34 @@ CREATE INDEX index_badges_on_ticket_category_id ON public.badges USING btree (ti
 
 
 --
+-- Name: index_bulk_print_runs_on_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_bulk_print_runs_on_account_id ON public.bulk_print_runs USING btree (account_id);
+
+
+--
+-- Name: index_bulk_print_runs_on_created_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_bulk_print_runs_on_created_by_id ON public.bulk_print_runs USING btree (created_by_id);
+
+
+--
+-- Name: index_bulk_print_runs_on_event_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_bulk_print_runs_on_event_id ON public.bulk_print_runs USING btree (event_id);
+
+
+--
+-- Name: index_bulk_print_runs_on_print_station_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_bulk_print_runs_on_print_station_id ON public.bulk_print_runs USING btree (print_station_id);
+
+
+--
 -- Name: index_custom_fields_on_account_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1884,6 +2021,13 @@ CREATE INDEX index_events_on_approval_status_and_submitted_at ON public.events U
 --
 
 CREATE INDEX index_events_on_approved_by_id ON public.events USING btree (approved_by_id);
+
+
+--
+-- Name: index_events_on_default_print_station_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_events_on_default_print_station_id ON public.events USING btree (default_print_station_id);
 
 
 --
@@ -2164,6 +2308,97 @@ CREATE UNIQUE INDEX index_participants_on_hex_id ON public.participants USING bt
 --
 
 CREATE INDEX index_participants_on_ticket_category_id ON public.participants USING btree (ticket_category_id);
+
+
+--
+-- Name: index_print_agents_on_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_print_agents_on_account_id ON public.print_agents USING btree (account_id);
+
+
+--
+-- Name: index_print_agents_on_event_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_print_agents_on_event_id ON public.print_agents USING btree (event_id);
+
+
+--
+-- Name: index_print_agents_on_jti; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_print_agents_on_jti ON public.print_agents USING btree (jti);
+
+
+--
+-- Name: index_print_agents_on_print_station_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_print_agents_on_print_station_id ON public.print_agents USING btree (print_station_id);
+
+
+--
+-- Name: index_print_jobs_on_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_print_jobs_on_account_id ON public.print_jobs USING btree (account_id);
+
+
+--
+-- Name: index_print_jobs_on_bulk_print_run_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_print_jobs_on_bulk_print_run_id ON public.print_jobs USING btree (bulk_print_run_id);
+
+
+--
+-- Name: index_print_jobs_on_bulk_print_run_id_and_sequence; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_print_jobs_on_bulk_print_run_id_and_sequence ON public.print_jobs USING btree (bulk_print_run_id, sequence);
+
+
+--
+-- Name: index_print_jobs_on_event_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_print_jobs_on_event_id ON public.print_jobs USING btree (event_id);
+
+
+--
+-- Name: index_print_jobs_on_participant_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_print_jobs_on_participant_id ON public.print_jobs USING btree (participant_id);
+
+
+--
+-- Name: index_print_jobs_on_print_station_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_print_jobs_on_print_station_id ON public.print_jobs USING btree (print_station_id);
+
+
+--
+-- Name: index_print_stations_on_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_print_stations_on_account_id ON public.print_stations USING btree (account_id);
+
+
+--
+-- Name: index_print_stations_on_event_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_print_stations_on_event_id ON public.print_stations USING btree (event_id);
+
+
+--
+-- Name: index_print_stations_on_pairing_code; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_print_stations_on_pairing_code ON public.print_stations USING btree (pairing_code) WHERE (pairing_code IS NOT NULL);
 
 
 --
@@ -3098,11 +3333,27 @@ ALTER INDEX public.index_scan_events_on_session_id ATTACH PARTITION public.scan_
 
 
 --
+-- Name: print_jobs fk_rails_01cc9771d0; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.print_jobs
+    ADD CONSTRAINT fk_rails_01cc9771d0 FOREIGN KEY (bulk_print_run_id) REFERENCES public.bulk_print_runs(id);
+
+
+--
 -- Name: quotation_revisions fk_rails_0442bb12bd; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.quotation_revisions
     ADD CONSTRAINT fk_rails_0442bb12bd FOREIGN KEY (quotation_id) REFERENCES public.quotations(id);
+
+
+--
+-- Name: bulk_print_runs fk_rails_057556ff5d; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bulk_print_runs
+    ADD CONSTRAINT fk_rails_057556ff5d FOREIGN KEY (event_id) REFERENCES public.events(id);
 
 
 --
@@ -3362,6 +3613,14 @@ ALTER TABLE ONLY public.ticket_reservations
 
 
 --
+-- Name: print_jobs fk_rails_5c174e3f62; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.print_jobs
+    ADD CONSTRAINT fk_rails_5c174e3f62 FOREIGN KEY (participant_id) REFERENCES public.participants(id);
+
+
+--
 -- Name: import_files fk_rails_5dbe2f79b7; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3410,6 +3669,14 @@ ALTER TABLE ONLY public.govt_id_import_files
 
 
 --
+-- Name: print_stations fk_rails_66022c3ff6; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.print_stations
+    ADD CONSTRAINT fk_rails_66022c3ff6 FOREIGN KEY (event_id) REFERENCES public.events(id);
+
+
+--
 -- Name: badges fk_rails_68a813303d; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3439,6 +3706,22 @@ ALTER TABLE ONLY public.oauth_access_tokens
 
 ALTER TABLE public.attendances
     ADD CONSTRAINT fk_rails_777eb7170a FOREIGN KEY (event_id) REFERENCES public.events(id);
+
+
+--
+-- Name: events fk_rails_7ac45dab10; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.events
+    ADD CONSTRAINT fk_rails_7ac45dab10 FOREIGN KEY (default_print_station_id) REFERENCES public.print_stations(id);
+
+
+--
+-- Name: print_jobs fk_rails_7affbc829e; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.print_jobs
+    ADD CONSTRAINT fk_rails_7affbc829e FOREIGN KEY (account_id) REFERENCES public.accounts(id);
 
 
 --
@@ -3490,11 +3773,27 @@ ALTER TABLE ONLY public.event_live_stats
 
 
 --
+-- Name: print_agents fk_rails_950e23e259; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.print_agents
+    ADD CONSTRAINT fk_rails_950e23e259 FOREIGN KEY (print_station_id) REFERENCES public.print_stations(id);
+
+
+--
 -- Name: schedules fk_rails_965f2422fe; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.schedules
     ADD CONSTRAINT fk_rails_965f2422fe FOREIGN KEY (event_id) REFERENCES public.events(id);
+
+
+--
+-- Name: print_jobs fk_rails_97a6bde7ac; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.print_jobs
+    ADD CONSTRAINT fk_rails_97a6bde7ac FOREIGN KEY (print_station_id) REFERENCES public.print_stations(id);
 
 
 --
@@ -3538,6 +3837,14 @@ ALTER TABLE ONLY public.sessions
 
 
 --
+-- Name: print_jobs fk_rails_ae6f62054d; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.print_jobs
+    ADD CONSTRAINT fk_rails_ae6f62054d FOREIGN KEY (event_id) REFERENCES public.events(id);
+
+
+--
 -- Name: invoices fk_rails_afb4b1e584; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3578,6 +3885,14 @@ ALTER TABLE ONLY public.speakers
 
 
 --
+-- Name: print_agents fk_rails_b6bb770118; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.print_agents
+    ADD CONSTRAINT fk_rails_b6bb770118 FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
 -- Name: event_live_stats fk_rails_b9464ab1ca; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3591,6 +3906,14 @@ ALTER TABLE ONLY public.event_live_stats
 
 ALTER TABLE public.scan_events
     ADD CONSTRAINT fk_rails_baf8197b7a FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
+-- Name: print_stations fk_rails_bcda1f8c06; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.print_stations
+    ADD CONSTRAINT fk_rails_bcda1f8c06 FOREIGN KEY (account_id) REFERENCES public.accounts(id);
 
 
 --
@@ -3650,6 +3973,14 @@ ALTER TABLE ONLY public.account_memberships
 
 
 --
+-- Name: print_agents fk_rails_c34bfb43bf; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.print_agents
+    ADD CONSTRAINT fk_rails_c34bfb43bf FOREIGN KEY (event_id) REFERENCES public.events(id);
+
+
+--
 -- Name: active_storage_attachments fk_rails_c3b3935057; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3679,6 +4010,22 @@ ALTER TABLE ONLY public.schedules
 
 ALTER TABLE ONLY public.export_files
     ADD CONSTRAINT fk_rails_c72035d816 FOREIGN KEY (created_by_id) REFERENCES public.users(id);
+
+
+--
+-- Name: bulk_print_runs fk_rails_c9bd6b4f2e; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bulk_print_runs
+    ADD CONSTRAINT fk_rails_c9bd6b4f2e FOREIGN KEY (created_by_id) REFERENCES public.users(id);
+
+
+--
+-- Name: bulk_print_runs fk_rails_c9fc2e6fec; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bulk_print_runs
+    ADD CONSTRAINT fk_rails_c9fc2e6fec FOREIGN KEY (account_id) REFERENCES public.accounts(id);
 
 
 --
@@ -3719,6 +4066,14 @@ ALTER TABLE ONLY public.custom_fields
 
 ALTER TABLE ONLY public.events
     ADD CONSTRAINT fk_rails_eb6a58ca43 FOREIGN KEY (approved_by_id) REFERENCES public.users(id);
+
+
+--
+-- Name: bulk_print_runs fk_rails_edf7da98ee; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bulk_print_runs
+    ADD CONSTRAINT fk_rails_edf7da98ee FOREIGN KEY (print_station_id) REFERENCES public.print_stations(id);
 
 
 --
@@ -3770,6 +4125,12 @@ ALTER TABLE public.badge_templates ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.badges ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: bulk_print_runs; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.bulk_print_runs ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: custom_fields; Type: ROW SECURITY; Schema: public; Owner: -
@@ -3850,6 +4211,24 @@ ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.participants ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: print_agents; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.print_agents ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: print_jobs; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.print_jobs ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: print_stations; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.print_stations ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: quotation_revisions; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -3916,6 +4295,13 @@ CREATE POLICY tenant_isolation ON public.badge_templates USING ((account_id = (c
 --
 
 CREATE POLICY tenant_isolation ON public.badges USING ((account_id = (current_setting('app.current_account_id'::text, true))::uuid));
+
+
+--
+-- Name: bulk_print_runs tenant_isolation; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY tenant_isolation ON public.bulk_print_runs USING ((account_id = (current_setting('app.current_account_id'::text, true))::uuid));
 
 
 --
@@ -4010,6 +4396,27 @@ CREATE POLICY tenant_isolation ON public.participants USING ((account_id = (curr
 
 
 --
+-- Name: print_agents tenant_isolation; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY tenant_isolation ON public.print_agents USING ((account_id = (current_setting('app.current_account_id'::text, true))::uuid));
+
+
+--
+-- Name: print_jobs tenant_isolation; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY tenant_isolation ON public.print_jobs USING ((account_id = (current_setting('app.current_account_id'::text, true))::uuid));
+
+
+--
+-- Name: print_stations tenant_isolation; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY tenant_isolation ON public.print_stations USING ((account_id = (current_setting('app.current_account_id'::text, true))::uuid));
+
+
+--
 -- Name: quotation_revisions tenant_isolation; Type: POLICY; Schema: public; Owner: -
 --
 
@@ -4098,6 +4505,11 @@ ALTER TABLE public.ticket_reservations ENABLE ROW LEVEL SECURITY;
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260719000005'),
+('20260719000004'),
+('20260719000003'),
+('20260719000002'),
+('20260719000001'),
 ('20260718130000'),
 ('20260718120000'),
 ('20260718110300'),

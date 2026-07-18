@@ -229,4 +229,77 @@ RSpec.describe "Check-in kiosk", type: :request do
       expect(response).to redirect_to(user_root_path)
     end
   end
+
+  # Phase 10 — Print Agent (Electron) Integration, revisited (requirement.md §5.5.1).
+  describe "POST /checkin/:event_id/scan — printing" do
+    before { sign_in_with_role(:checkin_staff) }
+
+    it "'Print only' prints without marking attendance" do
+      event = create_event
+      Current.account = account
+      create(:badge, account: account, event: event)
+      participant = create(:participant, account: account, event: event)
+
+      post checkin_scan_path(event), params: { identifier: participant.hex_id, scan_type: "print" }, as: :turbo_stream
+
+      expect(response.body).to include(participant.name)
+      Current.account = account
+      expect(Attendance.where(participant: participant).count).to eq(0)
+      expect(ScanEvent.where(participant: participant, scan_type: :print).count).to eq(1)
+    end
+
+    it "the 'also print' toggle prints alongside a normal check-in" do
+      event = create_event
+      Current.account = account
+      create(:badge, account: account, event: event)
+      participant = create(:participant, account: account, event: event)
+
+      post checkin_scan_path(event), params: { identifier: participant.hex_id, scan_type: "check_in", print: "1" }, as: :turbo_stream
+
+      Current.account = account
+      expect(Attendance.where(participant: participant).count).to eq(1)
+      expect(ScanEvent.where(participant: participant, scan_type: :print).count).to eq(1)
+    end
+
+    it "without the toggle and with auto_print_enabled off, a plain check-in triggers no print" do
+      event = create_event
+      Current.account = account
+      create(:badge, account: account, event: event)
+      participant = create(:participant, account: account, event: event)
+
+      post checkin_scan_path(event), params: { identifier: participant.hex_id, scan_type: "check_in" }, as: :turbo_stream
+
+      Current.account = account
+      expect(ScanEvent.where(participant: participant, scan_type: :print).count).to eq(0)
+    end
+
+    # The literal Phase 10 Definition of Done line: "auto-print off -> no job pushed, badge still
+    # available via the Phase 8 on-demand download" — and the flip side, on -> a job pushed with
+    # no operator toggle at all.
+    it "auto_print_enabled on the event prints automatically with no operator toggle" do
+      event = create_event(auto_print_enabled: true)
+      Current.account = account
+      create(:badge, account: account, event: event)
+      station = create(:print_station, :online, account: account, event: event)
+      event.update!(default_print_station: station)
+      participant = create(:participant, account: account, event: event)
+
+      post checkin_scan_path(event), params: { identifier: participant.hex_id, scan_type: "check_in" }, as: :turbo_stream
+
+      Current.account = account
+      expect(PrintJob.sole).to have_attributes(participant: participant, status: "sent")
+    end
+
+    it "'Print only' does not debounce against a prior check-in's own ScanEvent" do
+      event = create_event
+      Current.account = account
+      create(:badge, account: account, event: event)
+      participant = create(:participant, account: account, event: event)
+      post checkin_scan_path(event), params: { identifier: participant.hex_id, scan_type: "check_in" }, as: :turbo_stream
+
+      post checkin_scan_path(event), params: { identifier: participant.hex_id, scan_type: "print" }, as: :turbo_stream
+
+      expect(response.body).not_to include("Already printed")
+    end
+  end
 end
