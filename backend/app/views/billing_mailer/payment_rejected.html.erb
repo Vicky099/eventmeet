@@ -1,0 +1,10 @@
+<h1>Payment proof rejected for <%= @invoice.event.name %></h1>
+
+<p>A Super Admin reviewed your payment submission (UTR: <strong><%= @invoice.utr_reference %></strong>) and rejected it:</p>
+
+<blockquote><%= @invoice.rejection_reason %></blockquote>
+
+<p>
+  Sign in to submit a new payment proof at
+  <%= link_to admin_invoice_url(@invoice), admin_invoice_url(@invoice) %>
+</p>

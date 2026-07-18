@@ -244,7 +244,7 @@
       </div>
       <div class="card-body">
         <%= button_to "Approve", approve_platform_event_review_path(@event), method: :post,
-              class: "btn btn-success w-100 mb-3",
+              class: "btn btn-sm btn-success w-100 mb-3",
               data: { action: "click->confirm-dialog#show", title: "Approve Event", message: "Approve \"#{@event.name}\"? It becomes visible on the public site once approved." } %>
 
         <hr>
@@ -254,7 +254,7 @@
             <%= label_tag :rejection_reason, "Rejection reason", class: "form-label" %>
             <%= text_area_tag :rejection_reason, nil, class: "form-control", rows: 4, placeholder: "Required — the organizer sees this." %>
           </div>
-          <%= f.submit "Reject", class: "btn btn-outline-danger w-100",
+          <%= f.submit "Reject", class: "btn btn-sm btn-outline-danger w-100",
                 data: { action: "click->confirm-dialog#show", title: "Reject Event", message: "Reject \"#{@event.name}\"? The organizer is notified by email with your reason.", danger: "true" } %>
         <% end %>
       </div>

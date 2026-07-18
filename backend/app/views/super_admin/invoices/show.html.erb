@@ -1,0 +1,86 @@
+<% content_for :page_title, @invoice.event.name %>
+
+<%= render "shared/page_header",
+  icon: "bx-credit-card",
+  crumbs: [ { label: "Invoices", path: platform_invoices_path }, { label: @invoice.event.name } ] %>
+
+<div class="row">
+  <div class="col-lg-7">
+    <div class="mb-3">
+      <%= render "document", invoice: @invoice %>
+    </div>
+
+    <% if @invoice.utr_reference.present? %>
+      <div class="card mb-3">
+        <div class="card-header bg-white">
+          <h5 class="card-title mb-0">Payment Submission</h5>
+        </div>
+        <div class="card-body">
+          <dl class="row mb-0">
+            <dt class="col-sm-4">UTR</dt>
+            <dd class="col-sm-8"><%= @invoice.utr_reference %></dd>
+
+            <dt class="col-sm-4">Submitted</dt>
+            <dd class="col-sm-8"><%= @invoice.submitted_at&.to_fs(:short) %></dd>
+
+            <dt class="col-sm-4">Receipt</dt>
+            <dd class="col-sm-8">
+              <% if @invoice.receipt.attached? %>
+                <%= link_to "View receipt", rails_blob_path(@invoice.receipt) %>
+              <% else %>
+                —
+              <% end %>
+            </dd>
+
+            <% if @invoice.rejection_reason.present? %>
+              <dt class="col-sm-4">Last rejection</dt>
+              <dd class="col-sm-8 text-danger"><%= @invoice.rejection_reason %></dd>
+            <% end %>
+          </dl>
+        </div>
+      </div>
+    <% end %>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card" style="position: sticky; top: 1rem;">
+      <div class="card-header bg-white">
+        <h5 class="card-title mb-0">Actions</h5>
+      </div>
+      <div class="card-body">
+        <%= link_to "Download Invoice", download_platform_invoice_path(@invoice),
+              class: "btn btn-sm btn-outline-secondary w-100 mb-3" %>
+
+        <hr>
+
+        <% if @invoice.draft? %>
+          <%= button_to "Send Invoice", deliver_platform_invoice_path(@invoice), method: :post,
+                class: "btn btn-sm btn-primary w-100",
+                data: { action: "click->confirm-dialog#show", title: "Send Invoice",
+                        message: "Send this #{money(@invoice.amount, @invoice.currency)} invoice to #{@invoice.account.name}? They'll be notified by email and WhatsApp." } %>
+        <% elsif @invoice.under_review? %>
+          <%= button_to "Verify Payment", verify_platform_invoice_path(@invoice), method: :post,
+                class: "btn btn-sm btn-success w-100 mb-3",
+                data: { action: "click->confirm-dialog#show", title: "Verify Payment",
+                        message: "Confirm the #{money(@invoice.amount, @invoice.currency)} transfer (UTR: #{@invoice.utr_reference}) has been received? This marks the invoice paid." } %>
+
+          <hr>
+
+          <%= form_with url: reject_platform_invoice_path(@invoice), method: :post, local: true do |f| %>
+            <div class="mb-2">
+              <%= label_tag :rejection_reason, "Rejection reason", class: "form-label" %>
+              <%= text_area_tag :rejection_reason, nil, class: "form-control", rows: 4, placeholder: "Required — explain why, so the tenant can resubmit correctly." %>
+            </div>
+            <%= f.submit "Reject Payment", class: "btn btn-sm btn-outline-danger w-100",
+                  data: { action: "click->confirm-dialog#show", title: "Reject Payment",
+                          message: "Reject this payment submission? The tenant will need to resubmit.", danger: "true" } %>
+          <% end %>
+        <% elsif @invoice.paid? %>
+          <p class="text-muted mb-0">Paid — settled.</p>
+        <% else %>
+          <p class="text-muted mb-0">Awaiting payment from the tenant.</p>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

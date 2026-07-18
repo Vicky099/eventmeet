@@ -28,12 +28,12 @@
             <%= pluralize(@govt_id_import_file.created_count, "Govt ID") %> added to the pool,
             <%= @govt_id_import_file.duplicate_count %> already present.
           </div>
-          <%= link_to "New Import", new_admin_event_govt_id_import_file_path(@event), class: "btn btn-primary" %>
+          <%= link_to "New Import", new_admin_event_govt_id_import_file_path(@event), class: "btn btn-sm btn-primary" %>
         <% when "failed" %>
           <div class="alert alert-danger">
             <i class="bx bx-error-circle me-1"></i> Import failed<% if @govt_id_import_file.row_errors.first %>: <%= @govt_id_import_file.row_errors.first["message"] %><% end %>.
           </div>
-          <%= link_to "Try Again", new_admin_event_govt_id_import_file_path(@event), class: "btn btn-outline-primary" %>
+          <%= link_to "Try Again", new_admin_event_govt_id_import_file_path(@event), class: "btn btn-sm btn-outline-primary" %>
         <% end %>
       </div>
     </div>

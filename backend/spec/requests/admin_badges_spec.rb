@@ -230,6 +230,28 @@ RSpec.describe "Admin Console badges", type: :request do
       expect(response).to redirect_to(user_root_path)
     end
 
+    # Bug: sample_participant (Admin::BadgesController, the design-time preview's synthetic
+    # participant) never set title/first_name/last_name, so a badge using $TITLE$/$FIRST_NAME$/
+    # $LAST_NAME$ (all real, standalone tokens — see BadgeReformService) rendered those blank in
+    # the preview modal even though the tokens were correctly saved and visible back in the
+    # GrapesJS editor — the editor just shows the token block itself, not substituted data, so the
+    # missing sample value only ever showed up in the preview, not while designing.
+    it "fills in every token, including title/first name/last name, for the sample preview" do
+      event = create_event
+      Current.account = account
+      badge = create(:badge, account: account, event: event, ticket_category: nil,
+        content: "<div>$TITLE$ $FIRST_NAME$ $LAST_NAME$</div>")
+      sign_in_with_role(:owner)
+
+      get preview_admin_event_badge_path(event, badge)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).not_to match(/<div>\s*<\/div>/)
+      expect(response.body).to include("Mr.")
+      expect(response.body).to include("Sample")
+      expect(response.body).to include("Participant")
+    end
+
     it "renders the given participant's own real data when participant_id is given" do
       event = create_event
       Current.account = account

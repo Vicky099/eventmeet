@@ -1,0 +1,29 @@
+<%# Confirmed with the user: the Super Admin was pricing a quotation with no idea how many
+    people it was for or what else was being asked for — this is what the tenant filled in on the
+    request form (Admin::QuotationsController#new), shown identically on both consoles' show
+    pages so nobody's pricing (or reviewing) blind. %>
+<div class="card mb-3">
+  <div class="card-header bg-white">
+    <h5 class="card-title mb-0">Event Requirements</h5>
+  </div>
+  <div class="card-body">
+    <dl class="row mb-0">
+      <dt class="col-sm-4">Expected participants</dt>
+      <dd class="col-sm-8"><%= quotation.expected_participant_count %></dd>
+
+      <dt class="col-sm-4">Invitations via</dt>
+      <dd class="col-sm-8">
+        <% channels = [ (quotation.invite_via_email? ? "Email" : nil), (quotation.invite_via_whatsapp? ? "WhatsApp" : nil) ].compact %>
+        <%= channels.any? ? channels.join(" + ") : "None requested" %>
+      </dd>
+
+      <dt class="col-sm-4">Platform support</dt>
+      <dd class="col-sm-8"><%= quotation.support_requested? ? "Requested" : "Not requested" %></dd>
+
+      <% if quotation.additional_notes.present? %>
+        <dt class="col-sm-4">Additional notes</dt>
+        <dd class="col-sm-8 mb-0"><%= simple_format(quotation.additional_notes) %></dd>
+      <% end %>
+    </dl>
+  </div>
+</div>

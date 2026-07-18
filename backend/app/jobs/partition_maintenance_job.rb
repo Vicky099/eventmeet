@@ -1,12 +1,17 @@
 # Phase 9 (requirement.md §4.10). ScanEvent/Attendance's monthly partitions are created a few
 # months ahead at migration time (lib/monthly_range_partitioning.rb), but that window doesn't move
 # on its own — without something extending it, inserts would eventually start failing once "now"
-# outruns the last partition ever created. Self-reschedules the same way EventSchedulerJob does
-# (no sidekiq-cron dependency); a monthly cadence is plenty since ensure_partitions! keeps several
-# months of headroom on every run, not just one.
+# outruns the last partition ever created. Self-reschedules the same way EventSchedulerJob
+# originally did; a monthly cadence is plenty since ensure_partitions! keeps several months of
+# headroom on every run, not just one.
 #
-# Bootstrapping: same as EventSchedulerJob — something needs to call
-# `PartitionMaintenanceJob.perform_later` once to start the chain.
+# sidekiq-cron *is* now installed (EventSchedulerJob/InvoiceGenerationJob were migrated onto it —
+# see that job's own comment for why) but this one wasn't part of that migration and still
+# self-reschedules; moving it onto config/schedule.yml too is a straightforward, not-yet-done
+# follow-up.
+#
+# Bootstrapping: something needs to call `PartitionMaintenanceJob.perform_later` once to start the
+# chain — still an open gap for this job specifically.
 class PartitionMaintenanceJob < ApplicationJob
   queue_as :default
 

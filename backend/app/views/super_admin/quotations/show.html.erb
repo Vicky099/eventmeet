@@ -1,0 +1,148 @@
+<% content_for :page_title, @quotation.event_name %>
+
+<%= render "shared/page_header",
+  icon: "bx-receipt", crumbs: [ { label: "Quotations", path: platform_quotations_path }, { label: @quotation.event_name } ] %>
+
+<div class="row">
+  <div class="col-md-6 mb-3">
+    <div class="card mb-0 h-100">
+      <div class="card-header bg-white">
+        <h5 class="card-title mb-0">Request Details</h5>
+      </div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-sm-4">Tenant</dt>
+          <dd class="col-sm-8"><%= @quotation.account.name %></dd>
+
+          <dt class="col-sm-4">Event</dt>
+          <dd class="col-sm-8"><%= @quotation.event_name %></dd>
+
+          <dt class="col-sm-4">Requested by</dt>
+          <dd class="col-sm-8"><%= @quotation.requested_by.email %></dd>
+
+          <dt class="col-sm-4">Current amount</dt>
+          <dd class="col-sm-8"><%= @quotation.current_amount ? money(@quotation.current_amount, @quotation.currency) : "Not sent yet" %></dd>
+
+          <dt class="col-sm-4">Status</dt>
+          <dd class="col-sm-8 mb-0"><%= @quotation.status.humanize %></dd>
+        </dl>
+
+        <% if @quotation.approved? && @event %>
+          <div class="alert alert-success mt-3 mb-0">
+            Approved by the tenant — used to create "<%= @event.name %>".
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+  <% if @event %>
+    <div class="col-md-6 mb-3">
+      <div class="card mb-0 h-100">
+        <div class="card-header bg-white">
+          <h5 class="card-title mb-0">Event Details</h5>
+        </div>
+        <div class="card-body">
+          <dl class="row mb-0">
+            <dt class="col-sm-4">Name</dt>
+            <dd class="col-sm-8"><%= @event.name %></dd>
+
+            <dt class="col-sm-4">Description</dt>
+            <dd class="col-sm-8"><%= @event.description.presence || "—" %></dd>
+
+            <dt class="col-sm-4">Starts</dt>
+            <dd class="col-sm-8"><%= @event.starts_at.to_fs(:long) %></dd>
+
+            <dt class="col-sm-4">Ends</dt>
+            <dd class="col-sm-8 mb-0"><%= @event.ends_at.to_fs(:long) %></dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+  <% end %>
+
+  <div class="col-md-6 mb-3">
+    <%= render "shared/quotation_intake_details", quotation: @quotation %>
+  </div>
+
+  <% if @quotation.cancelled? %>
+    <div class="col-md-6 mb-3">
+      <div class="alert alert-secondary mb-0 h-100">Cancelled after 3 rounds of negotiation — negotiation is over.</div>
+    </div>
+  <% elsif @quotation.approved? && @event %>
+    <div class="col-md-6 mb-3">
+      <div class="card mb-0 h-100">
+        <div class="card-header bg-white">
+          <h5 class="card-title mb-0">Invoice</h5>
+        </div>
+        <div class="card-body">
+          <% if @event.invoice.present? && !@event.invoice.draft? %>
+            <p class="text-muted font-size-13 mb-3">This event already has an invoice.</p>
+            <%= link_to "View Invoice", platform_invoice_path(@event.invoice), class: "btn btn-sm btn-outline-primary w-100" %>
+          <% elsif @event.invoice.present? %>
+            <p class="text-muted font-size-13 mb-3">A draft invoice exists but hasn't been sent to the tenant yet.</p>
+            <%= link_to "Review & Send Invoice", platform_invoice_path(@event.invoice), class: "btn btn-sm btn-primary w-100" %>
+          <% else %>
+            <p class="text-muted font-size-13">
+              Normally generated automatically the day after the event ends — create it now instead if you don't want to wait.
+            </p>
+            <%= button_to "Create Invoice", create_invoice_platform_quotation_path(@quotation), method: :post,
+                  class: "btn btn-sm btn-primary w-100",
+                  data: { action: "click->confirm-dialog#show", title: "Create Invoice",
+                          message: "Create a draft invoice for \"#{@event.name}\" now? You'll still need to review and send it." } %>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  <% elsif @quotation.approved? %>
+    <%# Approved but not yet consumed into an event — nothing actionable here on the Super Admin
+        side (event creation is the tenant's own move), so no card at all, same "moved to the
+        Request Details card, nothing left to show here" reasoning the fully-consumed case above
+        already follows. %>
+  <% else %>
+    <div class="col-md-6 mb-3">
+      <div class="card mb-0 h-100">
+        <div class="card-header bg-white">
+          <h5 class="card-title mb-0"><%= @quotation.current_amount.present? ? "Revise Amount" : "Send Amount" %></h5>
+        </div>
+        <div class="card-body">
+          <%= form_with url: send_amount_platform_quotation_path(@quotation), method: :post, local: true do |f| %>
+            <div class="row g-2 mb-3">
+              <div class="col-4">
+                <%= label_tag :currency, "Currency", class: "form-label" %>
+                <%= select_tag :currency, options_for_select(Currency::CODES, @quotation.currency), class: "form-select" %>
+              </div>
+              <div class="col-8">
+                <%= label_tag :amount, "Amount", class: "form-label" %>
+                <%= number_field_tag :amount, @quotation.current_amount, step: "0.01", min: 0.01, class: "form-control", autofocus: true %>
+              </div>
+            </div>
+            <%= f.submit "Send to Tenant", class: "btn btn-sm btn-primary w-100" %>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  <% end %>
+</div>
+
+<% if @quotation.quotation_revisions.any? %>
+  <div class="row">
+    <div class="col-lg-7">
+      <div class="card mb-3">
+        <div class="card-header bg-white">
+          <h5 class="card-title mb-0">Negotiation History</h5>
+        </div>
+        <div class="card-body">
+          <ul class="list-unstyled mb-0">
+            <% @quotation.quotation_revisions.order(:created_at).each_with_index do |revision, index| %>
+              <li class="border-bottom pb-2 mb-2">
+                <strong>Rejection <%= index + 1 %> of <%= Quotation::MAX_REJECTIONS %>:</strong>
+                <%= money(revision.amount, revision.currency) %> rejected — "<%= revision.rejection_note %>"
+              </li>
+            <% end %>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+<% end %>

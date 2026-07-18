@@ -6,7 +6,7 @@
 
 <%= render layout: "shared/page_header",
   locals: { icon: "bx-barcode", crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) }, { label: "Check-in" } ] } do %>
-  <%= link_to checkin_event_path(@event), class: "btn btn-primary" do %>
+  <%= link_to checkin_event_path(@event), class: "btn btn-sm btn-primary" do %>
     <i class="bx bx-barcode-reader"></i> Scan
   <% end %>
 <% end %>

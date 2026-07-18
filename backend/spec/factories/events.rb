@@ -11,6 +11,12 @@ FactoryBot.define do
     # specs that pass seat_limit directly (create(:event, seat_limit: 50)) mean to set a real cap,
     # so infer the flag from it rather than making every such call also pass has_seat_limit: true.
     has_seat_limit { seat_limit.present? }
+    # Phase 15, revisited (requirement.md §4.6, confirmed with the user): every Event now
+    # `belongs_to :quotation` (required, and must belong to the same account) — auto-build an
+    # approved one on the same account so the hundreds of specs that just need *an* event don't
+    # each have to wire this up themselves. Specs that care about the quotation gate itself pass
+    # `quotation:` explicitly to override.
+    quotation { association :quotation, :approved, account: account }
 
     # EventSchedulerJob only manages events that have been published at least once
     # (Event#published?) — most job/status specs want that gate already open.

@@ -1,0 +1,90 @@
+<% content_for :page_title, "Email Templates — #{@event.name}" %>
+
+<%= render layout: "shared/page_header",
+  locals: { icon: "bx-envelope",
+            crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) }, { label: "Email Templates" } ] } do %>
+  <%# "Quick Email Send" (Phase 13, revisited): "select the type of template you want to send
+      then click OK will enqueue the email." @sendable_kinds always includes Participant
+      Registration Confirmation (EmailTemplate::ALWAYS_SENDABLE_KINDS — it has real content, the
+      built-in confirmation view, even with no row configured), so in practice this button is
+      enabled from the moment an event exists; the disabled branch only still matters if that
+      constant ever changes, or for a future kind with no built-in fallback of its own. Disabled
+      with a hint rather than hidden outright — the button staying visible is what tells an admin
+      the feature exists at all. %>
+  <% if @sendable_kinds.any? %>
+    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#quick-email-send-modal">
+      <i class="bx bx-send"></i> Quick Email Send
+    </button>
+  <% else %>
+    <button type="button" class="btn btn-sm btn-primary" disabled title="Customize and activate a template below first">
+      <i class="bx bx-send"></i> Quick Email Send
+    </button>
+  <% end %>
+<% end %>
+
+<div class="card">
+  <div class="card-header">
+    <span class="fw-semibold">Email Templates</span>
+  </div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Status</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @email_templates.each do |email_template| %>
+            <tr>
+              <td><%= link_to email_template.label, edit_admin_event_email_template_path(@event, kind: email_template.kind) %></td>
+              <td>
+                <% if !email_template.persisted? %>
+                  <span class="badge bg-secondary-subtle text-secondary">Using default</span>
+                <% elsif email_template.active? %>
+                  <span class="badge bg-success-subtle text-success"><i class="bx bx-check-circle"></i> Custom &middot; Active</span>
+                <% else %>
+                  <span class="badge bg-warning-subtle text-warning">Custom &middot; Disabled (using default)</span>
+                <% end %>
+              </td>
+              <td class="text-end">
+                <%= link_to edit_admin_event_email_template_path(@event, kind: email_template.kind), class: "btn btn-sm btn-outline-primary", title: "Edit" do %>
+                  <i class="bx bx-edit"></i> Edit
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<% if @sendable_kinds.any? %>
+  <div class="modal fade" id="quick-email-send-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 shadow">
+        <%= form_with url: quick_send_admin_event_email_templates_path(@event), method: :post do |f| %>
+          <div class="modal-header border-0 pb-0">
+            <h5 class="modal-title fw-semibold">Quick Email Send</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-muted font-size-13">
+              Sends immediately to every participant of this event with an email on file
+              (<%= pluralize(@recipient_count, "participant") %>).
+            </p>
+            <%= label_tag :kind, "Template", class: "form-label" %>
+            <%= select_tag :kind, options_for_select(@sendable_kinds.map { |kind| [ EmailTemplate::KIND_LABELS.fetch(kind), kind ] }), class: "form-select" %>
+          </div>
+          <div class="modal-footer border-0 pt-3">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+            <%= f.submit "Send", class: "btn btn-primary btn-sm" %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+<% end %>

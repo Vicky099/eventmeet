@@ -18,7 +18,12 @@
     <% else %>
       <% checked_in = event.checked_in_participant_count %>
       <% in_venue = event.currently_in_venue_count %>
-      <% [ [ "Registered", registered ], [ "Checked In", checked_in ], [ "Currently In Venue", in_venue ] ].each do |label, value| %>
+      <% rows = [ [ "Registered", registered ], [ "Checked In", checked_in ], [ "Currently In Venue", in_venue ] ] %>
+      <%# Only meaningful once the event has actually completed — EventCompletionService is the
+          only thing that ever writes an `absent` Attendance row, exactly at that transition, so
+          this is always zero (and not yet a real answer) before then. %>
+      <% rows << [ "Absent", event.absent_participant_count ] if event.completed? %>
+      <% rows.each do |label, value| %>
         <% percent = (value.to_f / registered * 100).clamp(0, 100) %>
         <div class="mb-3">
           <div class="d-flex justify-content-between font-size-13 mb-1">

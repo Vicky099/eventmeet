@@ -1,3 +1,10 @@
+# Sidekiq's own admin UI (queues, retries, dead set, and — via sidekiq-cron's own web extension,
+# required second so it can patch Sidekiq::Web's tabs — the cron schedule config/schedule.yml
+# loads). Required at the top level, not inside `Rails.application.routes.draw`, matching every
+# other Sidekiq app's own convention (`Sidekiq::Web` is a plain Rack app, mounted below).
+require "sidekiq/web"
+require "sidekiq/cron/web"
+
 Rails.application.routes.draw do
   # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.
   # Deliberately unconstrained by host — a load balancer/uptime monitor may hit any host and still
@@ -176,6 +183,28 @@ Rails.application.routes.draw do
             post :copy
           end
         end
+        # Phase 13 — Communications, revisited (requirement.md §3.10, §5.10): per-tenant ask,
+        # confirmed scoped per event — "admin ask to have a customized email template for
+        # participant registration," store/replace placeholders at send time. `param: :kind` (not
+        # the row's uuid) — one EmailTemplate row per kind per event, so the kind itself is the
+        # natural identifier, and it lets edit/update/preview work even before a row exists yet
+        # (Admin::EmailTemplatesController#set_email_template's find_or_initialize_by(kind:)), with
+        # no separate :new/:create step. No :show — same "edit is the workspace" shape :badges above
+        # takes.
+        resources :email_templates, controller: "admin/email_templates", param: :kind,
+          only: [ :index, :edit, :update, :destroy ] do
+          member do
+            post :preview
+          end
+          # "Quick Email Send" (index page button + modal) — a collection route, not nested under
+          # one :kind, since the modal's own <select> is what picks which configured template to
+          # broadcast; the kind travels as a form param (QuickEmailSendJob), same shape
+          # Admin::ParticipantsController's own collection :send_to_pending already takes for its
+          # analogous "send to more than one participant at once" action.
+          collection do
+            post :quick_send
+          end
+        end
         # Agenda, Speakers & Sessions (requirement.md §3.8, §5.6, §5.7) — each a real wizard step
         # rendering its own management UI directly (app/views/admin/events/edit.html.erb's
         # "sessions"/"speaker"/"event_schedule" cases), not a link out to a separate page. No
@@ -209,6 +238,27 @@ Rails.application.routes.draw do
       # not nested under any one Event, unlike :badges above. No :show — same "edit is the
       # workspace, there's no separate read-only page" reasoning as :badges/:events.
       resources :badge_templates, controller: "admin/badge_templates", except: [ :show ]
+
+      # Phase 15 — Platform Billing & Invoicing, revisited (requirement.md §4.6, confirmed with the
+      # user): the tenant's own half of the per-event pricing negotiation — standalone from
+      # :events (a Quotation exists *before* any Event row can, Event's own
+      # quotation_must_be_approved_and_available is the actual gate). No :edit/:update/:destroy —
+      # requested once, then only ever responded to (#approve/#reject).
+      resources :quotations, controller: "admin/quotations", only: [ :index, :new, :create, :show ] do
+        member do
+          post :approve
+          post :reject
+        end
+      end
+
+      # The tenant's own view of what's been invoiced, plus the "Mark as Paid" flow —
+      # #submit_payment is a member action (modal-driven from #index/#show), not a nested resource;
+      # the simplified design folds PaymentSubmission directly onto Invoice.
+      resources :invoices, controller: "admin/invoices", only: [ :index, :show ] do
+        member do
+          post :submit_payment
+        end
+      end
 
       # This app's own authenticated, tenant-scoped replacement for Rails' built-in
       # active_storage_direct_uploads route — see Admin::DirectUploadsController for why the
@@ -277,6 +327,60 @@ Rails.application.routes.draw do
           post :reject
         end
       end
+
+      # Phase 15 — Platform Billing & Invoicing, revisited (requirement.md §4.6, confirmed with the
+      # user): invoices are auto-generated the day after an event ends (InvoiceGenerationJob) —
+      # this is plain `resources :invoices`, not nested under Event; #deliver sends a draft to the
+      # tenant, #verify/#reject review whatever payment proof the tenant submits (folded directly
+      # onto Invoice, no separate PaymentSubmission model in the simplified design). `deliver` (not
+      # `send` — Kernel#send collision, see that action's own comment).
+      resources :invoices, controller: "super_admin/invoices", only: [ :index, :show ] do
+        member do
+          get :download
+          post :deliver
+          post :verify
+          post :reject
+        end
+      end
+
+      # The Super Admin's own half of the per-event pricing negotiation —
+      # Admin::QuotationsController is the tenant's. #send_amount handles both the first offer and
+      # every revision.
+      resources :quotations, controller: "super_admin/quotations", only: [ :index, :show ] do
+        member do
+          post :send_amount
+          # Manual counterpart to InvoiceGenerationJob's own hourly sweep — lets a Super Admin
+          # trigger the draft invoice for an approved quotation's consumed event right away
+          # instead of waiting for the day-after-event-ends cron tick. Same idempotency guard
+          # either way: never a second Invoice for an event that already has one (Invoice#event_id
+          # is uniquely indexed).
+          post :create_invoice
+        end
+      end
+    end
+
+    # Devise's own routing helper — `authenticated` (not the throwing `authenticate`, real bug
+    # caught live: `authenticate` triggers Warden's own failure-app redirect *from inside* the
+    # mounted Rack app's dispatch on a genuinely unauthenticated request, which computes the
+    # redirect Location relative to Sidekiq::Web's own mount point instead of the app root —
+    # `/platform/sidekiq/platform/login`, a route that doesn't exist. `authenticated` is the
+    # soft, non-throwing check: a request that isn't :platform_staff (not signed in at all, or
+    # signed in as :user — a signed-in tenant admin must not reach this even though both scopes
+    # share the same underlying User model) simply never matches this route at all, same plain
+    # 404 as hitting any other undefined path, no broken redirect. Sidekiq::Web can list/retry/
+    # delete jobs and edit the cron schedule — real, destructive admin surface, not a read-only
+    # status page, so this is deliberately gated the same way every other Platform Console
+    # controller already is (SuperAdmin::BaseController's own before_action), just via a routing
+    # constraint instead since Sidekiq::Web is a plain Rack app, not a Rails controller.
+    # SidekiqWebSameOriginShim (app/middleware/) — Sidekiq::Web's own `Sec-Fetch-Site` CSRF check
+    # (its own comment has the full "why," including a live repro) needs to sit in front of
+    # Sidekiq::Web itself, not inside it — `Sidekiq::Web.use`-registered middleware runs too late,
+    # after the check already happened.
+    authenticated :platform_staff do
+      mount Rack::Builder.new {
+        use SidekiqWebSameOriginShim
+        run Sidekiq::Web
+      } => "/platform/sidekiq"
     end
   end
 end

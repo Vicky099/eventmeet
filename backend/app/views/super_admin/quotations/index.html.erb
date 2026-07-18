@@ -1,0 +1,53 @@
+<% content_for :page_title, "Quotations" %>
+
+<%= render "shared/page_header", icon: "bx-receipt", crumbs: [ { label: "Quotations" } ] %>
+
+<div class="card">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Event</th>
+            <th>Tenant</th>
+            <th>Participants</th>
+            <th>Amount</th>
+            <th>Status</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @quotations.each do |quotation| %>
+            <tr>
+              <td><%= link_to quotation.event_name, platform_quotation_path(quotation) %></td>
+              <td><%= quotation.account.name %></td>
+              <td><%= quotation.expected_participant_count %></td>
+              <td><%= quotation.current_amount ? money(quotation.current_amount, quotation.currency) : "—" %></td>
+              <td>
+                <% if quotation.approved? %>
+                  <span class="badge bg-success-subtle text-success">Approved</span>
+                <% elsif quotation.cancelled? %>
+                  <span class="badge bg-secondary-subtle text-secondary">Cancelled</span>
+                <% elsif quotation.rejected? %>
+                  <span class="badge bg-warning-subtle text-warning">Rejected — needs revision (<%= quotation.quotation_revisions.count %>/<%= Quotation::MAX_REJECTIONS %>)</span>
+                <% elsif quotation.current_amount.present? %>
+                  <span class="badge bg-info-subtle text-info">Awaiting tenant</span>
+                <% else %>
+                  <span class="badge bg-secondary-subtle text-secondary">Needs first amount</span>
+                <% end %>
+              </td>
+              <td class="text-end">
+                <%= link_to platform_quotation_path(quotation), class: "btn btn-sm btn-outline-primary", title: "View" do %>
+                  <i class="bx bx-show"></i>
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+          <% if @quotations.none? %>
+            <tr><td colspan="6" class="text-center text-muted py-4">No quotations yet.</td></tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

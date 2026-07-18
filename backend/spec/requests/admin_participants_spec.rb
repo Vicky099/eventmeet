@@ -317,6 +317,47 @@ RSpec.describe "Admin Console participants", type: :request do
       expect(participant.photo).to be_attached
     end
 
+    # Document now auto-uploads straight to Cloudinary the same way Photo already did
+    # (admin/participants/_dynamic_fields.html.erb) — same signed_id-string shape, same
+    # in-memory-attachment-survives-a-failed-retry guarantee.
+    it "attaches a document uploaded client-side via its blob signed_id" do
+      event = create_event
+      Current.account = account
+      form = create(:registration_form, account: account, event: event, catalog_fields: { "document" => true })
+      category = create(:ticket_category, account: account, event: event, registration_form: form)
+      blob = ActiveStorage::Blob.create_and_upload!(io: StringIO.new("fake document"), filename: "id-card.pdf", content_type: "application/pdf")
+
+      post admin_event_participants_path(event), params: {
+        participant: { first_name: "Alice", last_name: "Smith", ticket_category_id: category.id, document: blob.signed_id }
+      }
+
+      participant = Event.unscoped_across_tenants { Participant.find_by!(name: "Alice Smith") }
+      expect(participant.document).to be_attached
+    end
+
+    it "carries an in-memory-attached document's signed_id through a failed submission so a retry still attaches it" do
+      event = create_event
+      Current.account = account
+      form = create(:registration_form, account: account, event: event, catalog_fields: { "company" => true, "document" => true })
+      category = create(:ticket_category, account: account, event: event, registration_form: form)
+      blob = ActiveStorage::Blob.create_and_upload!(io: StringIO.new("fake document"), filename: "id-card.pdf", content_type: "application/pdf")
+
+      post admin_event_participants_path(event), params: {
+        participant: { first_name: "Alice", last_name: "Smith", ticket_category_id: category.id, document: blob.signed_id }
+      }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      hidden_field = Nokogiri::HTML(response.body).at_css('input[name="participant[document]"]')
+      expect(hidden_field["value"]).to eq(blob.signed_id)
+
+      post admin_event_participants_path(event), params: {
+        participant: { first_name: "Alice", last_name: "Smith", company: "Acme", ticket_category_id: category.id, document: blob.signed_id }
+      }
+
+      participant = Event.unscoped_across_tenants { Participant.find_by!(name: "Alice Smith") }
+      expect(participant.document).to be_attached
+    end
+
     it "rejects a duplicate participant (dedupe chain)" do
       event = create_event
       Current.account = account

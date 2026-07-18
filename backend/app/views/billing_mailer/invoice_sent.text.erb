@@ -1,0 +1,7 @@
+Invoice for <%= @event.name %>
+
+An invoice has been raised for <%= @event.name %>: <%= money(@invoice.amount, @invoice.currency) %>
+
+Please pay via bank transfer (NEFT/IMPS) and submit the UTR/receipt as proof of payment.
+
+Sign in to review the invoice and submit payment proof at <%= admin_invoice_url(@invoice) %>

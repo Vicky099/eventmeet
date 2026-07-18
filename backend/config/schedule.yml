@@ -1,0 +1,16 @@
+# sidekiq-cron's own schedule (loaded into Redis on Sidekiq server boot by
+# config/initializers/sidekiq_cron.rb — `load_from_hash!` so a job removed from this file is also
+# removed from Redis, not just never-updated). Cadences match what each job's own
+# `RESCHEDULE_INTERVAL` used to be under the old self-rescheduling pattern (their own class
+# comments have the full "why" behind each interval).
+event_scheduler:
+  cron: "*/5 * * * *"
+  class: "EventSchedulerJob"
+  queue: default
+  description: "Recomputes every published event's draft/up_coming/live/completed status from its own start/end times."
+
+invoice_generation:
+  cron: "0 * * * *"
+  class: "InvoiceGenerationJob"
+  queue: default
+  description: "Auto-generates a draft Invoice for any completed event more than a day past its own end time with no invoice yet."

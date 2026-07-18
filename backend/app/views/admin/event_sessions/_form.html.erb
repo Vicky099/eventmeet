@@ -39,7 +39,7 @@
   </div>
 
   <div class="d-flex align-items-center gap-3 mt-4">
-    <%= link_to "Cancel", edit_admin_event_path(event, step: "sessions"), class: "btn btn-outline-secondary" %>
-    <%= f.submit session.persisted? ? "Save" : "Add Session", class: "btn btn-primary ms-auto" %>
+    <%= link_to "Cancel", edit_admin_event_path(event, step: "sessions"), class: "btn btn-sm btn-outline-secondary" %>
+    <%= f.submit session.persisted? ? "Save" : "Add Session", class: "btn btn-sm btn-primary ms-auto" %>
   </div>
 <% end %>

@@ -4,11 +4,12 @@
     first paint before any broadcast has happened.
 
     Every value below comes from Event's own #checked_in_participant_count/
-    #arrived_today_participant_count/#currently_in_venue_count (app/models/event.rb) — real,
-    distinct-participant counts, not EventLiveStats' cumulative scan counters. See those methods'
-    own comment for why: this dashboard isn't the high-frequency check-in-desk write path
-    EventLiveStats exists to serve cheaply (Admin::EventsController#show's own precedent), and a
-    "N checked in" sitting next to "M registered" reads as a headcount, not a raw scan tally.
+    #arrived_today_participant_count/#currently_in_venue_count/#absent_participant_count
+    (app/models/event.rb) — real, distinct-participant counts, not EventLiveStats' cumulative scan
+    counters. See those methods' own comment for why: this dashboard isn't the high-frequency
+    check-in-desk write path EventLiveStats exists to serve cheaply (Admin::EventsController#show's
+    own precedent), and a "N checked in" sitting next to "M registered" reads as a headcount, not a
+    raw scan tally.
 
     Locals: event (Event). %>
 <div id="live-stats-<%= event.id %>">
@@ -25,6 +26,14 @@
     <div class="col-md-6 col-xl-3">
       <%= render "shared/stat_widget", label: "Currently In Venue", value: event.currently_in_venue_count, icon: "bx-walk", color: "warning" %>
     </div>
+    <%# EventCompletionService only ever writes these once the event itself completes — zero
+        (and uninteresting) for anything still up_coming/live, so this tile only earns its place
+        on the dashboard afterward. %>
+    <% if event.completed? %>
+      <div class="col-md-6 col-xl-3">
+        <%= render "shared/stat_widget", label: "Absent", value: event.absent_participant_count, icon: "bx-user-x", color: "danger" %>
+      </div>
+    <% end %>
   </div>
 
   <div class="row g-3 mt-0">

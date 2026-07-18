@@ -149,6 +149,51 @@ RSpec.describe "Admin Console check-in dashboard", type: :request do
     end
   end
 
+  # Confirmed with the user: participants who never checked in by the time an event completes get
+  # marked absent (EventCompletionService, called from EventSchedulerJob's own live -> completed
+  # transition) — this is that count surfaced on the check-in dashboard.
+  describe "Absent tile" do
+    around do |example|
+      travel_to(Time.zone.local(2026, 1, 1)) { example.run }
+    end
+
+    before do
+      MonthlyRangePartitioning.ensure_partitions!(ActiveRecord::Base.connection, :scan_events, partition_column: :scanned_at, months_behind: 0, months_ahead: 0)
+      MonthlyRangePartitioning.ensure_partitions!(ActiveRecord::Base.connection, :attendances, partition_column: :occurred_at, months_behind: 0, months_ahead: 0)
+    end
+
+    it "stays hidden for an event that hasn't completed yet" do
+      sign_in_with_role(:owner)
+      event = create_event(starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
+      Event.unscoped_across_tenants { event.update!(status: :live) }
+
+      get admin_event_scan_events_path(event)
+
+      expect(response.body).not_to include("Absent")
+    end
+
+    it "shows the real count once the event has completed" do
+      sign_in_with_role(:owner)
+      # ends_at must stay inside the one partition provisioned above (January 2026, matching the
+      # frozen clock) — EventCompletionService stamps the absent Attendance row's occurred_at
+      # from event.ends_at itself, same reasoning event_scheduler_job_spec's own equivalent setup
+      # already established.
+      event = create_event(starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
+      Current.account = account
+      create(:participant, account: account, event: event)
+      Event.unscoped_across_tenants { event.update!(status: :live) }
+
+      travel 2.hours
+
+      EventCompletionService.finalize_attendance!(event)
+      Event.unscoped_across_tenants { event.update!(status: :completed) }
+
+      get admin_event_scan_events_path(event)
+
+      expect(stat_tile_value(response.body, "Absent")).to eq(1)
+    end
+  end
+
   def stat_tile_value(html, label)
     Nokogiri::HTML(html).at_xpath("//h6[normalize-space(text())='#{label}']/following-sibling::h4").text.strip.to_i
   end

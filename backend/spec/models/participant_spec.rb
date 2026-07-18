@@ -69,6 +69,23 @@ RSpec.describe Participant, type: :model do
     end
   end
 
+  # Phase 13 — Communications, revisited: backs the `$QRCODE$` EmailTemplate placeholder and the
+  # built-in confirmation email — encodes hex_id as a base64 data: URI, never uploaded anywhere.
+  describe "#qr_code_data_uri" do
+    it "returns a base64-inlined PNG data URI" do
+      participant = create(:participant, account: account, event: event)
+
+      expect(participant.qr_code_data_uri).to match(%r{\Adata:image/png;base64,[A-Za-z0-9+/=]+\z})
+    end
+
+    it "encodes the participant's own hex_id, not client_participant_id" do
+      participant = create(:participant, account: account, event: event)
+
+      png = Base64.decode64(participant.qr_code_data_uri.split(",", 2).last)
+      expect(RQRCode::QRCode.new(participant.hex_id).as_png(size: 240).to_s).to eq(png)
+    end
+  end
+
   describe "#status default" do
     it "does not force a status itself — the caller decides (Event#default_participant_status)" do
       participant = build(:participant, account: account, event: event)
@@ -422,6 +439,30 @@ RSpec.describe Participant, type: :model do
       expect {
         create(:participant, account: account, event: event, email: nil)
       }.not_to change { Notification.count }
+    end
+  end
+
+  # Phase 13 — Communications, revisited: "Quick Email Send" — QuickEmailSendJob calls this
+  # directly, once per participant; same tracked-send shape as #deliver_confirmation_email above.
+  describe "#deliver_quick_email!" do
+    include ActiveJob::TestHelper
+
+    let(:email_template) { create(:email_template, account: account, event: event, kind: :quick_send, subject: "Reminder for $EVENT_NAME$") }
+
+    it "tracks and enqueues an email Notification addressed to the participant" do
+      participant = create(:participant, account: account, event: event, email: "alice@example.com")
+
+      expect { participant.deliver_quick_email!(email_template) }.to have_enqueued_job(NotificationDeliveryJob)
+
+      notification = Notification.email.last
+      expect(notification.to).to eq("alice@example.com")
+      expect(notification.status).to eq("pending")
+    end
+
+    it "sends nothing when the participant has no email" do
+      participant = create(:participant, account: account, event: event, email: nil)
+
+      expect { participant.deliver_quick_email!(email_template) }.not_to change { Notification.count }
     end
   end
 

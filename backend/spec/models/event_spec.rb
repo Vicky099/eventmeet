@@ -597,6 +597,57 @@ RSpec.describe Event, type: :model do
     end
   end
 
+  # Phase 15 — Platform Billing & Invoicing, revisited (requirement.md §4.6, confirmed with the
+  # user): "one quotation -> one event" — every event now requires an approved, not-yet-consumed
+  # Quotation on the same account; there are no plan tiers left to distinguish.
+  describe "quotation_must_be_approved_and_available" do
+    let(:tenant_user) { create(:user) }
+
+    it "blocks creation with no quotation at all" do
+      event = build(:event, account: account, quotation: nil)
+
+      expect(event).not_to be_valid
+      expect(event.errors[:quotation]).to be_present
+    end
+
+    it "blocks creation against a quotation that hasn't been approved yet" do
+      quotation = create(:quotation, :sent, account: account, requested_by: tenant_user)
+      event = build(:event, account: account, quotation: quotation)
+
+      expect(event).not_to be_valid
+      expect(event.errors[:quotation_id]).to be_present
+    end
+
+    it "blocks creation against another account's quotation" do
+      other_account = create(:account)
+      Current.account = other_account
+      quotation = create(:quotation, :approved, account: other_account, requested_by: create(:user))
+      Current.account = account
+
+      event = build(:event, account: account, quotation: quotation)
+
+      expect(event).not_to be_valid
+      expect(event.errors[:quotation_id]).to be_present
+    end
+
+    it "unblocks creation immediately once the quotation is approved" do
+      quotation = create(:quotation, :approved, account: account, requested_by: tenant_user)
+      event = build(:event, account: account, quotation: quotation)
+
+      expect(event).to be_valid
+    end
+
+    it "blocks a second event from consuming an already-used quotation" do
+      quotation = create(:quotation, :approved, account: account, requested_by: tenant_user)
+      create(:event, account: account, quotation: quotation)
+
+      second_event = build(:event, account: account, quotation: quotation)
+
+      expect(second_event).not_to be_valid
+      expect(second_event.errors[:quotation_id]).to be_present
+    end
+  end
+
   # Phase 0's tenant_scoped_spec.rb: "copy this shape for every real TenantScoped model starting
   # with Event in Phase 4" — same assertions, this time against the real model instead of an
   # anonymous stand-in.

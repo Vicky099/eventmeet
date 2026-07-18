@@ -54,7 +54,9 @@ RSpec.describe ParticipantMailer, type: :mailer do
 
     # Phase 13 — Communications (requirement.md §3.10, §5.10): "registration-confirmation email
     # using Phase 12's tenant/sponsor branding layering" — the one piece of tenant branding that
-    # exists ahead of Phase 12 itself, Account#logo.
+    # exists ahead of Phase 12 itself, Account#logo. Counts <img tags, not a bare "includes <img"
+    # — a QR <img> (below) is always present in the body regardless of logo, since Phase 13
+    # revisited, so these assert specifically on the *logo* image's presence/absence.
     describe "tenant branding" do
       it "shows the tenant's own logo when one is attached" do
         Tempfile.create([ "logo", ".png" ]) do |tempfile|
@@ -64,13 +66,130 @@ RSpec.describe ParticipantMailer, type: :mailer do
           account.attach_logo(Rack::Test::UploadedFile.new(tempfile.path, "image/png"))
         end
 
-        expect(mail.html_part.body.to_s).to include("<img")
+        expect(mail.html_part.body.to_s.scan("<img").size).to eq(2) # logo + QR
       end
 
-      it "renders nothing extra when the tenant has no logo" do
+      it "renders no logo image when the tenant has no logo, just the QR" do
         expect(account.logo).not_to be_attached
-        expect(mail.html_part.body.to_s).not_to include("<img")
+        expect(mail.html_part.body.to_s.scan("<img").size).to eq(1) # QR only
       end
+    end
+
+    # Phase 13 — Communications, revisited: "add the QRcode in mailer using placeholder ... show
+    # that in the mail as well ... don't upload the QR code to cloudinary."
+    describe "QR code" do
+      it "shows the participant's own QR code inline in the default template, as a data: URI (never uploaded)" do
+        expect(mail.html_part.body.to_s).to include(participant.qr_code_data_uri)
+      end
+
+      it "shows the QR code in a custom template that uses the $QRCODE$ placeholder" do
+        create(:email_template, event: event, account: account, kind: :participant_registration,
+          subject: "x", html_body: '<html><body><img src="$QRCODE$"></body></html>')
+
+        expect(mail.html_part.body.decoded).to include(participant.qr_code_data_uri)
+      end
+    end
+
+    # Phase 13 — Communications, revisited (requirement.md §3.10, §5.10): "customized email
+    # template for participant registration," confirmed scoped per event, not shared tenant-wide.
+    describe "with a custom EmailTemplate" do
+      it "uses the event's own subject/HTML, with placeholders filled in, instead of the built-in view" do
+        create(:email_template, event: event, account: account, kind: :participant_registration,
+          subject: "Welcome, $FIRST_NAME$!", html_body: "<p>You're in for $EVENT_NAME$, $FIRST_NAME$.</p>")
+
+        expect(mail.subject).to eq("Welcome, Jane!")
+        expect(mail.html_part.body.decoded).to eq("<p>You're in for Annual Meetup, Jane.</p>")
+      end
+
+      # Attaching the registration PDF (below) makes every send multipart/mixed regardless of
+      # branch — html_part is no longer nil the way a genuinely single-part message's would be —
+      # so "no plain-text alternative for a custom template" is asserted directly via text_part
+      # instead, plus the exact two parts (html + the PDF) this branch is expected to produce.
+      it "has no plain-text alternative part for a custom template — only the HTML body and the PDF attachment" do
+        create(:email_template, event: event, account: account, kind: :participant_registration,
+          subject: "x", html_body: "<p>x</p>")
+
+        expect(mail.text_part).to be_nil
+        expect(mail.parts.map(&:content_type)).to contain_exactly(
+          a_string_starting_with("text/html"), a_string_starting_with("application/pdf")
+        )
+      end
+
+      it "falls back to the default built-in template when the custom one is disabled" do
+        create(:email_template, event: event, account: account, kind: :participant_registration, active: false,
+          subject: "Custom", html_body: "<p>Custom body</p>")
+
+        expect(mail.subject).to include("Annual Meetup")
+        expect(mail.html_part.body.to_s).to include("Annual Meetup")
+      end
+
+      it "ignores a custom template configured on a different event of the same tenant" do
+        other_event = create(:event, account: account, name: "Different Event")
+        create(:email_template, event: other_event, account: account, kind: :participant_registration,
+          subject: "Should not apply", html_body: "<p>Should not apply</p>")
+
+        expect(mail.subject).to include("Annual Meetup")
+        expect(mail.html_part.body.to_s).to include("Annual Meetup")
+      end
+    end
+
+    # Phase 13 — Communications, revisited: "each email we send the attachment as well ... in PDF
+    # show same email template + QRcode for scanning purpose" — every send carries a PDF
+    # (RegistrationPdfService), whether or not the tenant has customized this email's HTML.
+    describe "PDF attachment" do
+      it "attaches a single PDF named after the participant's own hex_id, on the default template" do
+        expect(mail.attachments.size).to eq(1)
+        attachment = mail.attachments.first
+        expect(attachment.filename).to eq("registration-#{participant.hex_id}.pdf")
+        expect(attachment.content_type).to start_with("application/pdf")
+        expect(attachment.body.decoded[0, 5]).to eq("%PDF-")
+      end
+
+      it "attaches a single PDF built from the tenant's own custom template" do
+        create(:email_template, event: event, account: account, kind: :participant_registration,
+          subject: "x", html_body: "<html><body><p>Custom PDF content</p></body></html>")
+
+        expect(mail.attachments.size).to eq(1)
+        attachment = mail.attachments.first
+        expect(attachment.filename).to eq("registration-#{participant.hex_id}.pdf")
+        expect(attachment.content_type).to start_with("application/pdf")
+        expect(attachment.body.decoded[0, 5]).to eq("%PDF-")
+      end
+    end
+  end
+
+  # Phase 13 — Communications, revisited: "Quick Email Send" — the broadcast, kind-agnostic
+  # action QuickEmailSendJob calls per participant. Distinct from #confirmation: no built-in
+  # fallback view (a template is required to send at all), no PDF attachment.
+  describe "#quick_email" do
+    let(:participant) { create(:participant, account: account, event: event, first_name: "Jane", email: "jane@example.com") }
+    let(:email_template) do
+      create(:email_template, account: account, event: event, kind: :quick_send,
+        subject: "Reminder: $EVENT_NAME$ starts soon", html_body: "<html><body><p>Hi $FIRST_NAME$, see you at $EVENT_NAME$!</p></body></html>")
+    end
+    let(:mail) { described_class.quick_email(participant, email_template) }
+
+    it "renders the given template's own subject/HTML, with placeholders filled in" do
+      expect(mail.to).to eq([ "jane@example.com" ])
+      expect(mail.subject).to eq("Reminder: Annual Meetup starts soon")
+      expect(mail.body.decoded).to eq("<html><body><p>Hi Jane, see you at Annual Meetup!</p></body></html>")
+    end
+
+    it "attaches no PDF — a broadcast announcement isn't a check-in credential" do
+      expect(mail.attachments).to be_empty
+    end
+
+    # Confirmed with the user: the modal can pick :participant_registration itself to re-blast to
+    # everyone, not just the dedicated :quick_send kind — this action doesn't care which kind the
+    # given EmailTemplate actually is, only that it has subject/html_body to render.
+    it "works with any kind of EmailTemplate, not just :quick_send" do
+      registration_template = create(:email_template, account: account, event: event, kind: :participant_registration,
+        subject: "Resent: $EVENT_NAME$", html_body: "<p>Resent for $FIRST_NAME$</p>")
+
+      resent_mail = described_class.quick_email(participant, registration_template)
+
+      expect(resent_mail.subject).to eq("Resent: Annual Meetup")
+      expect(resent_mail.attachments).to be_empty
     end
   end
 end

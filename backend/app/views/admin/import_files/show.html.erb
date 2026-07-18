@@ -40,12 +40,12 @@
               <% end %>
             </ul>
           <% end %>
-          <%= link_to "View Participants", admin_event_participants_path(@event), class: "btn btn-primary" %>
+          <%= link_to "View Participants", admin_event_participants_path(@event), class: "btn btn-sm btn-primary" %>
         <% when "failed" %>
           <div class="alert alert-danger">
             <i class="bx bx-error-circle me-1"></i> Import failed<% if @import_file.row_errors.first %>: <%= @import_file.row_errors.first["message"] %><% end %>.
           </div>
-          <%= link_to "Try Again", new_admin_event_import_file_path(@event), class: "btn btn-outline-primary" %>
+          <%= link_to "Try Again", new_admin_event_import_file_path(@event), class: "btn btn-sm btn-outline-primary" %>
         <% end %>
       </div>
     </div>

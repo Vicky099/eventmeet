@@ -18,8 +18,6 @@ RSpec.describe EventSchedulerJob, type: :job do
     create(:event, :published, account: account, starts_at: starts_at, ends_at: ends_at)
   end
 
-  # perform_now doesn't run the self-rescheduled follow-up job (that's just enqueued, not
-  # executed) — exactly what a single-tick assertion wants, no perform_enqueued_jobs needed.
   it "transitions a draft event to up_coming once its start time hasn't arrived yet" do
     event = create_event(starts_at: 1.day.from_now, ends_at: 2.days.from_now)
 
@@ -42,6 +40,45 @@ RSpec.describe EventSchedulerJob, type: :job do
     EventSchedulerJob.perform_now
 
     expect(Event.unscoped_across_tenants { event.reload }.status).to eq("completed")
+  end
+
+  # Revisited (confirmed with the user): the draft Invoice is now raised synchronously the moment
+  # an event lands on `completed` — not the next day (see InvoiceGenerationJob's own comment for
+  # the superseded original requirement). No `.day.ago` wait involved anymore.
+  describe "invoice generation on completion (requirement.md §4.6)" do
+    it "raises a draft invoice the instant an event completes, straight from its own quotation" do
+      event = create_event(starts_at: 2.days.ago, ends_at: 1.hour.ago)
+
+      EventSchedulerJob.perform_now
+
+      Current.account = account
+      invoice = event.reload.invoice
+      expect(invoice).to be_present
+      expect(invoice).to be_draft
+      expect(invoice.amount).to eq(event.quotation.current_amount)
+    end
+
+    it "still raises the invoice for an event that skips live entirely" do
+      event = create_event(starts_at: 3.days.ago, ends_at: 2.days.ago)
+
+      EventSchedulerJob.perform_now
+
+      Current.account = account
+      expect(event.reload.invoice).to be_present
+    end
+
+    it "doesn't raise a second invoice for an event that already has one" do
+      event = create_event(starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
+      Current.account = account
+      existing_invoice = create(:invoice, event: event, account: account)
+
+      travel 2.hours
+      EventSchedulerJob.perform_now
+
+      Current.account = account
+      expect(Event.unscoped_across_tenants { event.reload }.status).to eq("completed")
+      expect(event.reload.invoice).to eq(existing_invoice)
+    end
   end
 
   it "walks a single event through the full lifecycle as time advances" do
@@ -102,18 +139,14 @@ RSpec.describe EventSchedulerJob, type: :job do
     expect(Event.unscoped_across_tenants { event.reload }.status).to eq("draft")
   end
 
-  it "self-reschedules another run after completing" do
-    create_event(starts_at: 1.day.from_now, ends_at: 2.days.from_now)
-
-    expect { EventSchedulerJob.perform_now }
-      .to have_enqueued_job(EventSchedulerJob).at(EventSchedulerJob::RESCHEDULE_INTERVAL.from_now)
-  end
-
-  it "still self-reschedules even if a single event's transition raises" do
+  # No more self-reschedule to test — sidekiq-cron (config/schedule.yml) is what re-triggers this
+  # job now; a single tick just shouldn't blow up (and take the whole Sidekiq queue's error
+  # handling with it) if one event's own transition raises.
+  it "doesn't let a single event's transition failure propagate out of the tick" do
     event = create_event(starts_at: 1.day.from_now, ends_at: 2.days.from_now)
     allow_any_instance_of(Event).to receive(:update!).and_raise(ActiveRecord::RecordInvalid.new(event))
 
-    expect { EventSchedulerJob.perform_now }.to have_enqueued_job(EventSchedulerJob)
+    expect { EventSchedulerJob.perform_now }.not_to raise_error
   end
 
   # Phase 9 checklist: "EventScheduler job extended: auto-checkout/mark-absent attendees when an

@@ -20,6 +20,7 @@ module Admin
       "badge_background_image" => ->(event) { [ "events", event.id, "badges", "background_image" ] },
       "badge_template_background_image" => ->(_event) { [ "badge_templates", "background_image" ] },
       "participant_photo" => ->(event) { [ "participants", event.id, :photo ] },
+      "participant_document" => ->(event) { [ "participants", event.id, :document ] },
       "speaker_photo" => ->(_event) { [ "speakers", :photo ] }
     }.freeze
 

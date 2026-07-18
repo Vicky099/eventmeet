@@ -26,15 +26,37 @@ module Admin
       @status_filter = params[:status].to_s.presence_in(Event.statuses.keys)
       @events = Current.account.events.order(created_at: :desc)
       @events = @events.where(status: @status_filter) if @status_filter
+      # Phase 15, revisited: "New Event" opens a modal to pick one of these first — none
+      # available means the modal shows a "request one first" link instead of a picker.
+      @approved_quotations = Current.account.quotations.approved.where.missing(:event)
     end
 
+    # Phase 15 — Platform Billing & Invoicing, revisited (requirement.md §4.6, confirmed with the
+    # user): every event now requires an approved Quotation picked up front — the Admin::Events
+    # index shows a modal to pick one before ever reaching this form (see index.html.erb), so by
+    # the time #new renders, `params[:quotation_id]` should already be a legal choice. Redirect
+    # back to the index (rather than rendering a broken form) if it's missing or already consumed
+    # — Event#quotation_must_be_approved_and_available is the real hard gate on #create, this is
+    # just keeping a stray direct GET from landing on a dead-end form.
     def new
-      @event = Current.account.events.build
+      quotation = Current.account.quotations.approved.where.missing(:event).find_by(id: params[:quotation_id])
+
+      if quotation.nil?
+        redirect_to admin_events_path, alert: "Select an approved quotation to create an event."
+        return
+      end
+
+      @event = Current.account.events.build(quotation: quotation)
       authorize @event
     end
 
+    # No pre-check redirect here (unlike #new) — a bad/missing quotation_id is left for
+    # Event#quotation_must_be_approved_and_available (the belongs_to's own presence check, or the
+    # custom one) to reject, so the form re-renders with a real inline error instead of silently
+    # bouncing back to the index.
     def create
-      @event = Current.account.events.build(event_params)
+      quotation = Current.account.quotations.find_by(id: params[:event][:quotation_id])
+      @event = Current.account.events.build(event_params.merge(quotation: quotation))
       authorize @event
 
       if @event.save
@@ -149,8 +171,19 @@ module Admin
     # default (the organizer adjusts after). approval_status/status/published_at deliberately
     # reset to their defaults (unsubmitted/draft/nil) — a duplicate is a brand-new, unpublished,
     # never-submitted event, not a copy of the original's review or publish state.
+    #
+    # Phase 15, revisited (requirement.md §4.6, confirmed with the user): "one quotation -> one
+    # event" applies here too — the original's own Quotation is already consumed by it, so a
+    # duplicate needs its own approved, not-yet-consumed Quotation, picked via the same per-row
+    # modal the index view now shows next to this button.
     def duplicate
       authorize @event, :create?
+      quotation = Current.account.quotations.approved.where.missing(:event).find_by(id: params[:quotation_id])
+
+      if quotation.nil?
+        redirect_to admin_events_path, alert: "Select an approved quotation to duplicate this event."
+        return
+      end
 
       clone = Current.account.events.build(
         name: "Copy of #{@event.name}",
@@ -161,7 +194,8 @@ module Admin
         meeting_link: @event.meeting_link,
         map_url: @event.map_url,
         banner_orientation: @event.banner_orientation,
-        participant_fields: @event.participant_fields
+        participant_fields: @event.participant_fields,
+        quotation: quotation
       )
       clone.save!
       redirect_to edit_admin_event_path(clone), notice: "Duplicated as \"#{clone.name}\"."

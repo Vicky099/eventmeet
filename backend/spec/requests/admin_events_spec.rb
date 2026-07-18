@@ -2,6 +2,8 @@ require "rails_helper"
 
 # Phase 4 — Event Lifecycle (requirement.md §3.2, §5.2).
 RSpec.describe "Admin Console events", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let!(:account) { create(:account, subdomain_slug: "acme") }
 
   before { host! "acme.example.com" }
@@ -20,6 +22,14 @@ RSpec.describe "Admin Console events", type: :request do
   # `change(Event, :count)` form (evaluated outside any request) can't be used here.
   def event_count
     Event.unscoped_across_tenants { Event.count }
+  end
+
+  # Phase 15, revisited (requirement.md §4.6, confirmed with the user): every event now requires
+  # an approved, not-yet-consumed Quotation on this account — the standard "get a legal
+  # quotation_id to submit" setup step for the specs below.
+  def approved_quotation
+    Current.account = account
+    create(:quotation, :approved, account: account, requested_by: create(:user))
   end
 
   describe "access control" do
@@ -57,11 +67,12 @@ RSpec.describe "Admin Console events", type: :request do
     end
 
     it "allows event_manager to create and edit events" do
+      quotation = approved_quotation
       sign_in_with_role(:event_manager)
 
       expect {
         post admin_events_path, params: {
-          event: { name: "Manager Event", mode: "on_site", starts_at: 1.day.from_now, ends_at: 2.days.from_now, address: "123 Main St", map_url: "https://maps.google.com/?q=123" }
+          event: { name: "Manager Event", mode: "on_site", quotation_id: quotation.id, starts_at: 1.day.from_now, ends_at: 2.days.from_now, address: "123 Main St", map_url: "https://maps.google.com/?q=123" }
         }
       }.to change { event_count }.by(1)
 
@@ -72,10 +83,11 @@ RSpec.describe "Admin Console events", type: :request do
     end
 
     it "allows owner to create and edit events" do
+      quotation = approved_quotation
       sign_in_with_role(:owner)
 
       post admin_events_path, params: {
-        event: { name: "Owner Event", mode: "on_site", starts_at: 1.day.from_now, ends_at: 2.days.from_now, address: "123 Main St", map_url: "https://maps.google.com/?q=123" }
+        event: { name: "Owner Event", mode: "on_site", quotation_id: quotation.id, starts_at: 1.day.from_now, ends_at: 2.days.from_now, address: "123 Main St", map_url: "https://maps.google.com/?q=123" }
       }
 
       expect(response).to redirect_to(%r{/admin/events/owner-event/edit})
@@ -86,9 +98,11 @@ RSpec.describe "Admin Console events", type: :request do
     before { sign_in_with_role(:owner) }
 
     it "creates the event and redirects to the wizard's first step" do
+      quotation = approved_quotation
+
       post admin_events_path, params: {
         event: {
-          name: "Annual Meetup", mode: "on_site",
+          name: "Annual Meetup", mode: "on_site", quotation_id: quotation.id,
           starts_at: "2026-08-01T09:00", ends_at: "2026-08-01T17:00",
           address: "123 Main St", map_url: "https://maps.google.com/?q=123"
         }
@@ -98,14 +112,61 @@ RSpec.describe "Admin Console events", type: :request do
       expect(response).to redirect_to(edit_admin_event_path(event, step: "basic_info"))
       expect(event.account).to eq(account)
       expect(event.status).to eq("draft")
+      expect(event.quotation_id).to eq(quotation.id)
     end
 
     it "re-renders the form with errors when invalid" do
+      quotation = approved_quotation
+
       expect {
-        post admin_events_path, params: { event: { name: "", mode: "on_site" } }
+        post admin_events_path, params: { event: { name: "", mode: "on_site", quotation_id: quotation.id } }
       }.not_to change { event_count }
 
       expect(response).to have_http_status(:unprocessable_content)
+    end
+  end
+
+  # Phase 15 — Platform Billing & Invoicing, revisited (requirement.md §4.6, confirmed with the
+  # user): "one quotation -> one event" — the gate that blocks creation without an approved,
+  # not-yet-consumed Quotation.
+  describe "POST /admin/events (quotation gate)" do
+    before { sign_in_with_role(:owner) }
+
+    def event_params(quotation_id: nil)
+      {
+        event: {
+          name: "Business Summit", mode: "on_site", quotation_id: quotation_id,
+          starts_at: 1.day.from_now, ends_at: 2.days.from_now, address: "123 Main St", map_url: "https://maps.google.com/?q=123"
+        }
+      }
+    end
+
+    it "blocks creation with no quotation selected" do
+      expect { post admin_events_path, params: event_params }.not_to change { event_count }
+
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it "blocks creation against a quotation that hasn't been approved yet" do
+      Current.account = account
+      quotation = create(:quotation, :sent, account: account, requested_by: create(:user))
+
+      expect {
+        post admin_events_path, params: event_params(quotation_id: quotation.id)
+      }.not_to change { event_count }
+
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it "unblocks creation immediately once the quotation is approved" do
+      quotation = approved_quotation
+
+      expect {
+        post admin_events_path, params: event_params(quotation_id: quotation.id)
+      }.to change { event_count }.by(1)
+
+      event = Event.unscoped_across_tenants { Event.find_by!(name: "Business Summit") }
+      expect(event.quotation_id).to eq(quotation.id)
     end
   end
 
@@ -329,9 +390,10 @@ RSpec.describe "Admin Console events", type: :request do
     it "clones name/mode/participant_fields/dates into a new draft, unsubmitted event" do
       Current.account = account
       original = create(:event, account: account, name: "Original", participant_fields: { "email" => true })
+      quotation = approved_quotation
 
       expect {
-        post duplicate_admin_event_path(original)
+        post duplicate_admin_event_path(original), params: { quotation_id: quotation.id }
       }.to change { event_count }.by(1)
 
       clone = Event.unscoped_across_tenants { Event.find_by!(name: "Copy of Original") }
@@ -453,6 +515,32 @@ RSpec.describe "Admin Console events", type: :request do
       expect(response.body).to include("Session Popularity")
       expect(response.body).to include("Keynote Hall")
       expect(response.body).to include("100") # check-in rate: 1 of 1 registered
+    end
+
+    it "adds Absent to the Check-in Funnel only once the event has completed" do
+      travel_to(Time.zone.local(2026, 1, 1)) do
+        MonthlyRangePartitioning.ensure_partitions!(ActiveRecord::Base.connection, :scan_events, partition_column: :scanned_at, months_behind: 0, months_ahead: 0)
+        MonthlyRangePartitioning.ensure_partitions!(ActiveRecord::Base.connection, :attendances, partition_column: :occurred_at, months_behind: 0, months_ahead: 0)
+
+        Current.account = account
+        event = create(:event, account: account, starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
+        create(:participant, account: account, event: event)
+        Event.unscoped_across_tenants { event.update!(status: :live) }
+
+        get admin_event_path(event)
+        expect(response.body).not_to include("Absent")
+
+        travel 2.hours
+        # A real request resets Current.account once control returns to the spec (this file's own
+        # top-of-file comment on #event_count already documents this) — reset it before the next
+        # non-request call needs it.
+        Current.account = account
+        EventCompletionService.finalize_attendance!(event)
+        Event.unscoped_across_tenants { event.update!(status: :completed) }
+
+        get admin_event_path(event)
+        expect(response.body).to include("Absent")
+      end
     end
 
     it "handles an event with no participants or sessions gracefully" do

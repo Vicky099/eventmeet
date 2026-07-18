@@ -1,0 +1,132 @@
+<% content_for :page_title, @quotation.event_name %>
+
+<%= render "shared/page_header",
+  icon: "bx-receipt", crumbs: [ { label: "Quotations", path: admin_quotations_path }, { label: @quotation.event_name } ] %>
+
+<div class="row">
+  <div class="col-md-6 mb-3">
+    <div class="card mb-0 h-100">
+      <div class="card-header bg-white">
+        <h5 class="card-title mb-0">Quotation Details</h5>
+      </div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-sm-4">Event</dt>
+          <dd class="col-sm-8"><%= @quotation.event_name %></dd>
+
+          <dt class="col-sm-4">Current amount</dt>
+          <dd class="col-sm-8"><%= @quotation.current_amount ? money(@quotation.current_amount, @quotation.currency) : "Awaiting Super Admin" %></dd>
+
+          <dt class="col-sm-4">Status</dt>
+          <dd class="col-sm-8 mb-0"><%= @quotation.status.humanize %></dd>
+        </dl>
+
+        <% if @quotation.approved? && @event %>
+          <div class="alert alert-success mt-3 mb-0">
+            Approved and already used to create <%= link_to @event.name, admin_event_path(@event), class: "alert-link" %>.
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+  <% if @event %>
+    <div class="col-md-6 mb-3">
+      <div class="card mb-0 h-100">
+        <div class="card-header bg-white">
+          <h5 class="card-title mb-0">Event Details</h5>
+        </div>
+        <div class="card-body">
+          <dl class="row mb-0">
+            <dt class="col-sm-4">Name</dt>
+            <dd class="col-sm-8"><%= link_to @event.name, admin_event_path(@event) %></dd>
+
+            <dt class="col-sm-4">Description</dt>
+            <dd class="col-sm-8"><%= @event.description.presence || "—" %></dd>
+
+            <dt class="col-sm-4">Starts</dt>
+            <dd class="col-sm-8"><%= @event.starts_at.to_fs(:long) %></dd>
+
+            <dt class="col-sm-4">Ends</dt>
+            <dd class="col-sm-8 mb-0"><%= @event.ends_at.to_fs(:long) %></dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+  <% end %>
+
+  <div class="col-md-6 mb-3">
+    <%= render "shared/quotation_intake_details", quotation: @quotation %>
+  </div>
+
+  <% if @quotation.pending? && @quotation.current_amount.present? %>
+    <div class="col-md-6 mb-3">
+      <div class="card mb-0 h-100">
+        <div class="card-header bg-white">
+          <h5 class="card-title mb-0">Respond to Quotation</h5>
+        </div>
+        <div class="card-body">
+          <p class="font-size-20 fw-semibold mb-3"><%= money(@quotation.current_amount, @quotation.currency) %></p>
+
+          <%= button_to "Approve", approve_admin_quotation_path(@quotation), method: :post,
+                class: "btn btn-sm btn-success w-100 mb-3",
+                data: { action: "click->confirm-dialog#show", title: "Approve Quotation",
+                        message: "Approve #{money(@quotation.current_amount, @quotation.currency)} for \"#{@quotation.event_name}\"? You'll be able to create the event right after." } %>
+
+          <hr>
+
+          <%= form_with url: reject_admin_quotation_path(@quotation), method: :post, local: true do |f| %>
+            <div class="mb-2">
+              <%= label_tag :rejection_note, "Rejection note", class: "form-label" %>
+              <%= text_area_tag :rejection_note, nil, class: "form-control", rows: 4, placeholder: "Required — explain why, so the Super Admin can revise the offer." %>
+            </div>
+            <p class="text-muted font-size-12">
+              Rejection <%= @quotation.quotation_revisions.count + 1 %> of <%= Quotation::MAX_REJECTIONS %> — the 3rd rejection cancels this request.
+            </p>
+            <%= f.submit "Reject", class: "btn btn-sm btn-outline-danger w-100",
+                  data: { action: "click->confirm-dialog#show", title: "Reject Quotation",
+                          message: "Reject this offer? A Super Admin will need to send a revised amount.", danger: "true" } %>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  <% elsif @quotation.pending? %>
+    <div class="col-md-6 mb-3">
+      <div class="alert alert-info mb-0 h-100">Awaiting a Super Admin to send an amount.</div>
+    </div>
+  <% elsif @quotation.approved? && @event.nil? %>
+    <div class="col-md-6 mb-3">
+      <div class="alert alert-success mb-0 h-100">
+        Approved — <%= link_to "create the event", new_admin_event_path(quotation_id: @quotation.id), class: "alert-link" %>.
+      </div>
+    </div>
+  <% elsif @quotation.cancelled? %>
+    <div class="col-md-6 mb-3">
+      <div class="alert alert-secondary mb-0 h-100">
+        Cancelled after 3 rounds of negotiation. <%= link_to "Start a fresh request", new_admin_quotation_path, class: "alert-link" %>.
+      </div>
+    </div>
+  <% end %>
+</div>
+
+<% if @quotation.quotation_revisions.any? %>
+  <div class="row">
+    <div class="col-lg-7">
+      <div class="card mb-3">
+        <div class="card-header bg-white">
+          <h5 class="card-title mb-0">Negotiation History</h5>
+        </div>
+        <div class="card-body">
+          <ul class="list-unstyled mb-0">
+            <% @quotation.quotation_revisions.order(:created_at).each_with_index do |revision, index| %>
+              <li class="border-bottom pb-2 mb-2">
+                <strong>Rejection <%= index + 1 %> of <%= Quotation::MAX_REJECTIONS %>:</strong>
+                rejected <%= money(revision.amount, revision.currency) %> — "<%= revision.rejection_note %>"
+              </li>
+            <% end %>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+<% end %>

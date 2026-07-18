@@ -1,20 +1,22 @@
 # Phase 14 — Reporting, Import/Export & Analytics (requirement.md §5.11): "Scheduled report
 # delivery (Sidekiq-cron or equivalent: emailed weekly/daily summary to organizers)." The
-# "equivalent" this app actually uses: a self-rescheduling job, same as EventSchedulerJob/
-# PartitionMaintenanceJob — no sidekiq-cron gem is installed, a deliberate choice those two jobs'
-# own comments already explain (no external cron/schedule.yml to keep in sync with the code, and
-# this app's own flagship differentiator is real-time-ish behavior anyway).
+# "equivalent" this app originally used: a self-rescheduling job, same pattern
+# PartitionMaintenanceJob still uses. sidekiq-cron *is* now installed (EventSchedulerJob/
+# InvoiceGenerationJob were migrated onto it, confirmed with the user, once the self-rescheduling
+# pattern's own real gap — nothing ever called either job's first `.perform_later` — became a live
+# problem) — this job wasn't part of that migration and still self-reschedules; moving it onto
+# config/schedule.yml too is a straightforward, not-yet-done follow-up.
 #
 # Hourly, not daily/weekly itself — #due? is what actually decides whether *this* tick is a given
 # event's turn, comparing Event#last_report_sent_at against a rolling window rather than a fixed
 # calendar slot, so a job that started running slightly late (deploy, restart) never permanently
 # skips a whole cycle the way a fixed "send at exactly 00:00" cron entry would.
 #
-# Bootstrapping: same as EventSchedulerJob — something needs to call
-# `ScheduledReportJob.perform_later` once to start the self-rescheduling chain (a deploy step,
-# `bin/jobs` boot hook, etc.) — deliberately left open rather than wired into an app boot hook
-# here, which risks double-enqueuing across multiple Puma/Sidekiq processes with no locking
-# mechanism in place yet.
+# Bootstrapping: something needs to call `ScheduledReportJob.perform_later` once to start the
+# self-rescheduling chain (a deploy step, `bin/jobs` boot hook, etc.) — deliberately left open
+# rather than wired into an app boot hook here, which risks double-enqueuing across multiple
+# Puma/Sidekiq processes with no locking mechanism in place yet. (Still an open gap for this job
+# specifically — see the sidekiq-cron note above.)
 class ScheduledReportJob < ApplicationJob
   queue_as :default
 

@@ -1,0 +1,5 @@
+Quotation ready for "<%= @quotation.event_name %>"
+
+A Super Admin has sent an amount for your Business-plan event request: <%= money(@quotation.current_amount, @quotation.currency) %>
+
+Sign in to review and approve or reject it at <%= admin_quotation_url(@quotation) %>

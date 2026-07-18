@@ -31,6 +31,13 @@ class Account < ApplicationRecord
   # BadgeTemplate (Phase 8) has no Event parent to cascade through — it's account-scoped
   # directly, as a reusable library — so it needs its own explicit dependent: :destroy here.
   has_many :badge_templates, dependent: :destroy
+  # Phase 15 — Platform Billing & Invoicing, revisited (requirement.md §4.6, confirmed with the
+  # user): same "no Event parent to cascade through" reasoning as badge_templates above — a
+  # Quotation exists *before* any Event can (that's the whole point of the gate, Event's own
+  # quotation_must_be_approved_and_available), so it's account-scoped directly. Invoice doesn't get
+  # its own entry here — it belongs_to :event, so it already cascades transitively through
+  # `has_many :events` above, same as every other Event-child table.
+  has_many :quotations, dependent: :destroy
 
   validates :name, presence: true
   validates :subdomain_slug, presence: true,

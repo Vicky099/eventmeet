@@ -183,7 +183,8 @@ module Admin
     # record is deliberately never validated or saved.
     def sample_participant
       Participant.new(
-        event: @event, name: "Sample Participant", email: "sample.participant@example.com",
+        event: @event, name: "Sample Participant", title: "Mr.", first_name: "Sample", last_name: "Participant",
+        email: "sample.participant@example.com",
         contact_num: "+1 555 0100", company: "Acme Corp", department: "Engineering",
         position: "Attendee", nationality: "Sample", country: "Sampleland",
         govt_id: "SAMPLE-GOVT-ID", rf_id: "SAMPLE-RFID", client_participant_id: "SAMPLE-001",

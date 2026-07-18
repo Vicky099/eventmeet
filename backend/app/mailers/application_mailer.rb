@@ -1,4 +1,10 @@
 class ApplicationMailer < ActionMailer::Base
+  # `money` (ApplicationHelper) is used by BillingMailer's views (requirement.md §4.6) — confirmed
+  # live that ActionMailer's own "auto-include every app helper" behavior doesn't reach a plain
+  # ApplicationHelper method the way it does for controllers; explicit include is what actually
+  # makes it (and any other ApplicationHelper method a future mailer view needs) available.
+  helper ApplicationHelper
+
   # Brevo requires the From: address to be a verified sender on the account — same MAILER_FROM
   # env var shopmate-backend uses for its own platform-level fallback address. `.presence` (not
   # `ENV.fetch`'s default-only-if-*absent* semantics) — Figaro's config/application.yml always

@@ -15,6 +15,28 @@
             itself (field_error_class/field_error_feedback, app/helpers/application_helper.rb),
             same treatment the wizard's own Basic Info step uses. %>
         <%= form_with model: @event, url: admin_events_path, local: true, data: { controller: "event-mode" } do |f| %>
+          <%# Phase 15, revisited (requirement.md §4.6, confirmed with the user): the quotation is
+              picked before this form is ever reached (Admin::Events index's own picker modal) —
+              shown here locked, not re-editable, plus a hidden field so #create can re-verify it.
+              One quotation -> one event, so this is a one-shot association, not a form field.
+              @event.quotation may be nil/invalid on a re-render after a failed #create (a stray
+              or already-consumed quotation_id) — field_error_feedback below is what explains it. %>
+          <div class="mb-3">
+            <label class="form-label">Quotation</label>
+            <% if @event.quotation %>
+              <div class="form-control-plaintext bg-light rounded px-3 py-2">
+                <strong><%= @event.quotation.event_name %></strong> — <%= money(@event.quotation.current_amount, @event.quotation.currency) %>
+              </div>
+            <% else %>
+              <div class="alert alert-warning mb-0">
+                <%= link_to "Select an approved quotation", admin_events_path, class: "alert-link" %> to continue.
+              </div>
+            <% end %>
+            <%= f.hidden_field :quotation_id, value: @event.quotation&.id %>
+            <%= field_error_feedback(@event, :quotation_id) %>
+            <%= field_error_feedback(@event, :quotation) %>
+          </div>
+
           <div class="mb-3">
             <%= f.label :name, class: "form-label" %>
             <%= f.text_field :name, class: field_error_class(@event, :name), autofocus: true %>

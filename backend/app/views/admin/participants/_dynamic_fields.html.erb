@@ -53,10 +53,23 @@
                   { include_blank: true }, class: field_error_class(participant, field, base: "form-select"), required: required %>
           <% when "photo" %>
             <div data-controller="image-upload">
-              <%= f.file_field :photo, name: nil, class: "form-control", accept: "image/*",
-                    data: { image_upload_target: "fileInput", action: "change->image-upload#fileSelected",
-                            direct_upload_url: admin_direct_uploads_path(scope: { type: "participant_photo", event_id: event.id }),
-                            blob_field_name: "participant[photo]" } %>
+              <div class="d-flex gap-2">
+                <%= f.file_field :photo, name: nil, class: "form-control", accept: "image/*",
+                      data: { image_upload_target: "fileInput", action: "change->image-upload#fileSelected",
+                              direct_upload_url: admin_direct_uploads_path(scope: { type: "participant_photo", event_id: event.id }),
+                              blob_field_name: "participant[photo]" } %>
+                <%# requirement.md revisit: "near photo we should have a camera icon to capture
+                    real-time photos." Opens a modal with a live getUserMedia() feed
+                    (image_upload_controller.js#openCamera) — the captured frame is turned into a
+                    File and fed into the SAME hidden file input above via a synthetic `change`
+                    event, so it goes through the exact same #fileSelected direct-upload path a
+                    picked file would (auto-uploads immediately, same progress bar), rather than
+                    duplicating the upload logic for a second source. %>
+                <button type="button" class="btn btn-outline-secondary flex-shrink-0" title="Capture from camera"
+                        data-action="click->image-upload#openCamera">
+                  <i class="bx bx-camera"></i>
+                </button>
+              </div>
               <%# Bug fix: a failed #create leaves the just-uploaded photo attached only in
                   memory (apply_uploads ran before the failing #save) — that in-memory attachment
                   dies with the request, so unless its signed_id rides along on the retry too, the
@@ -69,10 +82,42 @@
                     field_name: "participant[photo]",
                     blob_signed_id: (participant.photo.blob.signed_id if participant.photo.attached? && !participant.persisted?) %>
               <% if participant.photo.attached? %><small class="text-muted">Current: <%= participant.photo.filename %></small><% end %>
+
+              <div class="modal fade" data-image-upload-target="cameraModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                  <div class="modal-content border-0 shadow">
+                    <div class="modal-header border-0 pb-0">
+                      <h5 class="modal-title fw-semibold">Capture Photo</h5>
+                      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body text-center">
+                      <video data-image-upload-target="video" autoplay playsinline muted class="w-100 rounded bg-dark" style="max-height: 360px;"></video>
+                      <canvas data-image-upload-target="canvas" hidden></canvas>
+                      <p class="text-danger font-size-13 mt-2 mb-0" data-image-upload-target="cameraError" hidden></p>
+                    </div>
+                    <div class="modal-footer border-0 pt-3">
+                      <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                      <button type="button" class="btn btn-primary btn-sm" data-action="click->image-upload#capturePhoto">Capture</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           <% when "document" %>
-            <%= f.file_field :document, class: field_error_class(participant, :document) %>
-            <% if participant.document.attached? %><small class="text-muted d-block">Current: <%= participant.document.filename %></small><% end %>
+            <%# Auto-uploads straight to Cloudinary the same way Photo does (real progress, no
+                waiting for the form's own Save) — was previously a plain relayed file_field, the
+                one field on this form that didn't match Photo's own upload behavior. %>
+            <div data-controller="image-upload">
+              <%= f.file_field :document, name: nil, class: field_error_class(participant, :document),
+                    data: { image_upload_target: "fileInput", action: "change->image-upload#fileSelected",
+                            direct_upload_url: admin_direct_uploads_path(scope: { type: "participant_document", event_id: event.id }),
+                            blob_field_name: "participant[document]" } %>
+              <%# Same not-yet-persisted retry gap Photo's own bug-fix comment above covers. %>
+              <%= render "shared/upload_progress",
+                    field_name: "participant[document]",
+                    blob_signed_id: (participant.document.blob.signed_id if participant.document.attached? && !participant.persisted?) %>
+              <% if participant.document.attached? %><small class="text-muted d-block">Current: <%= participant.document.filename %></small><% end %>
+            </div>
           <% else %>
             <%= f.text_field field, class: field_error_class(participant, field), required: required %>
           <% end %>

@@ -1,0 +1,86 @@
+<% content_for :page_title, @email_template.label %>
+
+<%= render "shared/page_header",
+  icon: "bx-envelope",
+  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) },
+            { label: "Email Templates", path: admin_event_email_templates_path(@event) }, { label: @email_template.label } ] %>
+
+<%# Two columns: the form (subject/HTML/active + a reference list of the $TOKEN$s this kind
+    understands) on the left, a live preview iframe on the right — driven by
+    email_template_preview_controller.js, which posts the *current* textarea contents to
+    #preview (unsaved) rather than reflecting only what's already persisted. %>
+<div class="row g-3" data-controller="email-template-preview"
+     data-email-template-preview-url-value="<%= preview_admin_event_email_template_path(@event, kind: @email_template.kind) %>">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-body">
+        <%= form_with model: @email_template, url: admin_event_email_template_path(@event, kind: @email_template.kind), method: :patch do |f| %>
+          <div class="mb-3">
+            <%= f.label :subject, class: "form-label" %>
+            <%= f.text_field :subject, class: field_error_class(@email_template, :subject),
+                  data: { email_template_preview_target: "subject", action: "input->email-template-preview#scheduleRefresh" } %>
+            <%= field_error_feedback(@email_template, :subject) %>
+          </div>
+
+          <div class="mb-3">
+            <%= f.label :html_body, "HTML", class: "form-label" %>
+            <%= f.text_area :html_body, rows: 18, class: "#{field_error_class(@email_template, :html_body)} font-monospace", style: "font-size: 13px;",
+                  data: { email_template_preview_target: "htmlBody", action: "input->email-template-preview#scheduleRefresh" } %>
+            <%= field_error_feedback(@email_template, :html_body) %>
+            <div class="form-text">Paste a complete HTML email. Placeholders below are replaced with real data when this email is sent.</div>
+          </div>
+
+          <div class="form-check form-switch mb-3">
+            <%= f.check_box :active, class: "form-check-input" %>
+            <%= f.label :active, "Use this custom template", class: "form-check-label" %>
+            <div class="form-text">Turn off to fall back to EventMeet's default template without losing this draft.</div>
+          </div>
+
+          <div class="d-flex align-items-center gap-3">
+            <%= link_to "Cancel", admin_event_email_templates_path(@event), class: "btn btn-sm btn-outline-secondary" %>
+            <% if @email_template.persisted? %>
+              <%= button_to "Reset to Default", admin_event_email_template_path(@event, kind: @email_template.kind), method: :delete,
+                    class: "btn btn-sm btn-outline-danger",
+                    data: { action: "click->confirm-dialog#show", title: "Reset to Default",
+                            message: "Remove this custom #{@email_template.label} template? EventMeet's default will be used instead.", danger: "true" } %>
+            <% end %>
+            <%= f.submit "Save Template", class: "btn btn-sm btn-primary ms-auto" %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+
+    <div class="card mt-3">
+      <div class="card-header">
+        <span class="fw-semibold">Placeholders</span>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-2">Use these anywhere in the subject or HTML above — each is replaced with real data when the email is sent.</p>
+        <div class="d-flex flex-wrap gap-2">
+          <% @email_template.placeholders.each do |token| %>
+            <code class="badge bg-light text-dark border">$<%= token %>$</code>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span class="fw-semibold">Preview <span class="text-muted small">(sample data)</span></span>
+        <button type="button" class="btn btn-sm btn-outline-primary" data-action="email-template-preview#refresh">
+          <i class="bx bx-refresh"></i> Refresh Preview
+        </button>
+      </div>
+      <div class="card-body p-0">
+        <div class="border-bottom px-3 py-2 bg-light">
+          <span class="text-muted small">Subject:</span>
+          <span data-email-template-preview-target="subjectPreview" class="fw-semibold"></span>
+        </div>
+        <iframe data-email-template-preview-target="frame" title="Email preview"
+                style="width: 100%; height: 560px; border: 0;"></iframe>
+      </div>
+    </div>
+  </div>
+</div>

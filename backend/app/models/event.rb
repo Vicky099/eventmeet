@@ -110,6 +110,10 @@ class Event < ApplicationRecord
   # ticket_category) plus at most one per TicketCategory — see Badge's own uniqueness validation
   # and the partial unique indexes backing it.
   has_many :badges, dependent: :destroy
+  # Phase 13 — Communications, revisited (requirement.md §3.10, §5.10): per-event customizable
+  # email (EmailTemplate's own comment) — event-scoped the same way badges is, one row per kind
+  # per event rather than shared across the tenant's other events.
+  has_many :email_templates, dependent: :destroy
   # Phase 11 — Agenda, Speakers & Sessions (requirement.md §3.8, §5.6). dependent: :destroy on
   # both — unlike Participant, a Session/Schedule carries no data worth protecting on its own
   # (Session's own has_many :scan_events/:attendances is what actually guards real check-in
@@ -124,10 +128,28 @@ class Event < ApplicationRecord
   # it's nil for the whole unsubmitted/pending/rejected lifetime, not just historically before
   # Phase 5.
   belongs_to :approved_by, class_name: "User", optional: true
+  # Phase 15 — Platform Billing & Invoicing, revisited (requirement.md §4.6, confirmed with the
+  # user): "we don't have plans. we have only business plan where we customize the amount based on
+  # the event size and need" — every event, not just some tier, is created against a specific,
+  # now-consumed Quotation (Quotation has a matching `has_one :event`); no `optional: true` — a
+  # plain `belongs_to` already presence-validates by default, which is exactly "no event without a
+  # quotation." Historical events from before this redesign may still have a nil quotation_id at
+  # the DB level (deliberately left nullable there, see this column's own migration) — this
+  # validation only applies to *new* creates, not a retroactive requirement on old rows.
+  belongs_to :quotation
+  has_one :invoice, dependent: :destroy
 
   validates :name, presence: true
   validates :starts_at, :ends_at, presence: true
   validates :rejection_reason, presence: true, if: :rejected?
+  # requirement.md §4.6: "one quotation -> one event" — the tenant must approve the quotation
+  # before the event can be created at all, and that same quotation can never be reused for a
+  # second event. Enforced here, not just at the controller layer, so nothing can create an Event
+  # any other way (console, import, future API) without going through this gate. The `belongs_to`
+  # above already covers "quotation_id present" — this covers the rest: it must be *this account's
+  # own*, *approved*, and *not already consumed* by a different event (the unique index on
+  # events.quotation_id is the DB backstop for a race between two simultaneous creates).
+  validate :quotation_must_be_approved_and_available, on: :create
   # Once "This event has a seat limit" is toggled on, seat_limit stops being optional — a toggle
   # that's on but has no actual number attached to it isn't a meaningful state.
   validates :seat_limit, presence: true, if: :has_seat_limit?
@@ -289,6 +311,16 @@ class Event < ApplicationRecord
     latest_event_level_scan_by_participant.values.count(&:check_in?)
   end
 
+  # EventCompletionService writes one `absent` Attendance row per participant who registered but
+  # never checked in by the time a live event completes (that service's own comment has the full
+  # "why", called from EventSchedulerJob exactly at the live -> completed transition) — real,
+  # distinct-participant count of exactly those rows. Always zero for an event that hasn't
+  # completed yet (nothing writes an `absent` row before then), so this is safe to render
+  # unconditionally on both the check-in dashboard and this event's own live stats.
+  def absent_participant_count
+    participants.joins(:attendances).merge(Attendance.where(from: :event, status: :absent)).distinct.count
+  end
+
   # requirement.md revisit: "add graph to show hour, day wise check-in ... admin should
   # understand how many participant came event in realtime." Grouped in Ruby off a plain `.pluck`
   # (not a raw SQL EXTRACT(HOUR FROM ...)/DATE(...), which would bucket by the *stored* value's
@@ -357,6 +389,30 @@ class Event < ApplicationRecord
   end
 
   private
+
+  # The `belongs_to :quotation` above already covers bare presence — this covers the rest: it must
+  # be *this account's own*, *approved*, and *not already consumed* by a different event.
+  #
+  # A real query (`Event.exists?`), not `quotation.event.present?` — confirmed live, twice: Rails'
+  # own inverse_of auto-detection between this `belongs_to :quotation` and Quotation's `has_one
+  # :event` means `quotation.event` reads back whatever was most recently *assigned* in memory,
+  # not what's actually persisted — it returned this very not-yet-saved record on a legitimate
+  # first use (false positive), and after reassigning the same in-memory `quotation` to a second,
+  # different Event instance, it silently followed that reassignment too (false negative — no
+  # longer pointed at the first, already-persisted consumer at all). Only a fresh DB read is
+  # reliable here; this validation is create-only, so there's never a persisted `self` row to
+  # exclude from the count.
+  def quotation_must_be_approved_and_available
+    return if quotation.nil? # already reported by the belongs_to presence validation
+
+    if quotation.account_id != account_id
+      errors.add(:quotation_id, "does not belong to this account")
+    elsif !quotation.approved?
+      errors.add(:quotation_id, "must be an approved quotation")
+    elsif Event.exists?(quotation_id: quotation.id)
+      errors.add(:quotation_id, "has already been used to create an event")
+    end
+  end
 
   # "capacity validated against event-level seat limit if one is set" (Phase 6 checklist,
   # requirement.md §5.3) — lives here, not on TicketCategory, specifically so it sees every

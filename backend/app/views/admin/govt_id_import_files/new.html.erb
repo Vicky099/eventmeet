@@ -24,7 +24,7 @@
           <strong><%= @available_count %></strong> available, <strong><%= @assigned_count %></strong> already assigned.
         </p>
 
-        <%= link_to sample_admin_event_govt_id_import_files_path(@event), class: "btn btn-outline-secondary mb-3",
+        <%= link_to sample_admin_event_govt_id_import_files_path(@event), class: "btn btn-sm btn-outline-secondary mb-3",
               data: { action: "click->download-progress#start", download_progress_filename_param: "govt-id-import-template.xlsx" } do %>
           <i class="bx bx-spreadsheet"></i> Download sample template
         <% end %>
@@ -34,7 +34,7 @@
             <%= label_tag :file, "XLSX file", class: "form-label" %>
             <%= file_field_tag "govt_id_import_file[file]", id: "file", class: "form-control", accept: ".xlsx", required: true %>
           </div>
-          <%= submit_tag "Start Import", class: "btn btn-primary" %>
+          <%= submit_tag "Start Import", class: "btn btn-sm btn-primary" %>
         <% end %>
       </div>
     </div>

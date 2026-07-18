@@ -273,6 +273,23 @@ CREATE TABLE public.custom_fields (
 
 
 --
+-- Name: email_templates; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.email_templates (
+    id uuid NOT NULL,
+    account_id uuid NOT NULL,
+    event_id uuid NOT NULL,
+    kind integer NOT NULL,
+    subject character varying NOT NULL,
+    html_body text DEFAULT ''::text NOT NULL,
+    active boolean DEFAULT true NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: event_live_stats; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -336,7 +353,8 @@ CREATE TABLE public.events (
     is_paid boolean DEFAULT false NOT NULL,
     send_registration_email boolean DEFAULT false NOT NULL,
     scheduled_report_frequency integer DEFAULT 0 NOT NULL,
-    last_report_sent_at timestamp(6) without time zone
+    last_report_sent_at timestamp(6) without time zone,
+    quotation_id uuid
 );
 
 
@@ -412,6 +430,29 @@ CREATE TABLE public.import_files (
     row_errors jsonb DEFAULT '[]'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: invoices; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.invoices (
+    id uuid NOT NULL,
+    account_id uuid NOT NULL,
+    event_id uuid NOT NULL,
+    amount numeric(12,2) NOT NULL,
+    status integer DEFAULT 0 NOT NULL,
+    sent_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    utr_reference character varying,
+    submitted_by_id uuid,
+    submitted_at timestamp(6) without time zone,
+    verified_by_id uuid,
+    verified_at timestamp(6) without time zone,
+    rejection_reason text,
+    currency character varying DEFAULT 'INR'::character varying NOT NULL
 );
 
 
@@ -591,6 +632,48 @@ CREATE TABLE public.participants (
     title character varying,
     first_name character varying,
     last_name character varying
+);
+
+
+--
+-- Name: quotation_revisions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.quotation_revisions (
+    id uuid NOT NULL,
+    account_id uuid NOT NULL,
+    quotation_id uuid NOT NULL,
+    amount numeric(12,2) NOT NULL,
+    rejection_note text NOT NULL,
+    created_by_id uuid NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    currency character varying DEFAULT 'INR'::character varying NOT NULL
+);
+
+
+--
+-- Name: quotations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.quotations (
+    id uuid NOT NULL,
+    account_id uuid NOT NULL,
+    event_name character varying NOT NULL,
+    current_amount numeric(12,2),
+    status integer DEFAULT 0 NOT NULL,
+    requested_by_id uuid NOT NULL,
+    approved_by_id uuid,
+    sent_at timestamp(6) without time zone,
+    approved_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    currency character varying DEFAULT 'INR'::character varying NOT NULL,
+    expected_participant_count integer,
+    invite_via_email boolean DEFAULT true NOT NULL,
+    invite_via_whatsapp boolean DEFAULT false NOT NULL,
+    support_requested boolean DEFAULT false NOT NULL,
+    additional_notes text
 );
 
 
@@ -1051,6 +1134,14 @@ ALTER TABLE ONLY public.custom_fields
 
 
 --
+-- Name: email_templates email_templates_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.email_templates
+    ADD CONSTRAINT email_templates_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: event_live_stats event_live_stats_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1107,6 +1198,14 @@ ALTER TABLE ONLY public.import_files
 
 
 --
+-- Name: invoices invoices_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoices
+    ADD CONSTRAINT invoices_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: live_metric_buckets live_metric_buckets_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1152,6 +1251,22 @@ ALTER TABLE ONLY public.oauth_applications
 
 ALTER TABLE ONLY public.participants
     ADD CONSTRAINT participants_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: quotation_revisions quotation_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.quotation_revisions
+    ADD CONSTRAINT quotation_revisions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: quotations quotations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.quotations
+    ADD CONSTRAINT quotations_pkey PRIMARY KEY (id);
 
 
 --
@@ -1681,6 +1796,27 @@ CREATE INDEX index_custom_fields_on_registration_form_id ON public.custom_fields
 
 
 --
+-- Name: index_email_templates_on_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_email_templates_on_account_id ON public.email_templates USING btree (account_id);
+
+
+--
+-- Name: index_email_templates_on_event_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_email_templates_on_event_id ON public.email_templates USING btree (event_id);
+
+
+--
+-- Name: index_email_templates_on_event_id_and_kind; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_email_templates_on_event_id_and_kind ON public.email_templates USING btree (event_id, kind);
+
+
+--
 -- Name: index_event_live_stats_on_account_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1748,6 +1884,13 @@ CREATE INDEX index_events_on_approval_status_and_submitted_at ON public.events U
 --
 
 CREATE INDEX index_events_on_approved_by_id ON public.events USING btree (approved_by_id);
+
+
+--
+-- Name: index_events_on_quotation_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_events_on_quotation_id ON public.events USING btree (quotation_id);
 
 
 --
@@ -1839,6 +1982,34 @@ CREATE INDEX index_import_files_on_created_by_id ON public.import_files USING bt
 --
 
 CREATE INDEX index_import_files_on_event_id ON public.import_files USING btree (event_id);
+
+
+--
+-- Name: index_invoices_on_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_invoices_on_account_id ON public.invoices USING btree (account_id);
+
+
+--
+-- Name: index_invoices_on_event_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_invoices_on_event_id ON public.invoices USING btree (event_id);
+
+
+--
+-- Name: index_invoices_on_submitted_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_invoices_on_submitted_by_id ON public.invoices USING btree (submitted_by_id);
+
+
+--
+-- Name: index_invoices_on_verified_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_invoices_on_verified_by_id ON public.invoices USING btree (verified_by_id);
 
 
 --
@@ -1993,6 +2164,48 @@ CREATE UNIQUE INDEX index_participants_on_hex_id ON public.participants USING bt
 --
 
 CREATE INDEX index_participants_on_ticket_category_id ON public.participants USING btree (ticket_category_id);
+
+
+--
+-- Name: index_quotation_revisions_on_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_quotation_revisions_on_account_id ON public.quotation_revisions USING btree (account_id);
+
+
+--
+-- Name: index_quotation_revisions_on_created_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_quotation_revisions_on_created_by_id ON public.quotation_revisions USING btree (created_by_id);
+
+
+--
+-- Name: index_quotation_revisions_on_quotation_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_quotation_revisions_on_quotation_id ON public.quotation_revisions USING btree (quotation_id);
+
+
+--
+-- Name: index_quotations_on_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_quotations_on_account_id ON public.quotations USING btree (account_id);
+
+
+--
+-- Name: index_quotations_on_approved_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_quotations_on_approved_by_id ON public.quotations USING btree (approved_by_id);
+
+
+--
+-- Name: index_quotations_on_requested_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_quotations_on_requested_by_id ON public.quotations USING btree (requested_by_id);
 
 
 --
@@ -2885,6 +3098,14 @@ ALTER INDEX public.index_scan_events_on_session_id ATTACH PARTITION public.scan_
 
 
 --
+-- Name: quotation_revisions fk_rails_0442bb12bd; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.quotation_revisions
+    ADD CONSTRAINT fk_rails_0442bb12bd FOREIGN KEY (quotation_id) REFERENCES public.quotations(id);
+
+
+--
 -- Name: event_staff_assignments fk_rails_061f24f219; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2914,6 +3135,22 @@ ALTER TABLE ONLY public.live_metric_buckets
 
 ALTER TABLE ONLY public.govt_id_import_files
     ADD CONSTRAINT fk_rails_0d05a62e1a FOREIGN KEY (created_by_id) REFERENCES public.users(id);
+
+
+--
+-- Name: quotations fk_rails_0d46ba7518; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.quotations
+    ADD CONSTRAINT fk_rails_0d46ba7518 FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
+-- Name: quotation_revisions fk_rails_103c64e9f7; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.quotation_revisions
+    ADD CONSTRAINT fk_rails_103c64e9f7 FOREIGN KEY (account_id) REFERENCES public.accounts(id);
 
 
 --
@@ -2981,6 +3218,14 @@ ALTER TABLE ONLY public.session_live_stats
 
 
 --
+-- Name: quotations fk_rails_32938bb9e1; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.quotations
+    ADD CONSTRAINT fk_rails_32938bb9e1 FOREIGN KEY (requested_by_id) REFERENCES public.users(id);
+
+
+--
 -- Name: oauth_access_grants fk_rails_330c32d8d9; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3005,6 +3250,14 @@ ALTER TABLE ONLY public.ticket_reservations
 
 
 --
+-- Name: quotation_revisions fk_rails_4071465ff5; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.quotation_revisions
+    ADD CONSTRAINT fk_rails_4071465ff5 FOREIGN KEY (created_by_id) REFERENCES public.users(id);
+
+
+--
 -- Name: badges fk_rails_426a9d13d8; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3026,6 +3279,14 @@ ALTER TABLE ONLY public.session_live_stats
 
 ALTER TABLE ONLY public.event_staff_assignments
     ADD CONSTRAINT fk_rails_4773054ab1 FOREIGN KEY (event_id) REFERENCES public.events(id);
+
+
+--
+-- Name: invoices fk_rails_4cfcaef826; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoices
+    ADD CONSTRAINT fk_rails_4cfcaef826 FOREIGN KEY (verified_by_id) REFERENCES public.users(id);
 
 
 --
@@ -3117,6 +3378,22 @@ ALTER TABLE ONLY public.live_metric_buckets
 
 
 --
+-- Name: email_templates fk_rails_620c37281c; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.email_templates
+    ADD CONSTRAINT fk_rails_620c37281c FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
+-- Name: events fk_rails_623259ecf6; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.events
+    ADD CONSTRAINT fk_rails_623259ecf6 FOREIGN KEY (quotation_id) REFERENCES public.quotations(id);
+
+
+--
 -- Name: custom_fields fk_rails_63a869fd87; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3141,6 +3418,14 @@ ALTER TABLE ONLY public.badges
 
 
 --
+-- Name: email_templates fk_rails_6a6ed3c885; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.email_templates
+    ADD CONSTRAINT fk_rails_6a6ed3c885 FOREIGN KEY (event_id) REFERENCES public.events(id);
+
+
+--
 -- Name: oauth_access_tokens fk_rails_732cb83ab7; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3162,6 +3447,14 @@ ALTER TABLE public.attendances
 
 ALTER TABLE ONLY public.participants
     ADD CONSTRAINT fk_rails_7fb90e9337 FOREIGN KEY (ticket_category_id) REFERENCES public.ticket_categories(id);
+
+
+--
+-- Name: invoices fk_rails_7ffa025363; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoices
+    ADD CONSTRAINT fk_rails_7ffa025363 FOREIGN KEY (submitted_by_id) REFERENCES public.users(id);
 
 
 --
@@ -3229,11 +3522,35 @@ ALTER TABLE public.scan_events
 
 
 --
+-- Name: invoices fk_rails_aa64c7515d; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoices
+    ADD CONSTRAINT fk_rails_aa64c7515d FOREIGN KEY (event_id) REFERENCES public.events(id);
+
+
+--
 -- Name: sessions fk_rails_ad07c9070c; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.sessions
     ADD CONSTRAINT fk_rails_ad07c9070c FOREIGN KEY (event_id) REFERENCES public.events(id);
+
+
+--
+-- Name: invoices fk_rails_afb4b1e584; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoices
+    ADD CONSTRAINT fk_rails_afb4b1e584 FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
+-- Name: quotations fk_rails_b4b1365732; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.quotations
+    ADD CONSTRAINT fk_rails_b4b1365732 FOREIGN KEY (approved_by_id) REFERENCES public.users(id);
 
 
 --
@@ -3461,6 +3778,12 @@ ALTER TABLE public.badges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.custom_fields ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: email_templates; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.email_templates ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: event_live_stats; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -3503,6 +3826,12 @@ ALTER TABLE public.govt_ids ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.import_files ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: invoices; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: live_metric_buckets; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -3519,6 +3848,18 @@ ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.participants ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: quotation_revisions; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.quotation_revisions ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: quotations; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.quotations ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: registration_forms; Type: ROW SECURITY; Schema: public; Owner: -
@@ -3585,6 +3926,13 @@ CREATE POLICY tenant_isolation ON public.custom_fields USING ((account_id = (cur
 
 
 --
+-- Name: email_templates tenant_isolation; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY tenant_isolation ON public.email_templates USING ((account_id = (current_setting('app.current_account_id'::text, true))::uuid));
+
+
+--
 -- Name: event_live_stats tenant_isolation; Type: POLICY; Schema: public; Owner: -
 --
 
@@ -3634,6 +3982,13 @@ CREATE POLICY tenant_isolation ON public.import_files USING ((account_id = (curr
 
 
 --
+-- Name: invoices tenant_isolation; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY tenant_isolation ON public.invoices USING ((account_id = (current_setting('app.current_account_id'::text, true))::uuid));
+
+
+--
 -- Name: live_metric_buckets tenant_isolation; Type: POLICY; Schema: public; Owner: -
 --
 
@@ -3652,6 +4007,20 @@ CREATE POLICY tenant_isolation ON public.notifications USING ((account_id = (cur
 --
 
 CREATE POLICY tenant_isolation ON public.participants USING ((account_id = (current_setting('app.current_account_id'::text, true))::uuid));
+
+
+--
+-- Name: quotation_revisions tenant_isolation; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY tenant_isolation ON public.quotation_revisions USING ((account_id = (current_setting('app.current_account_id'::text, true))::uuid));
+
+
+--
+-- Name: quotations tenant_isolation; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY tenant_isolation ON public.quotations USING ((account_id = (current_setting('app.current_account_id'::text, true))::uuid));
 
 
 --
@@ -3729,6 +4098,19 @@ ALTER TABLE public.ticket_reservations ENABLE ROW LEVEL SECURITY;
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260718130000'),
+('20260718120000'),
+('20260718110300'),
+('20260718110200'),
+('20260718110100'),
+('20260718110000'),
+('20260718100500'),
+('20260718100400'),
+('20260718100300'),
+('20260718100200'),
+('20260718100100'),
+('20260718100000'),
+('20260718090000'),
 ('20260717182828'),
 ('20260717182827'),
 ('20260717175558'),

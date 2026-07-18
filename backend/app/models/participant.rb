@@ -158,6 +158,21 @@ class Participant < ApplicationRecord
     custom_field_values[field_id.to_s] = blob.signed_id
   end
 
+  # Phase 13 — Communications, revisited: backs the `$QRCODE$` placeholder (EmailTemplateRenderer)
+  # and the built-in confirmation view (app/views/participant_mailer/confirmation.html.erb) —
+  # both need the exact same scannable code, so it lives here once rather than duplicated at each
+  # call site. A base64 `data:` URI, never uploaded/attached anywhere (no ActiveStorage blob, no
+  # Cloudinary round-trip) — deliberate: this renders fresh per email send, and every tenant's
+  # every participant getting their own permanently-stored image would only ever bloat Cloudinary
+  # storage for something that's cheap to regenerate and never reused past that one email. Encodes
+  # hex_id — the same globally-unique scan target Badge's own $QRCODE$ token encodes
+  # (BadgeReformService#qr_png) — so a check-in scanner reads this exactly the same way it already
+  # reads a printed badge.
+  def qr_code_data_uri
+    png = RQRCode::QRCode.new(hex_id.presence || " ").as_png(size: 240).to_s
+    "data:image/png;base64,#{Base64.strict_encode64(png)}"
+  end
+
   # Phase 13 — Communications (requirement.md §3.10): "Resend invitation per participant" — the
   # same send this participant's own initial registration triggers via
   # #send_registration_confirmation! (private, below), just callable directly and unconditionally
@@ -170,6 +185,21 @@ class Participant < ApplicationRecord
     Notifier.email(
       mailer_class: ParticipantMailer, mailer_method: :confirmation, mailer_args: [ self ],
       notifiable: self, to: email, subject: "You're registered for #{event.name}"
+    )
+  end
+
+  # Phase 13 — Communications, revisited: "Quick Email Send" — QuickEmailSendJob calls this once
+  # per participant of the event the given (already-configured, `kind`-agnostic) EmailTemplate
+  # belongs to. Mirrors #deliver_confirmation_email's own shape exactly (same email-blank guard,
+  # same Notifier.email entry point) — the only difference is which mailer action fires
+  # (ParticipantMailer#quick_email, which never attaches a PDF the way #confirmation does; a
+  # broadcast announcement isn't a check-in credential).
+  def deliver_quick_email!(email_template)
+    return if email.blank?
+
+    Notifier.email(
+      mailer_class: ParticipantMailer, mailer_method: :quick_email, mailer_args: [ self, email_template ],
+      notifiable: self, to: email, subject: email_template.subject
     )
   end
 

@@ -156,6 +156,18 @@ export default class extends Controller {
     })
     this.editor.on("component:resize:update", (data) => this.clampLiveResize(data))
 
+    // Bug report: "Basic elements should behave same as Badge tokens. I am able to drag and
+    // drop element but [not] able to drag anywhere — it should work same as badge tokens."
+    // grapesjs-blocks-basic's own blocks (Text, 1 Column, Quote, Link, ...) carry none of
+    // #registerTokenBlocks' `dmode: "absolute"` treatment — GrapesJS's default Sorter behavior
+    // for those is "insert into document flow near what you're hovering over" (right for a
+    // webpage, wrong here), so once dropped they can never be freely repositioned again the way
+    // a token can. `block:drag:stop` fires once per drop with the just-placed component (per
+    // GrapesJS's own BlockManager source — the second, block-model argument isn't needed here);
+    // converting it to the exact same free-floating shape every token block already has is what
+    // makes every block in the palette, not just "Badge Tokens," behave identically after drop.
+    this.editor.on("block:drag:stop", (component) => this.freeFloatComponent(Array.isArray(component) ? component[0] : component))
+
     // `grapesjs.init()` returns before the canvas iframe's own document has actually finished
     // loading (a real, unavoidably-async browser operation — creating and loading an iframe is
     // never synchronous) — confirmed live: calling setComponents()/find("img") immediately after
@@ -372,6 +384,28 @@ export default class extends Controller {
       width: `${Math.min(width, maxWidth)}px`,
       height: `${Math.min(height, maxHeight)}px`,
     })
+  }
+
+  // Converts a just-dropped component (any block, not only Badge Tokens — see the
+  // `block:drag:stop` listener registered in `connect`) into the same absolute, freely
+  // draggable/resizable shape #registerTokenBlocks already declares up front for token blocks.
+  // Anchored to the component's own current rendered position (`offsetTop`/`offsetLeft` — already
+  // wherever GrapesJS just placed it, in-flow or otherwise) so converting it doesn't visibly move
+  // or jump the element the organizer just dropped; only *future* drags/resizes change from here.
+  // A no-op in practice for a token block (dmode/resizable/position are already exactly this, and
+  // dmode:"absolute" already made GrapesJS drop it at the cursor position, so reading that back
+  // and writing it straight through changes nothing) — applied unconditionally rather than
+  // special-cased by block id/category so nothing in the palette is exempt.
+  freeFloatComponent(component) {
+    if (!component || !component.getEl) return
+
+    const el = component.getEl()
+    const top = el ? el.offsetTop : 0
+    const left = el ? el.offsetLeft : 0
+
+    component.set("dmode", "absolute")
+    component.set("resizable", RESIZABLE_HANDLES)
+    component.addStyle({ position: "absolute", top: `${top}px`, left: `${left}px` })
   }
 
   // Every block's `content` is a component definition object, not a raw HTML string — that's

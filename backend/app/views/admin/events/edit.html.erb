@@ -94,28 +94,28 @@
 <% when "sessions" %>
   <%= render "sessions_step", event: @event %>
   <div class="d-flex align-items-start gap-3 mt-4">
-    <%= link_to "Previous", edit_admin_event_path(@event, step: "basic_info"), class: "btn btn-outline-secondary" %>
-    <%= link_to "Next", edit_admin_event_path(@event, step: "speaker"), class: "btn btn-primary ms-auto" %>
+    <%= link_to "Previous", edit_admin_event_path(@event, step: "basic_info"), class: "btn btn-sm btn-outline-secondary" %>
+    <%= link_to "Next", edit_admin_event_path(@event, step: "speaker"), class: "btn btn-sm btn-primary ms-auto" %>
   </div>
 <% when "speaker" %>
   <%= render "speaker_step", event: @event %>
   <div class="d-flex align-items-start gap-3 mt-4">
-    <%= link_to "Previous", edit_admin_event_path(@event, step: "sessions"), class: "btn btn-outline-secondary" %>
-    <%= link_to "Next", edit_admin_event_path(@event, step: "event_schedule"), class: "btn btn-primary ms-auto" %>
+    <%= link_to "Previous", edit_admin_event_path(@event, step: "sessions"), class: "btn btn-sm btn-outline-secondary" %>
+    <%= link_to "Next", edit_admin_event_path(@event, step: "event_schedule"), class: "btn btn-sm btn-primary ms-auto" %>
   </div>
 <% when "event_schedule" %>
   <%= render "event_schedule_step", event: @event %>
   <div class="d-flex align-items-start gap-3 mt-4">
-    <%= link_to "Previous", edit_admin_event_path(@event, step: "speaker"), class: "btn btn-outline-secondary" %>
-    <%= link_to "Next", edit_admin_event_path(@event, step: "tickets"), class: "btn btn-primary ms-auto" %>
+    <%= link_to "Previous", edit_admin_event_path(@event, step: "speaker"), class: "btn btn-sm btn-outline-secondary" %>
+    <%= link_to "Next", edit_admin_event_path(@event, step: "tickets"), class: "btn btn-sm btn-primary ms-auto" %>
   </div>
 <% when "tickets" %>
   <%= render "tickets_step", event: @event %>
 <% when "badge" %>
   <%= render "badge_step", event: @event %>
   <div class="d-flex align-items-start gap-3 mt-4">
-    <%= link_to "Previous", edit_admin_event_path(@event, step: "tickets"), class: "btn btn-outline-secondary" %>
-    <%= link_to "Next", edit_admin_event_path(@event, step: "review"), class: "btn btn-primary ms-auto" %>
+    <%= link_to "Previous", edit_admin_event_path(@event, step: "tickets"), class: "btn btn-sm btn-outline-secondary" %>
+    <%= link_to "Next", edit_admin_event_path(@event, step: "review"), class: "btn btn-sm btn-primary ms-auto" %>
   </div>
 <% when "review" %>
   <%= render "review_step", event: @event %>

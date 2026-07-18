@@ -1,29 +1,61 @@
-<%# Phase 13 — Communications (requirement.md §3.10, §5.10): "registration-confirmation email
-    using Phase 12's tenant/sponsor branding layering." Phase 12 itself (Sponsor/Exhibitor model,
-    full Platform → Tenant → Event → Sponsor cascade) isn't built yet — this uses the one piece of
-    tenant branding that already exists, Account#logo (added ahead of Phase 12, alongside the
-    tenant-registration intake fields) — revisit once Phase 12 adds color palette/sponsor-tier
-    layering on top. Not image_tag(attachment) — see super_admin/accounts/show.html.erb's own
-    comment for the full "breaks against a real Cloudinary attachment" story. %>
-<% if @tenant_account.logo.attached? %>
-  <%= tag.img src: @tenant_account.logo.url, style: "max-height: 60px; margin-bottom: 16px;", alt: @tenant_account.name %>
-<% end %>
+<%# Phase 13 — Communications, revisited: visual pass matching the language EmailTemplate::
+    DEFAULT_TEMPLATES echoes for a tenant that customizes this email (branded header band, bordered
+    details card, footer) — this is what every tenant gets before/unless they ever touch that
+    feature, so it needed to look like a real product email, not a bare `<ul>` of facts. Inline
+    styles throughout (not a <style> block) — the standard email-client-compatibility constraint,
+    same reasoning as layouts/mailer.html.erb's own "Email styles need to be inline" comment. %>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:32px 0;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;">
+        <tr>
+          <td style="background:#1f58c7;padding:28px 32px;text-align:center;">
+            <% if @tenant_account.logo.attached? %>
+              <%= tag.img src: @tenant_account.logo.url, style: "max-height: 48px;", alt: @tenant_account.name %>
+            <% else %>
+              <span style="color:#ffffff;font-size:18px;font-weight:600;"><%= @tenant_account.name %></span>
+            <% end %>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;">
+            <h1 style="margin:0 0 16px;font-size:22px;color:#1a1a1a;">You're registered for <%= @event.name %></h1>
+            <p style="margin:0 0 24px;font-size:15px;color:#4a4a4a;">Hi <%= @participant.first_name %>, your registration is confirmed. Here are the details:</p>
 
-<h1>You're registered for <%= @event.name %></h1>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;border-radius:6px;">
+              <tr>
+                <td style="padding:20px 24px;font-size:14px;color:#333333;line-height:1.9;">
+                  <strong>When:</strong> <%= @event.starts_at.strftime("%B %-d, %Y %H:%M") %> &ndash; <%= @event.ends_at.strftime("%B %-d, %Y %H:%M") %><br>
+                  <% if @event.address.present? %>
+                    <strong>Where:</strong> <%= @event.address %><br>
+                  <% end %>
+                  <% if @event.meeting_link.present? %>
+                    <strong>Meeting link:</strong> <%= link_to @event.meeting_link, @event.meeting_link, style: "color:#1f58c7;" %><br>
+                  <% end %>
+                  <strong>Your registration ID:</strong> <%= @participant.client_participant_id %>
+                </td>
+              </tr>
+            </table>
 
-<p>Hi <%= @participant.first_name %>,</p>
-
-<p>Your registration for <strong><%= @event.name %></strong> is confirmed.</p>
-
-<ul>
-  <li><strong>When:</strong> <%= @event.starts_at.strftime("%B %-d, %Y %H:%M") %> &ndash; <%= @event.ends_at.strftime("%B %-d, %Y %H:%M") %></li>
-  <% if @event.address.present? %>
-    <li><strong>Where:</strong> <%= @event.address %></li>
-  <% end %>
-  <% if @event.meeting_link.present? %>
-    <li><strong>Meeting link:</strong> <%= link_to @event.meeting_link, @event.meeting_link %></li>
-  <% end %>
-  <li><strong>Your registration ID:</strong> <%= @participant.client_participant_id %></li>
-</ul>
-
-<p>See you there!</p>
+            <p style="margin:24px 0 0;font-size:15px;color:#4a4a4a;">See you there!</p>
+          </td>
+        </tr>
+        <%# Phase 13 — Communications, revisited: "show that in the mail as well" — a base64
+            data: URI (Participant#qr_code_data_uri), not an uploaded/attached image, so this never
+            touches Cloudinary storage; same QR EmailTemplate::DEFAULT_TEMPLATES seeds via the
+            $QRCODE$ placeholder for a tenant that customizes this email. %>
+        <tr>
+          <td style="padding:24px 0;text-align:center;border-top:1px solid #eeeeee;">
+            <p style="font-size:13px;color:#8a8a8a;margin:0 0 12px;">Show this QR code at check-in</p>
+            <%= tag.img src: @participant.qr_code_data_uri, alt: "QR code", style: "width:160px;height:160px;" %>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 32px;background:#f4f5f7;text-align:center;font-size:12px;color:#8a8a8a;">
+            Sent by <%= @tenant_account.name %>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>

@@ -32,6 +32,15 @@ gem "solid_cache"
 gem "sidekiq"
 gem "redis"
 
+# Real cron scheduling for EventSchedulerJob/InvoiceGenerationJob (config/schedule.yml) — reverses
+# this app's earlier Phase 0 "no cron gem, self-reschedule instead" decision (those two jobs' own
+# comments still explain the old reasoning) once that pattern's own real gap became a live
+# problem: nothing ever called the very first `.perform_later` to start either job's
+# self-rescheduling chain, so neither one actually ran anywhere outside a spec. sidekiq-cron fires
+# jobs straight from its own persisted schedule — no bootstrap step, no double-enqueue risk across
+# multiple Puma/Sidekiq processes.
+gem "sidekiq-cron"
+
 # Reduces boot times through caching; required in config/boot.rb
 gem "bootsnap", require: false
 

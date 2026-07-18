@@ -22,7 +22,68 @@ import { DirectUpload } from "@rails/activestorage"
 // blobContainer below under the real field name once the direct upload finishes, ever reaches the
 // server.
 export default class extends Controller {
-  static targets = ["fileInput", "uploadProgress", "progressBar", "uploadStatus", "blobContainer"]
+  static targets = ["fileInput", "uploadProgress", "progressBar", "uploadStatus", "blobContainer", "cameraModal", "video", "canvas", "cameraError"]
+
+  disconnect() {
+    this.stopCamera()
+  }
+
+  // Camera-capture button (currently only wired up next to Photo, admin/participants/
+  // _dynamic_fields.html.erb) — opens a live getUserMedia() feed in a modal. Bootstrap's own JS
+  // global (window.bootstrap, app/javascript/application.js), same as confirm_dialog_controller.js/
+  // download_progress_controller.js already reach for programmatic modal control.
+  async openCamera(event) {
+    event.preventDefault()
+    if (this.hasCameraErrorTarget) this.cameraErrorTarget.hidden = true
+
+    this.cameraModal = bootstrap.Modal.getOrCreateInstance(this.cameraModalTarget)
+    this.cameraModal.show()
+
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+      this.videoTarget.srcObject = this.stream
+    } catch (error) {
+      if (this.hasCameraErrorTarget) {
+        this.cameraErrorTarget.textContent = "Couldn't access the camera — check your browser's camera permission for this site."
+        this.cameraErrorTarget.hidden = false
+      }
+    }
+
+    this.cameraModalTarget.addEventListener("hidden.bs.modal", () => this.stopCamera(), { once: true })
+  }
+
+  // Draws the current video frame to a hidden canvas, turns it into a File, and feeds it into the
+  // same hidden file input a manual file pick uses — dispatching `change` there runs the exact
+  // same #fileSelected direct-upload path below, so a captured photo auto-uploads exactly like a
+  // chosen one, not a separate code path to keep in sync.
+  capturePhoto() {
+    const video = this.videoTarget
+    if (!video.videoWidth) return
+
+    const canvas = this.canvasTarget
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext("2d").drawImage(video, 0, 0)
+
+    canvas.toBlob((blob) => {
+      if (!blob) return
+
+      const file = new File([ blob ], `photo-${Date.now()}.jpg`, { type: "image/jpeg" })
+      const dataTransfer = new DataTransfer()
+      dataTransfer.items.add(file)
+      this.fileInputTarget.files = dataTransfer.files
+      this.fileInputTarget.dispatchEvent(new Event("change", { bubbles: true }))
+
+      this.cameraModal.hide()
+    }, "image/jpeg", 0.92)
+  }
+
+  stopCamera() {
+    if (this.stream) {
+      this.stream.getTracks().forEach((track) => track.stop())
+      this.stream = null
+    }
+  }
 
   fileSelected(event) {
     const file = event.target.files[0]

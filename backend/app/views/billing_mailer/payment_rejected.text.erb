@@ -1,0 +1,7 @@
+Payment proof rejected for <%= @invoice.event.name %>
+
+A Super Admin reviewed your payment submission (UTR: <%= @invoice.utr_reference %>) and rejected it:
+
+<%= @invoice.rejection_reason %>
+
+Sign in to submit a new payment proof at <%= admin_invoice_url(@invoice) %>

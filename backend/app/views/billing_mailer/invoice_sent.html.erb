@@ -1,0 +1,10 @@
+<h1>Invoice for <%= @event.name %></h1>
+
+<p>An invoice has been raised for <strong><%= @event.name %></strong>: <strong><%= money(@invoice.amount, @invoice.currency) %></strong></p>
+
+<p>Please pay via bank transfer (NEFT/IMPS) and submit the UTR/receipt as proof of payment.</p>
+
+<p>
+  Sign in to review the invoice and submit payment proof at
+  <%= link_to admin_invoice_url(@invoice), admin_invoice_url(@invoice) %>
+</p>

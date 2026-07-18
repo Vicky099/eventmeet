@@ -95,7 +95,7 @@
 
   <div class="d-flex align-items-center gap-1 mb-2">
     <span class="text-muted font-size-13">How to design this badge</span>
-    <button type="button" class="btn btn-link p-0 text-muted" data-bs-toggle="modal" data-bs-target="#badge-editor-help-modal" title="How to design this badge">
+    <button type="button" class="btn btn-sm btn-link p-0 text-muted" data-bs-toggle="modal" data-bs-target="#badge-editor-help-modal" title="How to design this badge">
       <i class="bx bx-info-circle font-size-16"></i>
     </button>
   </div>
@@ -106,8 +106,8 @@
   <%= f.hidden_field :content, data: { badge_editor_target: "contentField" } %>
 
   <div class="d-flex align-items-center gap-3">
-    <%= link_to "Cancel", back_path, class: "btn btn-outline-secondary" %>
-    <button type="button" class="btn btn-primary ms-auto" data-action="badge-editor#save">Save badge</button>
+    <%= link_to "Cancel", back_path, class: "btn btn-sm btn-outline-secondary" %>
+    <button type="button" class="btn btn-sm btn-primary ms-auto" data-action="badge-editor#save">Save badge</button>
   </div>
 <% end %>
 

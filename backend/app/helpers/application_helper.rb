@@ -54,4 +54,11 @@ module ApplicationHelper
 
     content_tag(:div, record.errors[field].join(", "), class: "invalid-feedback d-block")
   end
+
+  # Quotation/Invoice amounts (requirement.md §4.6) are no longer implicitly USD — every call site
+  # that used to reach for the bare `number_to_currency` on one of those records goes through here
+  # instead, so the record's own stored `currency` (Currency::SYMBOLS) always drives the symbol.
+  def money(amount, currency)
+    number_to_currency(amount, unit: Currency.symbol_for(currency), format: "%u%n")
+  end
 end
