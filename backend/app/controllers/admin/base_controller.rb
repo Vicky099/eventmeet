@@ -33,9 +33,34 @@ module Admin
     # bounce an agency-context request elsewhere.
     before_action :redirect_agency_context_to_agency_console
 
+    # Phase 23 — Audit Log & Super Admin Impersonation (doc/implementation_3.md). Runs after every
+    # state-changing (non-GET/HEAD) request made while Admin::ImpersonationsController#redeem has
+    # stashed a real platform_staff identity into this tenant session — a generic after_action here
+    # (not a call added to each individual controller action) is what guarantees nothing new added
+    # to the Admin Console later can silently skip being audited while impersonating.
+    after_action :audit_impersonated_action, if: -> { current_impersonator && !request.get? && !request.head? }
+
     include PunditAuthorizable
 
     layout "admin"
+
+    # Real Super Admin identity behind an impersonated tenant session (session[:impersonator_platform_staff_id],
+    # set by Admin::ImpersonationsController#redeem) — nil for an ordinary, non-impersonated
+    # session. Deliberately distinct from current_user, which is the *impersonated* identity for
+    # the duration of the visit; every audit entry/log line must attribute back to this, never
+    # current_user, or the whole point of tracking impersonation is defeated (AuditLog's own
+    # class comment).
+    def current_impersonator
+      return @current_impersonator if defined?(@current_impersonator)
+
+      @current_impersonator = session[:impersonator_platform_staff_id] && User.find_by(id: session[:impersonator_platform_staff_id])
+    end
+    # layouts/admin.html.erb calls this directly (passed into shared/_console_shell as an explicit
+    # local, same "layout-side data passed in, not looked up by the shared partial itself"
+    # convention footer_text/nav_items/user_dropdown already establish) — a view-context call
+    # needs helper_method, plain controller-method visibility alone isn't reachable from an ERB
+    # template.
+    helper_method :current_impersonator
 
     private
 
@@ -45,6 +70,15 @@ module Admin
 
     def authorization_fallback_path
       user_root_path
+    end
+
+    def audit_impersonated_action
+      AuditLog.record!(
+        actor: current_impersonator,
+        action: "impersonation.#{controller_name}##{action_name}",
+        target: current_user,
+        metadata: { impersonated_user_email: current_user.email, path: request.fullpath, method: request.method }
+      )
     end
   end
 end

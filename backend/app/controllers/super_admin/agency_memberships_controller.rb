@@ -23,6 +23,8 @@ module SuperAdmin
       result = AgencyMembershipProvisioning.call(agency: @agency, email: email)
 
       if result.success?
+        AuditLog.record!(actor: current_platform_staff, action: "agency_membership.create", target: @agency,
+          metadata: { email: result.user.email })
         redirect_to platform_agency_path(@agency), notice: "#{result.user.email} added as an agency admin for #{@agency.name}."
       else
         redirect_to platform_agency_path(@agency), alert: @agency.errors.full_messages.to_sentence.presence || "Couldn't add that email."
@@ -30,8 +32,15 @@ module SuperAdmin
     end
 
     def destroy
+      # metadata captures the removed member's own identity — target stays the Agency (not the
+      # about-to-be-destroyed AgencyMembership) so this row stays legible after the fact without
+      # needing a real FK, matching how @agency's own #show page already re-derives context that
+      # way (polymorphic target is never actually FK-enforced by Postgres either way).
+      removed_email = @membership.user.email
       @membership.destroy!
-      redirect_to platform_agency_path(@agency), notice: "#{@membership.user.email} removed from #{@agency.name}'s agency admins."
+      AuditLog.record!(actor: current_platform_staff, action: "agency_membership.destroy", target: @agency,
+        metadata: { email: removed_email })
+      redirect_to platform_agency_path(@agency), notice: "#{removed_email} removed from #{@agency.name}'s agency admins."
     end
 
     # "Resend Invite" — a not-yet-onboarded agency_admin (User#must_reset_password still true,
@@ -51,6 +60,8 @@ module SuperAdmin
       temp_password = SecureRandom.base58(16)
       @membership.user.update!(password: temp_password)
       AgencyMailer.welcome(@membership.user, @agency, temp_password).deliver_later
+      AuditLog.record!(actor: current_platform_staff, action: "agency_membership.resend_invite", target: @agency,
+        metadata: { email: @membership.user.email })
       redirect_to platform_agency_path(@agency), notice: "Invite resent to #{@membership.user.email}."
     end
 

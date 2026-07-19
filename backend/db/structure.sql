@@ -188,6 +188,21 @@ CREATE TABLE public.attendances (
 
 
 --
+-- Name: audit_log_entries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_log_entries (
+    id uuid NOT NULL,
+    actor_id uuid NOT NULL,
+    target_type character varying,
+    target_id uuid,
+    action character varying NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: badge_templates; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -392,6 +407,23 @@ CREATE TABLE public.govt_ids (
     value character varying NOT NULL,
     participant_id uuid,
     assigned_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: impersonation_tokens; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.impersonation_tokens (
+    id uuid NOT NULL,
+    platform_staff_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    account_id uuid NOT NULL,
+    token character varying NOT NULL,
+    expires_at timestamp(6) without time zone NOT NULL,
+    redeemed_at timestamp(6) without time zone,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL
 );
@@ -975,6 +1007,14 @@ ALTER TABLE ONLY public.attendances
 
 
 --
+-- Name: audit_log_entries audit_log_entries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_log_entries
+    ADD CONSTRAINT audit_log_entries_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: badge_templates badge_templates_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1060,6 +1100,14 @@ ALTER TABLE ONLY public.govt_id_import_files
 
 ALTER TABLE ONLY public.govt_ids
     ADD CONSTRAINT govt_ids_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: impersonation_tokens impersonation_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.impersonation_tokens
+    ADD CONSTRAINT impersonation_tokens_pkey PRIMARY KEY (id);
 
 
 --
@@ -1414,6 +1462,34 @@ CREATE INDEX index_attendances_on_session_id ON public.attendances USING btree (
 
 
 --
+-- Name: index_audit_log_entries_on_action; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_audit_log_entries_on_action ON public.audit_log_entries USING btree (action);
+
+
+--
+-- Name: index_audit_log_entries_on_actor_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_audit_log_entries_on_actor_id ON public.audit_log_entries USING btree (actor_id);
+
+
+--
+-- Name: index_audit_log_entries_on_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_audit_log_entries_on_created_at ON public.audit_log_entries USING btree (created_at);
+
+
+--
+-- Name: index_audit_log_entries_on_target; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_audit_log_entries_on_target ON public.audit_log_entries USING btree (target_type, target_id);
+
+
+--
 -- Name: index_badge_templates_on_account_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1656,6 +1732,34 @@ CREATE UNIQUE INDEX index_govt_ids_on_event_id_and_value ON public.govt_ids USIN
 --
 
 CREATE UNIQUE INDEX index_govt_ids_on_participant_id ON public.govt_ids USING btree (participant_id);
+
+
+--
+-- Name: index_impersonation_tokens_on_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_impersonation_tokens_on_account_id ON public.impersonation_tokens USING btree (account_id);
+
+
+--
+-- Name: index_impersonation_tokens_on_platform_staff_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_impersonation_tokens_on_platform_staff_id ON public.impersonation_tokens USING btree (platform_staff_id);
+
+
+--
+-- Name: index_impersonation_tokens_on_token; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_impersonation_tokens_on_token ON public.impersonation_tokens USING btree (token);
+
+
+--
+-- Name: index_impersonation_tokens_on_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_impersonation_tokens_on_user_id ON public.impersonation_tokens USING btree (user_id);
 
 
 --
@@ -2265,6 +2369,14 @@ ALTER TABLE ONLY public.notifications
 
 
 --
+-- Name: impersonation_tokens fk_rails_1f71a671b8; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.impersonation_tokens
+    ADD CONSTRAINT fk_rails_1f71a671b8 FOREIGN KEY (platform_staff_id) REFERENCES public.users(id);
+
+
+--
 -- Name: oauth_applications fk_rails_211c1cecac; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2302,6 +2414,14 @@ ALTER TABLE ONLY public.attendances
 
 ALTER TABLE ONLY public.session_live_stats
     ADD CONSTRAINT fk_rails_2da9181c6a FOREIGN KEY (event_id) REFERENCES public.events(id);
+
+
+--
+-- Name: audit_log_entries fk_rails_31e484e947; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_log_entries
+    ADD CONSTRAINT fk_rails_31e484e947 FOREIGN KEY (actor_id) REFERENCES public.users(id);
 
 
 --
@@ -2585,6 +2705,14 @@ ALTER TABLE ONLY public.invoices
 
 
 --
+-- Name: impersonation_tokens fk_rails_80f6233426; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.impersonation_tokens
+    ADD CONSTRAINT fk_rails_80f6233426 FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
 -- Name: govt_ids fk_rails_86ed8ec5cd; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2646,6 +2774,14 @@ ALTER TABLE ONLY public.schedules
 
 ALTER TABLE ONLY public.print_jobs
     ADD CONSTRAINT fk_rails_97a6bde7ac FOREIGN KEY (print_station_id) REFERENCES public.print_stations(id);
+
+
+--
+-- Name: impersonation_tokens fk_rails_97fe1a0a1d; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.impersonation_tokens
+    ADD CONSTRAINT fk_rails_97fe1a0a1d FOREIGN KEY (user_id) REFERENCES public.users(id);
 
 
 --
@@ -3302,6 +3438,8 @@ ALTER TABLE public.ticket_reservations ENABLE ROW LEVEL SECURITY;
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260719080100'),
+('20260719080000'),
 ('20260719070000'),
 ('20260719060300'),
 ('20260719060200'),

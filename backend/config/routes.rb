@@ -81,6 +81,14 @@ Rails.application.routes.draw do
     # cross-origin browser redirect, the same shape Devise's own password-reset link already uses.
     get "admin/switch", to: "admin/account_switches#redeem", as: :redeem_account_switch
 
+    # Phase 23 — Audit Log & Super Admin Impersonation (doc/implementation_3.md): the redeem half
+    # of ImpersonationToken — same "GET, reachable signed out" shape as admin/switch above, minted
+    # instead from SuperAdmin::ImpersonationsController#create. #destroy ("Stop Impersonating") is
+    # a DELETE since it's a real, deliberate state change (clears the impersonation session flag)
+    # triggered from a button_to, not a plain link.
+    get "admin/impersonate", to: "admin/impersonations#redeem", as: :redeem_impersonation
+    delete "admin/impersonate", to: "admin/impersonations#destroy", as: :stop_impersonation
+
     # Phase 4 — Event Lifecycle (requirement.md §3.2, §5.2). scope path/as: "admin" so these carry
     # the same /admin/... URL namespace as every other Admin Console route (module comment at the
     # top of this file), same pattern Phase 2 established for /platform/accounts. :show (Phase
@@ -390,6 +398,12 @@ Rails.application.routes.draw do
           patch :suspend
           patch :reinstate
         end
+        # Phase 23 — Audit Log & Super Admin Impersonation (doc/implementation_3.md): the mint
+        # half of ImpersonationToken, triggered per-user from this account's own roster
+        # (super_admin/agencies/_tenant_modal.html.erb) — nested under :accounts, not a flat
+        # resource, since impersonation always targets one specific account's user. Only :create —
+        # same "pure action, no page of its own" shape #suspend/#reinstate above already take.
+        resources :impersonations, controller: "super_admin/impersonations", only: [ :create ]
       end
 
       # Fixed-hierarchy pivot (requirement.md revisit, confirmed with the user): the agency is now
@@ -428,6 +442,11 @@ Rails.application.routes.draw do
           post :reject
         end
       end
+
+      # Phase 23 — Audit Log & Super Admin Impersonation (doc/implementation_3.md): read-only
+      # viewer over every AuditLogEntry — :index only, same "no #show/edit/destroy, an audit log
+      # that can be modified isn't one" reasoning that table's own migration comment states.
+      resources :audit_log_entries, controller: "super_admin/audit_log_entries", only: [ :index ]
     end
 
     # Devise's own routing helper — `authenticated` (not the throwing `authenticate`, real bug

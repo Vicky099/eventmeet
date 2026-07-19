@@ -4,7 +4,11 @@
     <%= render "shared/head" %>
   </head>
 
-  <body>
+  <%# Phase 23 (doc/implementation_3.md): "impersonating" class only when current_impersonator is
+      present — reserves space above the fixed topbar/sidebar for shared/_impersonation_banner.html.erb
+      (see application.css's own comment on the transform trick this relies on) — a plain class
+      toggle so nothing here needs to know the banner's actual pixel height. %>
+  <body class="<%= "impersonating" if current_impersonator %>">
     <%# Phase 7.5 (requirement.md §5.14 v12) — @event is only ever a real, persisted record here
         via EventScoped or Admin::EventsController's own #show/#edit/etc. (never #index/#new,
         where there's no specific event yet to be "inside") — #persisted? is what actually gates
@@ -18,6 +22,7 @@
         context: @event.name, context_subtitle: @event.status.humanize
       } : nil,
       footer_text: "xEvent",
+      impersonator: current_impersonator,
       user_dropdown: user_signed_in? ? {
         email: current_user.email,
         subtitle: Current.account&.name,

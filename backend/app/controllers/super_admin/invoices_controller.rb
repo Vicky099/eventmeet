@@ -40,11 +40,15 @@ module SuperAdmin
     def deliver
       @invoice.send!
       notify_invoice_sent(@invoice)
+      AuditLog.record!(actor: current_platform_staff, action: "invoice.deliver", target: @invoice,
+        metadata: { amount: @invoice.amount, currency: @invoice.currency })
       redirect_to platform_invoice_path(@invoice), notice: "Invoice sent — #{invoice_recipient_label(@invoice)} notified."
     end
 
     def verify
       @invoice.verify!(by: current_platform_staff)
+      AuditLog.record!(actor: current_platform_staff, action: "invoice.verify", target: @invoice,
+        metadata: { amount: @invoice.amount, currency: @invoice.currency })
       redirect_to platform_invoice_path(@invoice), notice: "Payment verified — invoice marked paid."
     end
 
@@ -58,6 +62,7 @@ module SuperAdmin
 
       @invoice.reject_payment!(reason: reason, by: current_platform_staff)
       notify_payment_rejected(@invoice)
+      AuditLog.record!(actor: current_platform_staff, action: "invoice.reject", target: @invoice, metadata: { reason: reason })
       redirect_to platform_invoice_path(@invoice), notice: "Payment rejected — #{invoice_recipient_label(@invoice).downcase} notified."
     end
 

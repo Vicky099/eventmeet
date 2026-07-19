@@ -31,6 +31,12 @@
                               card, keeping the back link on its own if a future caller ever wants
                               that. Omit `back_link` itself entirely elsewhere; no default "back to
                               X" makes sense for the account-level sidebar.
+      impersonator         — Phase 23 (doc/implementation_3.md): optional User, the real Super
+                              Admin behind an impersonated tenant session
+                              (Admin::BaseController#current_impersonator) — only ever passed by
+                              layouts/admin.html.erb; omitted entirely elsewhere, same convention
+                              back_link already takes, since impersonation only ever happens on the
+                              tenant Admin Console.
 
     Topbar shows a static welcome message (ported from shopmate-backend's _upper_header.html.erb,
     same template family) rather than the per-page title — that now lives in the content area
@@ -42,6 +48,14 @@
     nearest ancestor carrying the matching data-controller, same as data-action="sidebar#toggle"
     below already relies on this element for the sidebar controller. download-progress (shared/
     _download_progress_modal.html.erb) lives here for the same reason. %>
+<% if local_assigns[:impersonator] %>
+  <%# Phase 23 (doc/implementation_3.md): rendered as a SIBLING of #layout-wrapper, not a child —
+      application.css's own transform trick makes #layout-wrapper the containing block for its
+      OWN `position: fixed` descendants; a banner nested inside it would itself get shifted down
+      by the same margin-top meant to push the topbar/sidebar out from under it (caught live: the
+      banner ended up at the topbar's new position instead of the true viewport top). %>
+  <%= render "shared/impersonation_banner", impersonator: impersonator, impersonated: current_user %>
+<% end %>
 <div id="layout-wrapper" data-controller="sidebar confirm-dialog download-progress">
   <%# class="isvertical-topbar" — load-bearing, not decorative: app.min.css positions
       #page-topbar via `.isvertical-topbar{position:fixed;left:270px;...}` (offset past the

@@ -42,6 +42,34 @@
           <dt class="col-sm-4">Participants</dt>
           <dd class="col-sm-8 mb-0"><%= account_events.sum { |event| participant_counts_by_event.fetch(event.id, 0) } %></dd>
         </dl>
+
+        <%# Phase 23 — Audit Log & Super Admin Impersonation (doc/implementation_3.md). Each
+            row mints a fresh ImpersonationToken via SuperAdmin::ImpersonationsController#create
+            and lands the Super Admin signed in as that exact user on the tenant's own subdomain —
+            not a generic "impersonate the account," a specific chosen person, since a tenant can
+            have more than one admin/staff user. data-turbo="false" on the form — same
+            cross-subdomain reasoning as agency_console/accounts/index.html.erb's own identical
+            "Switch to this tenant" button: Turbo's fetch-based form submission can't follow a
+            cross-origin redirect (confirmed live — silently fails with "TypeError: Failed to
+            fetch" in the console, no visible error on the page itself), so this needs to be a
+            real, plain full-page form POST instead. %>
+        <hr>
+        <p class="fw-semibold mb-2">Impersonate</p>
+        <% if account.users.none? %>
+          <p class="text-muted small mb-0">No users on this tenant yet.</p>
+        <% else %>
+          <ul class="list-group list-group-flush">
+            <% account.users.each do |user| %>
+              <li class="list-group-item d-flex align-items-center justify-content-between px-0">
+                <span><%= user.email %></span>
+                <%= button_to platform_account_impersonations_path(account), method: :post, params: { user_id: user.id },
+                      class: "btn btn-m btn-outline-warning", form: { data: { turbo: false } } do %>
+                  <i class="bx bx-shield-quarter"></i> Impersonate
+                <% end %>
+              </li>
+            <% end %>
+          </ul>
+        <% end %>
       </div>
       <div class="modal-footer border-0 pt-3">
         <% if account.active? %>

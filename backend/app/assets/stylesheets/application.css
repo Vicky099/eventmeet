@@ -788,3 +788,30 @@ body[data-sidebar-size="sm"] {
   font-size: 13px;
   color: var(--bs-gray-700);
 }
+
+/* Phase 23 — Audit Log & Super Admin Impersonation (doc/implementation_3.md). The webadmin
+   template's own #page-topbar (.isvertical-topbar) and .vertical-menu are both `position: fixed`,
+   pinned to the *viewport's* top edge regardless of DOM order — a plain in-flow or `position:
+   sticky` banner placed before them in the markup reserves no space for them at all, so the first
+   version of this banner silently overlapped the topbar's logo/logout button instead of pushing
+   them down (caught live: "impersonating warning text was on logo and on profile dropdown").
+   Fix: giving #layout-wrapper a `transform` makes IT the containing block for its own `position:
+   fixed` descendants (a standard CSS behavior, not a hack) — so the topbar/sidebar's `top: 0`
+   becomes "flush with #layout-wrapper's own top edge" instead of "flush with the viewport,"
+   without needing to know or override any of the vendor CSS's own breakpoint-specific pixel
+   constants. Pushing #layout-wrapper down by the banner's own fixed height then moves the whole
+   fixed-position layout as one unit, leaving exactly that much clear space for the banner itself
+   (also `position: fixed`, so it stays visible on scroll) to occupy. */
+.impersonation-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  z-index: 1100;
+}
+
+body.impersonating #layout-wrapper {
+  transform: translateZ(0);
+  margin-top: 44px;
+}

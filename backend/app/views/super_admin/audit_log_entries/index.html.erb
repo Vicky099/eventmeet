@@ -1,0 +1,74 @@
+<% content_for :page_title, "Audit Log" %>
+
+<%= render "shared/page_header", icon: "bx-history", crumbs: [ { label: "Audit Log" } ] %>
+
+<div class="mb-3">
+  <%= form_with url: platform_audit_log_entries_path, method: :get, local: true, class: "row g-2 align-items-center" do %>
+    <div class="col-auto">
+      <%= select_tag :actor_id,
+            options_for_select([ [ "All actors", "" ] ] + @actors.map { |actor| [ actor.email, actor.id ] }, @actor_filter),
+            class: "form-select" %>
+    </div>
+    <div class="col-auto">
+      <%= select_tag :action_name,
+            options_for_select([ [ "All actions", "" ] ] + @actions.map { |action| [ action, action ] }, @action_filter),
+            class: "form-select" %>
+    </div>
+    <div class="col-auto">
+      <%= select_tag :target_type,
+            options_for_select([ [ "All target types", "" ] ] + @target_types.map { |type| [ type, type ] }, @target_type_filter),
+            class: "form-select" %>
+    </div>
+    <div class="col-auto">
+      <%= date_field_tag :from_date, @from_date, class: "form-control", placeholder: "From" %>
+    </div>
+    <div class="col-auto">
+      <%= date_field_tag :to_date, @to_date, class: "form-control", placeholder: "To" %>
+    </div>
+    <div class="col-auto">
+      <%= submit_tag "Filter", class: "btn btn-m btn-outline-secondary" %>
+    </div>
+  <% end %>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <% if @entries.none? %>
+      <%= render "shared/empty_state", icon: "bx-history", message: "No matching audit log entries." %>
+    <% else %>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Actor</th>
+              <th>Action</th>
+              <th>Target</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @entries.each do |entry| %>
+              <tr>
+                <td class="text-nowrap"><%= entry.created_at.to_fs(:long) %></td>
+                <td><%= entry.actor.email %></td>
+                <td><code><%= entry.action %></code></td>
+                <td>
+                  <% if entry.target.present? %>
+                    <%= entry.target_type %> <span class="text-muted">(<%= entry.target_id[0..7] %>…)</span>
+                  <% else %>
+                    <span class="text-muted">—</span>
+                  <% end %>
+                </td>
+                <td class="text-muted small"><%= entry.metadata.presence&.to_json || "—" %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="mt-3">
+        <%== pagy_nav(@pagy) %>
+      </div>
+    <% end %>
+  </div>
+</div>

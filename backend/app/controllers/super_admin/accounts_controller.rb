@@ -10,11 +10,13 @@ module SuperAdmin
 
     def suspend
       @account.suspended!
+      AuditLog.record!(actor: current_platform_staff, action: "account.suspend", target: @account)
       redirect_to redirect_target, notice: "#{@account.name} suspended."
     end
 
     def reinstate
       @account.active!
+      AuditLog.record!(actor: current_platform_staff, action: "account.reinstate", target: @account)
       redirect_to redirect_target, notice: "#{@account.name} reinstated."
     end
 

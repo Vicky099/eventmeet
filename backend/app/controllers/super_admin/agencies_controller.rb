@@ -26,7 +26,9 @@ module SuperAdmin
     # Platform Console's own apex-domain context), which TenantScoped's default_scope already
     # opens up to `all` on its own.
     def show
-      @accounts = @agency.accounts.order(created_at: :desc)
+      # includes(:users) — Phase 23's own tenant_modal "Impersonate" roster (per-account users, via
+      # account_memberships) would otherwise fire once per account/modal in the loop below.
+      @accounts = @agency.accounts.includes(:users).order(created_at: :desc)
       account_ids = @accounts.map(&:id)
 
       @events = Event.where(account_id: account_ids).includes(:account, :invoice).order(starts_at: :desc)
@@ -70,6 +72,8 @@ module SuperAdmin
       result = AgencyProvisioning.call(agency_attributes: agency_params.except(:admin_email), admin_email: agency_params[:admin_email])
 
       if result.success?
+        AuditLog.record!(actor: current_platform_staff, action: "agency.create", target: result.agency,
+          metadata: { name: result.agency.name, billing_cycle: result.agency.billing_cycle, admin_email: result.admin_user.email })
         redirect_to platform_agency_path(result.agency),
           notice: "#{result.agency.name} provisioned — welcome email sent to #{result.admin_user.email}."
       else
@@ -84,6 +88,8 @@ module SuperAdmin
 
     def update
       if @agency.update(agency_params.except(:admin_email))
+        AuditLog.record!(actor: current_platform_staff, action: "agency.update", target: @agency,
+          metadata: { changes: @agency.saved_changes.except("updated_at").transform_values(&:last) })
         redirect_to platform_agency_path(@agency), notice: "#{@agency.name} updated."
       else
         render :edit, status: :unprocessable_content
@@ -92,11 +98,13 @@ module SuperAdmin
 
     def suspend
       @agency.suspended!
+      AuditLog.record!(actor: current_platform_staff, action: "agency.suspend", target: @agency)
       redirect_to platform_agency_path(@agency), notice: "#{@agency.name} suspended."
     end
 
     def reinstate
       @agency.active!
+      AuditLog.record!(actor: current_platform_staff, action: "agency.reinstate", target: @agency)
       redirect_to platform_agency_path(@agency), notice: "#{@agency.name} reinstated."
     end
 
@@ -109,6 +117,8 @@ module SuperAdmin
       end
 
       @agency.grant_more!(count)
+      AuditLog.record!(actor: current_platform_staff, action: "agency.grant_events", target: @agency,
+        metadata: { count: count, events_remaining: @agency.events_remaining })
       redirect_to platform_agency_path(@agency), notice: "Granted #{count} more event#{"s" if count != 1} to #{@agency.name} — #{@agency.events_remaining} now remaining."
     end
 

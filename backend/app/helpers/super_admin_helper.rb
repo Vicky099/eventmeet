@@ -16,7 +16,9 @@ module SuperAdminHelper
       # along with the per-event Super Admin review/pricing-negotiation workflow they linked to —
       # Invoice is the only billing item left.
       { path: platform_invoices_path, icon: "bx-credit-card", label: "Invoice" },
-      { path: "#", icon: "bx-pulse", label: "Live Pulse" }
+      { path: "#", icon: "bx-pulse", label: "Live Pulse" },
+      # Phase 23 — Audit Log & Super Admin Impersonation (doc/implementation_3.md).
+      { path: platform_audit_log_entries_path, icon: "bx-history", label: "Audit Log" }
     ]
   end
 end

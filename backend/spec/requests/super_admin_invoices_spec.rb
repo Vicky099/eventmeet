@@ -76,6 +76,12 @@ RSpec.describe "Platform Console invoices", type: :request do
       Current.account = account
       expect(invoice.reload).to be_awaiting_payment
       expect(ActionMailer::Base.deliveries.last.to).to eq([ "agency-admin@sparkle.example" ])
+
+      # Phase 23 — Audit Log & Super Admin Impersonation (doc/implementation_3.md).
+      entry = AuditLogEntry.sole
+      expect(entry.actor).to eq(staff)
+      expect(entry.action).to eq("invoice.deliver")
+      expect(entry.target).to eq(invoice)
     end
   end
 
@@ -92,6 +98,7 @@ RSpec.describe "Platform Console invoices", type: :request do
       Current.account = account
       expect(invoice.reload).to be_paid
       expect(invoice.verified_by).to eq(staff)
+      expect(AuditLogEntry.sole.action).to eq("invoice.verify")
     end
   end
 
@@ -114,6 +121,10 @@ RSpec.describe "Platform Console invoices", type: :request do
       expect(invoice).to be_awaiting_payment
       expect(invoice.rejection_reason).to eq("UTR doesn't match")
       expect(ActionMailer::Base.deliveries.last.to).to eq([ "agency-admin@sparkle.example" ])
+
+      entry = AuditLogEntry.sole
+      expect(entry.action).to eq("invoice.reject")
+      expect(entry.metadata).to eq("reason" => "UTR doesn't match")
     end
 
     it "requires a reason" do

@@ -163,6 +163,12 @@ RSpec.describe "Platform Console agency provisioning", type: :request do
       expect(membership.user.must_reset_password).to be true
 
       expect(ActionMailer::Base.deliveries.last.to).to eq([ "agency-admin@example.com" ])
+
+      # Phase 23 — Audit Log & Super Admin Impersonation (doc/implementation_3.md).
+      entry = AuditLogEntry.sole
+      expect(entry.actor).to eq(staff)
+      expect(entry.action).to eq("agency.create")
+      expect(entry.target).to eq(agency)
     end
 
     it "re-renders with errors and creates nothing when the price is invalid" do
@@ -186,12 +192,18 @@ RSpec.describe "Platform Console agency provisioning", type: :request do
 
       expect(agency.reload.events_granted).to eq(8)
       expect(response).to redirect_to(platform_agency_path(agency))
+
+      entry = AuditLogEntry.sole
+      expect(entry.action).to eq("agency.grant_events")
+      expect(entry.target).to eq(agency)
+      expect(entry.metadata).to eq("count" => 3, "events_remaining" => 6)
     end
 
     it "rejects a non-positive count" do
       post grant_events_platform_agency_path(agency), params: { count: 0 }
 
       expect(agency.reload.events_granted).to eq(5)
+      expect(AuditLogEntry.count).to eq(0)
     end
   end
 
@@ -203,9 +215,11 @@ RSpec.describe "Platform Console agency provisioning", type: :request do
     it "suspends and reinstates" do
       patch suspend_platform_agency_path(agency)
       expect(agency.reload).to be_suspended
+      expect(AuditLogEntry.sole.action).to eq("agency.suspend")
 
       patch reinstate_platform_agency_path(agency)
       expect(agency.reload).to be_active
+      expect(AuditLogEntry.order(:created_at).last.action).to eq("agency.reinstate")
     end
   end
 
@@ -223,6 +237,7 @@ RSpec.describe "Platform Console agency provisioning", type: :request do
       }.to change(AgencyMembership, :count).by(1)
 
       expect(ActionMailer::Base.deliveries.last.to).to eq([ "new-staff@example.com" ])
+      expect(AuditLogEntry.sole.action).to eq("agency_membership.create")
     end
 
     it "gives the new agency_admin an event_admin AccountMembership on the agency's existing tenant" do
@@ -244,6 +259,10 @@ RSpec.describe "Platform Console agency provisioning", type: :request do
       }.to change(AgencyMembership, :count).by(-1)
 
       expect(tenant.account_memberships.exists?(user: user)).to be true
+
+      entry = AuditLogEntry.sole
+      expect(entry.action).to eq("agency_membership.destroy")
+      expect(entry.metadata).to eq("email" => "existing-staff@example.com")
     end
   end
 
@@ -265,6 +284,7 @@ RSpec.describe "Platform Console agency provisioning", type: :request do
       expect(user.reload.encrypted_password).not_to eq(old_password)
       expect(user.must_reset_password).to be true
       expect(ActionMailer::Base.deliveries.last.to).to eq([ "pending-staff@example.com" ])
+      expect(AuditLogEntry.sole.action).to eq("agency_membership.resend_invite")
     end
 
     it "refuses to resend once the admin has already signed in and reset their password" do

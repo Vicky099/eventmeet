@@ -1,0 +1,20 @@
+<%# Locals: impersonator (User, the real Super Admin), impersonated (User, current_user for the
+    duration of the visit) — Phase 23 (doc/implementation_3.md). .impersonation-banner
+    (application.css) is fixed to the very top of the viewport, above #page-topbar — see that
+    class's own comment for how body.impersonating (set on <body> only when this banner is
+    present, layouts/admin.html.erb) reserves the space for it instead of overlapping the topbar's
+    logo/logout button the way a plain in-flow or `position: sticky` banner silently did. %>
+<div class="impersonation-banner d-flex align-items-center justify-content-center gap-2 px-3 text-center"
+     style="background: var(--bs-warning); color: #000;">
+  <i class="bx bx-shield-quarter"></i>
+  <span class="fw-semibold">
+    Impersonating <%= impersonated.email %> as <%= impersonator.email %>
+  </span>
+  <%# data-turbo="false" — Admin::ImpersonationsController#destroy redirects cross-subdomain back
+      to the apex Platform Console, same "Turbo's fetch-based submission can't follow a
+      cross-origin redirect" reasoning as the Impersonate button itself
+      (super_admin/agencies/_tenant_modal.html.erb's own comment has the full "confirmed live" story). %>
+  <%= button_to stop_impersonation_path, method: :delete, class: "btn btn-m btn-dark ms-2", form: { data: { turbo: false } } do %>
+    Stop Impersonating
+  <% end %>
+</div>

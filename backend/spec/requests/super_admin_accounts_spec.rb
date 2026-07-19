@@ -40,6 +40,12 @@ RSpec.describe "Platform Console tenant oversight", type: :request do
       post user_session_path, params: { user: { email: tenant_admin.email, password: "password123!" } }
       follow_redirect!
       expect(response.body).to include("Invalid email or password")
+
+      # Phase 23 — Audit Log & Super Admin Impersonation (doc/implementation_3.md).
+      entry = AuditLogEntry.sole
+      expect(entry.actor).to eq(staff)
+      expect(entry.action).to eq("account.suspend")
+      expect(entry.target).to eq(account)
     end
 
     it "reinstating a suspended Account lets its admin log in again" do
@@ -47,6 +53,7 @@ RSpec.describe "Platform Console tenant oversight", type: :request do
 
       patch reinstate_platform_account_path(account)
       expect(account.reload).to be_active
+      expect(AuditLogEntry.sole.action).to eq("account.reinstate")
 
       host! "acme.example.com"
       post user_session_path, params: { user: { email: tenant_admin.email, password: "password123!" } }
