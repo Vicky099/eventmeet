@@ -1,11 +1,11 @@
 # Phase 14 — Reporting, Import/Export & Analytics (requirement.md §5.11): "Scheduled report
 # delivery (Sidekiq-cron or equivalent: emailed weekly/daily summary to organizers)." The
-# "equivalent" this app originally used: a self-rescheduling job, same pattern
-# PartitionMaintenanceJob still uses. sidekiq-cron *is* now installed (EventSchedulerJob/
-# InvoiceGenerationJob were migrated onto it, confirmed with the user, once the self-rescheduling
-# pattern's own real gap — nothing ever called either job's first `.perform_later` — became a live
-# problem) — this job wasn't part of that migration and still self-reschedules; moving it onto
-# config/schedule.yml too is a straightforward, not-yet-done follow-up.
+# "equivalent" this app originally used: a self-rescheduling job. sidekiq-cron *is* now installed
+# (EventSchedulerJob/InvoiceGenerationJob were migrated onto it, confirmed with the user, once the
+# self-rescheduling pattern's own real gap — nothing ever called either job's first
+# `.perform_later` — became a live problem) — this job wasn't part of that migration and still
+# self-reschedules; moving it onto config/schedule.yml too is a straightforward, not-yet-done
+# follow-up.
 #
 # Hourly, not daily/weekly itself — #due? is what actually decides whether *this* tick is a given
 # event's turn, comparing Event#last_report_sent_at against a rolling window rather than a fixed
@@ -51,7 +51,7 @@ class ScheduledReportJob < ApplicationJob
     Current.account = event.account
     stats = build_stats(event)
 
-    event.account.owner_users.each do |owner|
+    event.account.admin_users.each do |owner|
       Notifier.email(
         mailer_class: ReportMailer, mailer_method: :summary, mailer_args: [ event, stats, owner.email ],
         notifiable: event, to: owner.email, subject: "#{event.scheduled_report_frequency.capitalize} report — #{event.name}"

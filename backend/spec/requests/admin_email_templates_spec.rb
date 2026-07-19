@@ -21,7 +21,7 @@ RSpec.describe "Admin Console email templates", type: :request do
   describe "GET /admin/events/:event_id/email_templates" do
     it "lists every known kind, including ones with no row yet" do
       event = create_event
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       get admin_event_email_templates_path(event)
 
@@ -37,7 +37,7 @@ RSpec.describe "Admin Console email templates", type: :request do
     # enabled in practice — :quick_send is the one that stays gated behind an actual configured row.
     it "enables Quick Email Send and offers Participant Registration Confirmation even with no row configured" do
       event = create_event
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       get admin_event_email_templates_path(event)
 
@@ -48,7 +48,7 @@ RSpec.describe "Admin Console email templates", type: :request do
 
     it "adds Quick Email to the modal once it's configured and active, not before" do
       event = create_event
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       get admin_event_email_templates_path(event)
       expect(response.body).not_to include(%(<option value="quick_send">))
@@ -64,7 +64,7 @@ RSpec.describe "Admin Console email templates", type: :request do
       event = create_event
       Current.account = account
       create(:email_template, event: event, account: account, kind: :quick_send, active: false, subject: "x", html_body: "<p>x</p>")
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       get admin_event_email_templates_path(event)
 
@@ -75,7 +75,7 @@ RSpec.describe "Admin Console email templates", type: :request do
   describe "GET /admin/events/:event_id/email_templates/:kind/edit" do
     it "prefills the default template when no row exists yet" do
       event = create_event
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       get edit_admin_event_email_template_path(event, kind: "participant_registration")
 
@@ -85,7 +85,7 @@ RSpec.describe "Admin Console email templates", type: :request do
 
     it "404s for an unknown kind" do
       event = create_event
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       # ActiveRecord::RecordNotFound is one of Rails' own "rescuable" exceptions, rendered as a
       # real 404 response rather than propagating — same convention spec/requests/admin_events_spec.rb
@@ -99,7 +99,7 @@ RSpec.describe "Admin Console email templates", type: :request do
   describe "PATCH /admin/events/:event_id/email_templates/:kind" do
     it "creates the row on first save (no separate new/create step), scoped to this event" do
       event = create_event
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       expect {
         patch admin_event_email_template_path(event, kind: "participant_registration"),
@@ -114,7 +114,7 @@ RSpec.describe "Admin Console email templates", type: :request do
 
     it "requires owner/event_manager" do
       event = create_event
-      sign_in_with_role(:checkin_staff)
+      sign_in_with_role(:admin_staff)
 
       patch admin_event_email_template_path(event, kind: "participant_registration"),
         params: { email_template: { subject: "x", html_body: "<p>x</p>" } }
@@ -127,7 +127,7 @@ RSpec.describe "Admin Console email templates", type: :request do
       other_event = create_event
       Current.account = account
       create(:email_template, event: other_event, account: account, kind: :participant_registration, subject: "Other event's own")
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       patch admin_event_email_template_path(event, kind: "participant_registration"),
         params: { email_template: { subject: "This event's own", html_body: "<p>x</p>", active: "1" } }
@@ -144,7 +144,7 @@ RSpec.describe "Admin Console email templates", type: :request do
       event = create_event
       Current.account = account
       create(:email_template, event: event, account: account, kind: :participant_registration)
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       delete admin_event_email_template_path(event, kind: "participant_registration")
 
@@ -157,7 +157,7 @@ RSpec.describe "Admin Console email templates", type: :request do
   describe "POST /admin/events/:event_id/email_templates/:kind/preview" do
     it "renders unsaved editor content against sample data and the event's own real details" do
       event = create_event(name: "Annual Meetup")
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       post preview_admin_event_email_template_path(event, kind: "participant_registration"),
         params: { subject: "Hi $FIRST_NAME$", html_body: "<p>$PARTICIPANT_NAME$ — $EVENT_NAME$</p>" }.to_json,
@@ -179,7 +179,7 @@ RSpec.describe "Admin Console email templates", type: :request do
       event = create_event
       Current.account = account
       create(:email_template, event: event, account: account, kind: :quick_send, subject: "x", html_body: "<p>x</p>")
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       expect {
         post quick_send_admin_event_email_templates_path(event), params: { kind: "quick_send" }
@@ -196,7 +196,7 @@ RSpec.describe "Admin Console email templates", type: :request do
     # configured too, unlike :quick_send above.
     it "allows selecting :participant_registration with no EmailTemplate row configured at all" do
       event = create_event
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       expect {
         post quick_send_admin_event_email_templates_path(event), params: { kind: "participant_registration" }
@@ -207,7 +207,7 @@ RSpec.describe "Admin Console email templates", type: :request do
 
     it "does not enqueue anything and shows an alert when the selected kind isn't configured" do
       event = create_event
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       expect {
         post quick_send_admin_event_email_templates_path(event), params: { kind: "quick_send" }
@@ -218,7 +218,7 @@ RSpec.describe "Admin Console email templates", type: :request do
 
     it "rejects an unknown kind" do
       event = create_event
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       expect {
         post quick_send_admin_event_email_templates_path(event), params: { kind: "not_a_real_kind" }
@@ -229,7 +229,7 @@ RSpec.describe "Admin Console email templates", type: :request do
 
     it "requires owner/event_manager" do
       event = create_event
-      sign_in_with_role(:checkin_staff)
+      sign_in_with_role(:admin_staff)
 
       expect {
         post quick_send_admin_event_email_templates_path(event), params: { kind: "participant_registration" }

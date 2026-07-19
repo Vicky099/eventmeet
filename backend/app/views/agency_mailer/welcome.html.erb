@@ -1,0 +1,14 @@
+<%= render "shared/mailer/heading", title: "Welcome to xEvent", subtitle: @agency.name %>
+
+<div style="color:#686868;padding-top:16px;font-size:13px;line-height:1.6;">
+  <strong style="color:#1f1f1f;"><%= @agency.name %></strong> has been set up as an agency, and you've been added as its agency admin.
+</div>
+
+<%= render "shared/mailer/details_table", rows: [
+  [ "Email", @user.email ],
+  [ "Temporary password", @temp_password ]
+] %>
+
+<%= render "shared/mailer/button", url: new_user_session_url, label: "Sign in to xEvent →" %>
+
+<%= render "shared/mailer/notice", body: "You'll be asked to set a new password the first time you sign in." %>

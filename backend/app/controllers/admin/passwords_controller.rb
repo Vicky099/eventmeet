@@ -8,6 +8,10 @@ module Admin
     # flow, which explicitly signs the user out before redirecting here — see
     # Admin::SessionsController#create).
     skip_before_action :authenticate_user!
+    # Fixed-hierarchy pivot (requirement.md revisit) — same reasoning as
+    # Admin::SessionsController's own identical skip: password reset must work on an agency
+    # subdomain exactly as it does on a tenant one.
+    skip_before_action :redirect_agency_context_to_agency_console
 
     layout "auth"
 

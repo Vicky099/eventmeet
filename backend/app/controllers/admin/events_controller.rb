@@ -7,6 +7,13 @@ module Admin
   # workspace's own landing page — reachable from the Events index and every event-scoped nav
   # entry (AdminHelper#event_nav_items) — a read-only overview + a way back into `#edit` to keep
   # configuring, not a copy of any wizard step.
+  #
+  # Fixed-hierarchy pivot (requirement.md revisit, confirmed with the user): "remove all the
+  # workflows where super admin allow to create the events" — no more Quotation picker, no more
+  # Super Admin content-review step. Every tenant's Account belongs to an Agency (Agency::
+  # AccountsController is the only place a new one is created); Event's own agency_contract_must_be_active
+  # validation is the real, hard gate on #create/#duplicate — this controller no longer needs its
+  # own pre-check branch the way the removed quotation flow did.
   class EventsController < BaseController
     # Order matters — it's also the Next/Previous adjacency (#next_step below). Sessions/Speaker/
     # Event Schedule (Admin::EventSessionsController/Admin::SpeakersController/
@@ -19,44 +26,23 @@ module Admin
     # step besides Basic Info with a real form here, same "Next saves it" shape.
     STEPS = %w[basic_info sessions speaker event_schedule tickets badge review].freeze
 
-    before_action :set_event, only: [ :show, :edit, :update, :duplicate, :publish, :submit_for_review ]
+    before_action :set_event, only: [ :show, :edit, :update, :duplicate, :publish ]
 
     def index
       authorize Event
       @status_filter = params[:status].to_s.presence_in(Event.statuses.keys)
       @events = Current.account.events.order(created_at: :desc)
       @events = @events.where(status: @status_filter) if @status_filter
-      # Phase 15, revisited: "New Event" opens a modal to pick one of these first — none
-      # available means the modal shows a "request one first" link instead of a picker.
-      @approved_quotations = Current.account.quotations.approved.where.missing(:event)
+      @agency = Current.account.agency
     end
 
-    # Phase 15 — Platform Billing & Invoicing, revisited (requirement.md §4.6, confirmed with the
-    # user): every event now requires an approved Quotation picked up front — the Admin::Events
-    # index shows a modal to pick one before ever reaching this form (see index.html.erb), so by
-    # the time #new renders, `params[:quotation_id]` should already be a legal choice. Redirect
-    # back to the index (rather than rendering a broken form) if it's missing or already consumed
-    # — Event#quotation_must_be_approved_and_available is the real hard gate on #create, this is
-    # just keeping a stray direct GET from landing on a dead-end form.
     def new
-      quotation = Current.account.quotations.approved.where.missing(:event).find_by(id: params[:quotation_id])
-
-      if quotation.nil?
-        redirect_to admin_events_path, alert: "Select an approved quotation to create an event."
-        return
-      end
-
-      @event = Current.account.events.build(quotation: quotation)
+      @event = Current.account.events.build
       authorize @event
     end
 
-    # No pre-check redirect here (unlike #new) — a bad/missing quotation_id is left for
-    # Event#quotation_must_be_approved_and_available (the belongs_to's own presence check, or the
-    # custom one) to reject, so the form re-renders with a real inline error instead of silently
-    # bouncing back to the index.
     def create
-      quotation = Current.account.quotations.find_by(id: params[:event][:quotation_id])
-      @event = Current.account.events.build(event_params.merge(quotation: quotation))
+      @event = Current.account.events.build(event_params)
       authorize @event
 
       if @event.save
@@ -67,9 +53,9 @@ module Admin
     end
 
     # The event-workspace landing page (see the class comment above) — real data, not a stub:
-    # status/approval badges (same as the wizard's own top row), a few live counts, and the core
-    # setup details, plus a way into #edit to keep configuring. EventPolicy#show? (any member) is
-    # the same permissive check every other read view in this controller already uses.
+    # status badge (same as the wizard's own top row), a few live counts, and the core setup
+    # details, plus a way into #edit to keep configuring. EventPolicy#show? (any member) is the
+    # same permissive check every other read view in this controller already uses.
     #
     # Registration status/ticket-category counts are computed fresh here (plain COUNT queries),
     # not read off EventLiveStats — confirmed live: that denormalized counter had drifted stale
@@ -129,19 +115,14 @@ module Admin
       end
     end
 
-    # The Review step's Publish button (requirement.md §5.2 revisited) — moves the event out of
-    # Draft via Event#publish!. Gated on the Super Admin's approval, not just basic_info_complete?
-    # — the tenant only ever sees/can use this button once `@event.approved?`, so publishing is
-    # now the last step in the chain: submit for review -> Super Admin approves -> tenant
-    # publishes. (basic_info_complete? is checked too, but is effectively always true by the time
-    # an event is approved — submit_for_review already required it, and nothing un-completes those
-    # fields afterward — kept as a defensive belt-and-suspenders check, not a real gap.)
+    # The Review step's Publish button — moves the event out of Draft via Event#publish!.
+    # Fixed-hierarchy pivot (requirement.md revisit): no more Super Admin approval gate — every
+    # event that exists at all already cleared Agency#contract_active? at creation time
+    # (Event#agency_contract_must_be_active), so the only thing left to check is the content itself.
     def publish
       authorize @event, :update?
 
-      if !@event.approved?
-        redirect_to edit_admin_event_path(@event, step: "review"), alert: "This event must be approved by a Super Admin before it can be published."
-      elsif @event.basic_info_complete?
+      if @event.basic_info_complete?
         @event.publish!
         redirect_to edit_admin_event_path(@event, step: "review"), notice: "#{@event.name} published."
       else
@@ -149,41 +130,15 @@ module Admin
       end
     end
 
-    # The Review step's "Submit for review" button (requirement.md §5.2, §4.7 item 2) — the only
-    # thing that ever puts an event in SuperAdmin::EventReviewsController's queue for the first
-    # time (Event#submit_for_review!, unsubmitted -> pending), also used to resubmit after a
-    # rejection. Same basic_info_complete? gate as #publish, for the same reason: nothing
-    # incomplete belongs in front of a Super Admin reviewer.
-    def submit_for_review
-      authorize @event, :update?
-
-      if @event.basic_info_complete?
-        @event.submit_for_review!
-        redirect_to edit_admin_event_path(@event, step: "review"), notice: "#{@event.name} submitted for review."
-      else
-        redirect_to edit_admin_event_path(@event, step: "review"), alert: "Finish the Basic Info step before submitting for review."
-      end
-    end
-
     # requirement.md Phase 4: "clone name/mode/participant_fields now; richer clone of
     # tickets/badges revisited once those phases exist" — also copies dates/location, since a
     # required NOT NULL starts_at/ends_at needs *some* value and copying is the most sensible
-    # default (the organizer adjusts after). approval_status/status/published_at deliberately
-    # reset to their defaults (unsubmitted/draft/nil) — a duplicate is a brand-new, unpublished,
-    # never-submitted event, not a copy of the original's review or publish state.
-    #
-    # Phase 15, revisited (requirement.md §4.6, confirmed with the user): "one quotation -> one
-    # event" applies here too — the original's own Quotation is already consumed by it, so a
-    # duplicate needs its own approved, not-yet-consumed Quotation, picked via the same per-row
-    # modal the index view now shows next to this button.
+    # default (the organizer adjusts after). status/published_at deliberately reset to their
+    # defaults (draft/nil) — a duplicate is a brand-new, unpublished event, not a copy of the
+    # original's publish state. Consumes another slot from the account's own Agency, same as any
+    # other #create (Event#agency_contract_must_be_active is the real gate either way).
     def duplicate
       authorize @event, :create?
-      quotation = Current.account.quotations.approved.where.missing(:event).find_by(id: params[:quotation_id])
-
-      if quotation.nil?
-        redirect_to admin_events_path, alert: "Select an approved quotation to duplicate this event."
-        return
-      end
 
       clone = Current.account.events.build(
         name: "Copy of #{@event.name}",
@@ -194,8 +149,7 @@ module Admin
         meeting_link: @event.meeting_link,
         map_url: @event.map_url,
         banner_orientation: @event.banner_orientation,
-        participant_fields: @event.participant_fields,
-        quotation: quotation
+        participant_fields: @event.participant_fields
       )
       clone.save!
       redirect_to edit_admin_event_path(clone), notice: "Duplicated as \"#{clone.name}\"."

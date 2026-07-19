@@ -13,3 +13,12 @@ Rails.application.config.x.platform_domain = ENV.fetch("PLATFORM_DOMAIN") do
     raise "PLATFORM_DOMAIN must be set explicitly in #{Rails.env} (requirement.md §4.3)"
   end
 end
+
+# requirement.md revisit: "as whatsApp is paid i want to track the usage and the approx amount" —
+# Gupshup bills per-message, not per-tenant, and there's no per-message cost anywhere in this
+# app's own data (Notification just tracks delivery state, requirement.md §3.10). This is a flat,
+# platform-wide approximation, not a real Gupshup invoice reconciliation — a stakeholder-set
+# figure (INR — the platform's own default currency, Currency module's own comment), ENV-
+# overridable once the actual Gupshup plan/rate is known, ₹0.80 in the meantime as a placeholder
+# in the ballpark of a Gupshup utility-template conversation.
+Rails.application.config.x.whatsapp_message_cost = BigDecimal(ENV.fetch("WHATSAPP_MESSAGE_COST", "0.80"))

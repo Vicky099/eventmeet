@@ -33,7 +33,7 @@ RSpec.describe "Admin Console registration forms", type: :request do
 
     it "blocks checkin_staff from viewing registration forms" do
       event = create_event
-      sign_in_with_role(:checkin_staff)
+      sign_in_with_role(:admin_staff)
 
       get admin_event_registration_forms_path(event)
 
@@ -42,7 +42,7 @@ RSpec.describe "Admin Console registration forms", type: :request do
 
     it "allows event_manager to view and create registration forms" do
       event = create_event
-      sign_in_with_role(:event_manager)
+      sign_in_with_role(:event_admin)
 
       get admin_event_registration_forms_path(event)
 
@@ -51,7 +51,7 @@ RSpec.describe "Admin Console registration forms", type: :request do
   end
 
   describe "GET /admin/events/:event_id/registration_forms" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "lists forms and which categories they apply to" do
       event = create_event
@@ -79,7 +79,7 @@ RSpec.describe "Admin Console registration forms", type: :request do
   end
 
   describe "POST /admin/events/:event_id/registration_forms" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "creates a form with catalog fields and a custom field" do
       event = create_event
@@ -217,7 +217,7 @@ RSpec.describe "Admin Console registration forms", type: :request do
   end
 
   describe "PATCH /admin/events/:event_id/registration_forms/:id" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "reassigns categories to reflect exactly what's checked, unassigning any left out" do
       event = create_event
@@ -260,7 +260,7 @@ RSpec.describe "Admin Console registration forms", type: :request do
   end
 
   describe "DELETE /admin/events/:event_id/registration_forms/:id" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "removes the form and unassigns (does not destroy) any category using it" do
       event = create_event
@@ -285,7 +285,7 @@ RSpec.describe "Admin Console registration forms", type: :request do
       Current.account = other_account
       other_event = create(:event, account: other_account)
 
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       # config.action_dispatch.show_exceptions = :rescuable in test (config/environments/test.rb)
       # — ActiveRecord::RecordNotFound is one of Rails' own "rescuable" exceptions, rendered as a

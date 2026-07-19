@@ -1,8 +1,12 @@
-# Included by the tenant Admin Console's Admin::BaseController. The routing constraint
-# (Hosting::TenantSubdomainConstraint) already guarantees the Host is a syntactically valid
-# tenant subdomain by the time we get here — this resolves it to a real Account (or 404s) and
-# sets Current.account, which every TenantScoped model's default_scope depends on
-# (requirement.md §4.2).
+# Included by both the tenant Admin Console's Admin::BaseController and the Agency Console's
+# AgencyConsole::BaseController (fixed-hierarchy pivot, requirement.md revisit) — both consoles share the
+# exact same subdomain routing constraint (Hosting::TenantSubdomainConstraint) and the exact same
+# :user Devise login (an agency_admin is an ordinary :user-scope User who also needs to log into
+# *tenant* subdomains with the same credentials, unlike :platform_staff's genuinely separate role/
+# scope — see AgencyConsole::BaseController's own comment). Resolves the Host to a real Account OR a real
+# Agency (or 404s if neither), setting Current.account or Current.agency accordingly — every
+# TenantScoped model's default_scope depends on the former (requirement.md §4.2); the latter is
+# what AgencyConsole::BaseController's own before_action requires instead.
 module TenantResolvable
   extend ActiveSupport::Concern
 
@@ -18,9 +22,15 @@ module TenantResolvable
     slug = Hosting::Resolver.new(request.host).subdomain_label
     account = Account.find_by(subdomain_slug: slug)
 
-    return head :not_found unless account
+    if account
+      Current.account = account
+      return
+    end
 
-    Current.account = account
+    agency = Agency.find_by(subdomain_slug: slug)
+    return head :not_found unless agency
+
+    Current.agency = agency
   end
 
   # requirement.md §4.2's database-level defense-in-depth (see lib/tenant_row_level_security.rb):

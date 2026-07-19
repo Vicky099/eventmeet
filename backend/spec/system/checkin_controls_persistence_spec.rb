@@ -29,7 +29,7 @@ RSpec.describe "Check-in kiosk controls persistence", type: :system do
   let!(:user) do
     Current.account = account
     u = create(:user, email: "checkin@acme.example", password: "password123!")
-    create(:account_membership, user: u, account: account, role: :owner)
+    create(:account_membership, user: u, account: account, role: :event_admin)
     u
   end
   let!(:event) { Current.account = account; create(:event, account: account) }

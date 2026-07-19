@@ -3,7 +3,7 @@
 # requirement.md §5.1: configurable roles/permissions per Account. Tenant-scoping itself (never
 # seeing another Account's rows) is already enforced at the ActiveRecord layer by TenantScoped
 # (app/models/concerns/tenant_scoped.rb) — Pundit's job here is role-based *visibility within* a
-# tenant (e.g. finance_readonly can't touch what owner can), not re-deriving isolation.
+# tenant (e.g. admin_staff can't touch what event_admin can), not re-deriving isolation.
 class ApplicationPolicy
   attr_reader :user, :record
 
@@ -55,8 +55,22 @@ class ApplicationPolicy
     @account_membership ||= user.account_memberships.find_by(account: Current.account)
   end
 
-  def owner?
-    account_membership&.owner?
+  def event_admin?
+    account_membership&.event_admin?
+  end
+
+  def admin_staff?
+    account_membership&.admin_staff?
+  end
+
+  # Agency layer (requirement.md revisit): true for a user with an AgencyMembership on ANY agency —
+  # nothing in this app scopes a request to "one specific agency" the way Current.account scopes a
+  # tenant request, so unlike account_membership above there's no single row to narrow to; every
+  # actual access decision this app makes still runs through the tenant's own AccountMembership
+  # (auto-created on every one of an agency's tenants — AccountProvisioning's own comment), so this
+  # exists for completeness/future use, not because any policy in this app calls it yet.
+  def agency_admin?
+    user&.agency_memberships&.exists?
   end
 
   class Scope

@@ -336,13 +336,7 @@ body[data-sidebar-size="sm"] {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  background: var(--bs-primary);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 13px;
+  object-fit: cover;
 }
 
 .checkin-brand-text {

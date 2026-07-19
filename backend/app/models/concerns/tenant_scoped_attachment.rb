@@ -23,7 +23,9 @@ module TenantScopedAttachment
 
     attachment = public_send(attachment_name)
     if uploaded_file.is_a?(String)
-      attachment.attach(uploaded_file)
+      blob = ActiveStorage::Blob.find_signed!(uploaded_file)
+      ensure_blob_identified(blob)
+      attachment.attach(blob)
     else
       attachment.attach(
         io: uploaded_file,
@@ -36,6 +38,30 @@ module TenantScopedAttachment
 
   def tenant_scoped_blob_key(*segments, filename:)
     TenantScopedAttachment.blob_key(account, *segments, filename: filename)
+  end
+
+  private
+
+  # Rails 8.0.5 bug (confirmed via reproduction): attaching a Blob that hasn't been identified
+  # yet — the normal state for every direct-upload blob, since analysis is deliberately deferred
+  # until first attach (Admin::DirectUploadsController creates it via
+  # ActiveStorage::Blob.create_before_direct_upload!, before any bytes exist server-side to
+  # analyze) — raises "ActiveRecord::ActiveRecordError: Cannot touch on a new or destroyed record
+  # object" from deep inside ActiveStorage::Blob#touch_attachments. What actually happens: the
+  # blob's own in-memory content_type/identified changes (set by
+  # ActiveStorage::Attached::Changes::CreateOne#initialize's own blob.identify_without_saving
+  # call) get autosaved mid-flight, while the brand-new join Attachment row is still being saved
+  # for the very first time. Blob's `after_update :touch_attachments` callback fires at that exact
+  # moment and, via bidirectional inverse_of association caching, finds and touches that
+  # still-unsaved Attachment. Identifying (and persisting) the blob up front, before .attach ever
+  # runs, means CreateOne#initialize's own identify_without_saving call becomes a no-op
+  # (blob.identified? already true) — no pending blob changes left to autosave mid-attach, so the
+  # buggy callback path never fires at all.
+  def ensure_blob_identified(blob)
+    return if blob.identified?
+
+    blob.identify_without_saving
+    blob.save! if blob.changed?
   end
 
   # Callable without an instance — Admin::DirectUploadsController needs to compute this exact same

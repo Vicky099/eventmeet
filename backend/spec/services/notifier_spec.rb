@@ -16,7 +16,7 @@ RSpec.describe Notifier do
     it "creates a pending email Notification and enqueues NotificationDeliveryJob" do
       expect {
         described_class.email(
-          mailer_class: EventMailer, mailer_method: :rejected, mailer_args: [ event, "owner@example.com" ],
+          mailer_class: BillingMailer, mailer_method: :invoice_sent, mailer_args: [ create(:invoice, event: event, account: account), "owner@example.com" ],
           notifiable: event, to: "owner@example.com", subject: "Needs changes"
         )
       }.to change(Notification, :count).by(1).and have_enqueued_job(NotificationDeliveryJob)
@@ -32,7 +32,7 @@ RSpec.describe Notifier do
 
     it "defaults account: to notifiable.account" do
       notification = described_class.email(
-        mailer_class: EventMailer, mailer_method: :rejected, mailer_args: [ event, "owner@example.com" ],
+        mailer_class: BillingMailer, mailer_method: :invoice_sent, mailer_args: [ create(:invoice, event: event, account: account), "owner@example.com" ],
         notifiable: event, to: "owner@example.com"
       )
 

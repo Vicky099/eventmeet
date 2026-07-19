@@ -8,8 +8,9 @@
       <table class="table table-hover align-middle mb-0">
         <thead>
           <tr>
-            <th>Event</th>
+            <th>Agency</th>
             <th>Tenant</th>
+            <th>Event</th>
             <th>Amount</th>
             <th>Status</th>
             <th class="text-end">Actions</th>
@@ -18,8 +19,9 @@
         <tbody>
           <% @invoices.each do |invoice| %>
             <tr>
-              <td><%= invoice.event.name %></td>
-              <td><%= invoice.account.name %></td>
+              <td><%= (invoice.account&.agency || invoice.agency).name %></td>
+              <td><%= invoice.account&.name || "—" %></td>
+              <td><%= invoice.event ? invoice.event.name : "Annual Contract" %></td>
               <td><%= money(invoice.amount, invoice.currency) %></td>
               <td>
                 <% if invoice.paid? %>
@@ -33,14 +35,14 @@
                 <% end %>
               </td>
               <td class="text-end">
-                <%= link_to platform_invoice_path(invoice), class: "btn btn-sm btn-outline-primary", title: "View" do %>
+                <%= link_to platform_invoice_path(invoice), class: "btn btn-m btn-outline-primary", title: "View" do %>
                   <i class="bx bx-show"></i>
                 <% end %>
               </td>
             </tr>
           <% end %>
           <% if @invoices.none? %>
-            <tr><td colspan="5" class="text-center text-muted py-4">No invoices yet.</td></tr>
+            <tr><td colspan="6" class="text-center text-muted py-4">No invoices yet.</td></tr>
           <% end %>
         </tbody>
       </table>

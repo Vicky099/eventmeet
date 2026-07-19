@@ -20,7 +20,7 @@ RSpec.describe "Admin Console bulk print", type: :request do
   end
 
   describe "POST /admin/events/:event_id/bulk_print_runs" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "creates a run and enqueues BulkPrintRunJob" do
       event = create_event

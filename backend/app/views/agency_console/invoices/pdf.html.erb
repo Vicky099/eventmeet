@@ -1,0 +1,16 @@
+<%# Standalone HTML document for InvoicePdfService/Grover — rendered via render_to_string, never
+    served directly. Same shared/invoice_document partial the show page embeds, just without the
+    console's own layout/chrome around it, so the PDF and the on-screen page never visually drift
+    apart. Identical to super_admin/invoices/pdf.html.erb — kept as two small files (one per
+    controller namespace, Rails' own implicit view lookup) rather than one shared view, since
+    there's nothing left to extract beyond the one line already factored into the shared partial. %>
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Invoice INV-<%= @invoice.id[0..7].upcase %></title>
+  </head>
+  <body style="margin: 0; padding: 0;">
+    <%= render "shared/invoice_document", invoice: @invoice %>
+  </body>
+</html>

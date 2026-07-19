@@ -2,7 +2,7 @@
 
 <%= render layout: "shared/page_header",
   locals: { icon: "bx-calendar-check", crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: edit_admin_event_path(@event) }, { label: "Event Schedule" } ] } do %>
-  <%= link_to "New Talk", new_admin_event_schedule_path(@event), class: "btn btn-sm btn-primary" %>
+  <%= link_to "New Talk", new_admin_event_schedule_path(@event), class: "btn btn-m btn-primary" %>
 <% end %>
 
 <%# requirement.md Phase 11 checklist: "multi-day/multi-track view ... time-grid editor" —

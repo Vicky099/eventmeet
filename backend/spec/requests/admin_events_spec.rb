@@ -24,14 +24,6 @@ RSpec.describe "Admin Console events", type: :request do
     Event.unscoped_across_tenants { Event.count }
   end
 
-  # Phase 15, revisited (requirement.md §4.6, confirmed with the user): every event now requires
-  # an approved, not-yet-consumed Quotation on this account — the standard "get a legal
-  # quotation_id to submit" setup step for the specs below.
-  def approved_quotation
-    Current.account = account
-    create(:quotation, :approved, account: account, requested_by: create(:user))
-  end
-
   describe "access control" do
     it "redirects an unauthenticated request to the tenant login" do
       get admin_events_path
@@ -43,7 +35,7 @@ RSpec.describe "Admin Console events", type: :request do
     # Phase 4 checklist means "the action is blocked," not a literal status code override just
     # for this one policy.
     it "blocks checkin_staff from creating an event" do
-      sign_in_with_role(:checkin_staff)
+      sign_in_with_role(:admin_staff)
 
       expect {
         post admin_events_path, params: {
@@ -57,7 +49,7 @@ RSpec.describe "Admin Console events", type: :request do
     end
 
     it "blocks finance_readonly from editing an event" do
-      sign_in_with_role(:finance_readonly)
+      sign_in_with_role(:admin_staff)
       Current.account = account
       event = create(:event, account: account)
 
@@ -66,13 +58,12 @@ RSpec.describe "Admin Console events", type: :request do
       expect(response).to redirect_to(user_root_path)
     end
 
-    it "allows event_manager to create and edit events" do
-      quotation = approved_quotation
-      sign_in_with_role(:event_manager)
+    it "allows event_admin to create and edit events" do
+      sign_in_with_role(:event_admin)
 
       expect {
         post admin_events_path, params: {
-          event: { name: "Manager Event", mode: "on_site", quotation_id: quotation.id, starts_at: 1.day.from_now, ends_at: 2.days.from_now, address: "123 Main St", map_url: "https://maps.google.com/?q=123" }
+          event: { name: "Manager Event", mode: "on_site", starts_at: 1.day.from_now, ends_at: 2.days.from_now, address: "123 Main St", map_url: "https://maps.google.com/?q=123" }
         }
       }.to change { event_count }.by(1)
 
@@ -82,27 +73,37 @@ RSpec.describe "Admin Console events", type: :request do
       expect(response).to have_http_status(:ok)
     end
 
-    it "allows owner to create and edit events" do
-      quotation = approved_quotation
-      sign_in_with_role(:owner)
+    # requirement.md revisit: "once event complete the tenant can not able to edit the event" —
+    # locked for event_admin too, not just a lesser role (event_admin is already the tenant's
+    # highest tier, EventPolicy#update?'s own comment). Sessions/Speaker/Schedule/Badge all
+    # authorize through this same Event (EventPolicy's own comment), so this one check covers all
+    # of them without a dedicated test per sub-resource.
+    it "blocks event_admin from editing a completed event" do
+      sign_in_with_role(:event_admin)
+      Current.account = account
+      event = create(:event, account: account, status: :completed)
 
-      post admin_events_path, params: {
-        event: { name: "Owner Event", mode: "on_site", quotation_id: quotation.id, starts_at: 1.day.from_now, ends_at: 2.days.from_now, address: "123 Main St", map_url: "https://maps.google.com/?q=123" }
-      }
+      get edit_admin_event_path(event)
+      expect(response).to redirect_to(user_root_path)
 
-      expect(response).to redirect_to(%r{/admin/events/owner-event/edit})
+      patch admin_event_path(event), params: { event: { name: "Renamed" } }
+      expect(response).to redirect_to(user_root_path)
+      expect(event.reload.name).not_to eq("Renamed")
     end
   end
 
+  # Fixed-hierarchy pivot (requirement.md revisit): every tenant's Account already has an Agency
+  # (spec/factories/accounts.rb's own default) — no more Quotation, no per-event Super Admin
+  # review, so creation is unconditional here (Event#agency_contract_must_be_active's own dedicated
+  # pool-exhaustion coverage lives in spec/models/event_spec.rb; this file only needs the
+  # request-level "no quotation field, no quotation picker" surface).
   describe "POST /admin/events" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
-    it "creates the event and redirects to the wizard's first step" do
-      quotation = approved_quotation
-
+    it "creates the event and redirects to the wizard's first step, auto-approved, consuming one agency pool slot" do
       post admin_events_path, params: {
         event: {
-          name: "Annual Meetup", mode: "on_site", quotation_id: quotation.id,
+          name: "Annual Meetup", mode: "on_site",
           starts_at: "2026-08-01T09:00", ends_at: "2026-08-01T17:00",
           address: "123 Main St", map_url: "https://maps.google.com/?q=123"
         }
@@ -112,66 +113,49 @@ RSpec.describe "Admin Console events", type: :request do
       expect(response).to redirect_to(edit_admin_event_path(event, step: "basic_info"))
       expect(event.account).to eq(account)
       expect(event.status).to eq("draft")
-      expect(event.quotation_id).to eq(quotation.id)
+      Current.account = account
+      expect(account.agency.reload.events_used).to eq(1)
     end
 
     it "re-renders the form with errors when invalid" do
-      quotation = approved_quotation
-
       expect {
-        post admin_events_path, params: { event: { name: "", mode: "on_site", quotation_id: quotation.id } }
+        post admin_events_path, params: { event: { name: "", mode: "on_site" } }
       }.not_to change { event_count }
 
       expect(response).to have_http_status(:unprocessable_content)
     end
-  end
 
-  # Phase 15 — Platform Billing & Invoicing, revisited (requirement.md §4.6, confirmed with the
-  # user): "one quotation -> one event" — the gate that blocks creation without an approved,
-  # not-yet-consumed Quotation.
-  describe "POST /admin/events (quotation gate)" do
-    before { sign_in_with_role(:owner) }
+    it "shows New Event as a plain link, with no quotation-picker modal, on the index" do
+      get admin_events_path
 
-    def event_params(quotation_id: nil)
-      {
-        event: {
-          name: "Business Summit", mode: "on_site", quotation_id: quotation_id,
-          starts_at: 1.day.from_now, ends_at: 2.days.from_now, address: "123 Main St", map_url: "https://maps.google.com/?q=123"
-        }
-      }
+      expect(response.body).to include(new_admin_event_path)
+      expect(response.body).not_to include("new-event-modal")
     end
 
-    it "blocks creation with no quotation selected" do
-      expect { post admin_events_path, params: event_params }.not_to change { event_count }
+    it "renders the new-event form with no quotation field" do
+      get new_admin_event_path
 
-      expect(response).to have_http_status(:unprocessable_content)
+      expect(response).to have_http_status(:ok)
+      expect(response.body).not_to include('name="event[quotation_id]"')
     end
 
-    it "blocks creation against a quotation that hasn't been approved yet" do
+    it "blocks creation once the account's agency pool is exhausted" do
       Current.account = account
-      quotation = create(:quotation, :sent, account: account, requested_by: create(:user))
+      account.agency.update!(events_granted: 0, events_used: 0)
+      Current.account = nil
 
       expect {
-        post admin_events_path, params: event_params(quotation_id: quotation.id)
+        post admin_events_path, params: {
+          event: { name: "Overflow Event", mode: "on_site", starts_at: 1.day.from_now, ends_at: 2.days.from_now, address: "123 Main St", map_url: "https://maps.google.com/?q=123" }
+        }
       }.not_to change { event_count }
 
       expect(response).to have_http_status(:unprocessable_content)
-    end
-
-    it "unblocks creation immediately once the quotation is approved" do
-      quotation = approved_quotation
-
-      expect {
-        post admin_events_path, params: event_params(quotation_id: quotation.id)
-      }.to change { event_count }.by(1)
-
-      event = Event.unscoped_across_tenants { Event.find_by!(name: "Business Summit") }
-      expect(event.quotation_id).to eq(quotation.id)
     end
   end
 
   describe "PATCH /admin/events/:id (wizard step save)" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "saves the step and advances to the next one" do
       Current.account = account
@@ -266,24 +250,11 @@ RSpec.describe "Admin Console events", type: :request do
   end
 
   describe "POST /admin/events/:id/publish" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
-    it "refuses to publish an event that hasn't been approved yet" do
-      Current.account = account
-      event = create(:event, account: account)
-
-      post publish_admin_event_path(event)
-
-      expect(event.reload.published_at).to be_nil
-      expect(response).to redirect_to(edit_admin_event_path(event, step: "review"))
-      follow_redirect!
-      expect(response.body).to include("must be approved")
-    end
-
-    it "publishes a complete, approved event and computes its current status from the schedule" do
+    it "publishes a complete event and computes its current status from the schedule" do
       Current.account = account
       event = create(:event, account: account, starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
-      event.approve!(by: create(:user, :platform_staff))
 
       post publish_admin_event_path(event)
 
@@ -293,13 +264,12 @@ RSpec.describe "Admin Console events", type: :request do
       expect(response).to redirect_to(edit_admin_event_path(event, step: "review"))
     end
 
-    it "refuses to publish an incomplete event, even if approved" do
+    it "refuses to publish an incomplete event" do
       # basic_info_complete? mirrors the same presence/location rules the model already validates
       # on every save, so a *persisted* Event can't normally fail it — stubbed here purely to
       # exercise the controller's guard branch in isolation.
       Current.account = account
       event = create(:event, account: account)
-      event.approve!(by: create(:user, :platform_staff))
       allow_any_instance_of(Event).to receive(:basic_info_complete?).and_return(false)
 
       post publish_admin_event_path(event)
@@ -311,7 +281,6 @@ RSpec.describe "Admin Console events", type: :request do
     it "reverts a published event back to draft once any content field is edited again" do
       Current.account = account
       event = create(:event, account: account, starts_at: 1.day.from_now, ends_at: 2.days.from_now)
-      event.approve!(by: create(:user, :platform_staff))
       post publish_admin_event_path(event)
       expect(event.reload.status).to eq("up_coming")
 
@@ -325,17 +294,15 @@ RSpec.describe "Admin Console events", type: :request do
       expect(event.status).to eq("draft")
     end
 
-    it "can be re-published without a new approval after an edit reverted it (re-approval-on-edit, §5.2 v8)" do
+    it "can be re-published after an edit reverted it" do
       Current.account = account
       event = create(:event, account: account, starts_at: 1.day.from_now, ends_at: 2.days.from_now)
-      event.approve!(by: create(:user, :platform_staff))
       post publish_admin_event_path(event)
       patch admin_event_path(event), params: {
         step: "basic_info",
         event: { name: "Edited Again", mode: event.mode, starts_at: event.starts_at, ends_at: event.ends_at, address: event.address }
       }
-      expect(event.reload.approval_status).to eq("approved")
-      expect(event.published_at).to be_nil
+      expect(event.reload.published_at).to be_nil
 
       post publish_admin_event_path(event)
 
@@ -343,65 +310,25 @@ RSpec.describe "Admin Console events", type: :request do
     end
   end
 
-  describe "POST /admin/events/:id/submit_for_review" do
-    before { sign_in_with_role(:owner) }
-
-    it "submits a brand-new (unsubmitted) event for review, putting it in the queue for the first time" do
-      Current.account = account
-      event = create(:event, account: account)
-      expect(event.approval_status).to eq("unsubmitted")
-
-      post submit_for_review_admin_event_path(event)
-
-      event.reload
-      expect(event.approval_status).to eq("pending")
-      expect(event.submitted_at).to be_present
-      expect(response).to redirect_to(edit_admin_event_path(event, step: "review"))
-    end
-
-    it "resubmits a rejected event back to pending and clears the previous rejection" do
-      Current.account = account
-      event = create(:event, account: account)
-      event.reject!(reason: "Fix the schedule")
-
-      post submit_for_review_admin_event_path(event)
-
-      event.reload
-      expect(event.approval_status).to eq("pending")
-      expect(event.rejection_reason).to be_nil
-      expect(response).to redirect_to(edit_admin_event_path(event, step: "review"))
-    end
-
-    it "refuses to submit an incomplete event" do
-      Current.account = account
-      event = create(:event, account: account)
-      allow_any_instance_of(Event).to receive(:basic_info_complete?).and_return(false)
-
-      post submit_for_review_admin_event_path(event)
-
-      expect(event.reload.approval_status).to eq("unsubmitted")
-      expect(response).to redirect_to(edit_admin_event_path(event, step: "review"))
-    end
-  end
-
   describe "POST /admin/events/:id/duplicate" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
-    it "clones name/mode/participant_fields/dates into a new draft, unsubmitted event" do
+    it "clones name/mode/participant_fields/dates into a new draft event, consuming another agency pool slot" do
       Current.account = account
       original = create(:event, account: account, name: "Original", participant_fields: { "email" => true })
-      quotation = approved_quotation
+      Current.account = nil
 
       expect {
-        post duplicate_admin_event_path(original), params: { quotation_id: quotation.id }
+        post duplicate_admin_event_path(original)
       }.to change { event_count }.by(1)
 
       clone = Event.unscoped_across_tenants { Event.find_by!(name: "Copy of Original") }
       expect(clone.mode).to eq(original.mode)
       expect(clone.participant_fields).to eq(original.participant_fields)
       expect(clone.status).to eq("draft")
-      expect(clone.approval_status).to eq("unsubmitted")
       expect(response).to redirect_to(edit_admin_event_path(clone))
+      Current.account = account
+      expect(account.agency.reload.events_used).to eq(2)
     end
   end
 
@@ -409,7 +336,7 @@ RSpec.describe "Admin Console events", type: :request do
   # (the creation wizard), a read-only overview reachable from the Events index and every
   # event-scoped nav entry.
   describe "GET /admin/events/:id (show)" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "renders the event's own overview" do
       Current.account = account
@@ -421,6 +348,19 @@ RSpec.describe "Admin Console events", type: :request do
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Annual Meetup")
       expect(response.body).to include(event.status.humanize)
+    end
+
+    # requirement.md revisit: "once event complete the tenant can not able to edit the event" —
+    # the workspace landing page's own "Continue Setup" link back into the wizard.
+    it "disables Continue Setup for a completed event" do
+      Current.account = account
+      event = create(:event, account: account, status: :completed)
+
+      get admin_event_path(event)
+
+      doc = Nokogiri::HTML(response.body)
+      expect(doc.at_css("a[href='#{edit_admin_event_path(event)}']")).to be_nil
+      expect(doc.css("button").map(&:text)).to include("Continue Setup")
     end
 
     # requirement.md §5.14 v12: "once inside an event's own workspace, the sidebar switches to
@@ -519,9 +459,6 @@ RSpec.describe "Admin Console events", type: :request do
 
     it "adds Absent to the Check-in Funnel only once the event has completed" do
       travel_to(Time.zone.local(2026, 1, 1)) do
-        MonthlyRangePartitioning.ensure_partitions!(ActiveRecord::Base.connection, :scan_events, partition_column: :scanned_at, months_behind: 0, months_ahead: 0)
-        MonthlyRangePartitioning.ensure_partitions!(ActiveRecord::Base.connection, :attendances, partition_column: :occurred_at, months_behind: 0, months_ahead: 0)
-
         Current.account = account
         event = create(:event, account: account, starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
         create(:participant, account: account, event: event)
@@ -556,7 +493,7 @@ RSpec.describe "Admin Console events", type: :request do
   end
 
   describe "GET /admin/events/:id/edit (wizard step rendering)" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     # Regression: `image_tag(attachment)` 500s the moment it's exercised against a real attached
     # photo ("no implicit conversion of ActiveStorage::Attached::One into String"), compounded by
@@ -592,7 +529,7 @@ RSpec.describe "Admin Console events", type: :request do
   end
 
   describe "GET /admin/events (index)" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "filters by status" do
       Current.account = account
@@ -604,6 +541,22 @@ RSpec.describe "Admin Console events", type: :request do
 
       expect(response.body).to include("Live Event")
       expect(response.body).not_to include("Draft Event")
+    end
+
+    # requirement.md revisit: "once event complete the tenant can not able to edit the event" —
+    # the row-level Edit link itself, not just the server-side block spec/requests/
+    # admin_events_spec.rb's own "blocks event_admin from editing a completed event" test covers;
+    # a completed event's row shows a disabled button instead of a link that would only ever
+    # bounce back "not authorized."
+    it "shows a disabled Edit button (not a link) for a completed event" do
+      Current.account = account
+      event = create(:event, account: account, name: "Wrapped Up Event", status: :completed)
+
+      get admin_events_path
+
+      row = Nokogiri::HTML(response.body).css("table tbody tr").find { |tr| tr.text.include?("Wrapped Up Event") }
+      expect(row.at_css("a[href='#{edit_admin_event_path(event)}']")).to be_nil
+      expect(row.at_css("button[disabled]")).to be_present
     end
 
     it "shows the account-level sidebar (no event in context yet)" do
@@ -621,7 +574,7 @@ RSpec.describe "Admin Console events", type: :request do
       Current.account = other_account
       other_event = create(:event, account: other_account, name: "Other Tenant Event")
 
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       # config.action_dispatch.show_exceptions = :rescuable in test (config/environments/test.rb)
       # — ActiveRecord::RecordNotFound is one of Rails' own "rescuable" exceptions, rendered as a
@@ -636,7 +589,7 @@ RSpec.describe "Admin Console events", type: :request do
       Current.account = other_account
       other_event = create(:event, account: other_account, name: "Other Tenant Event")
 
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       get admin_event_path(other_event.slug)
 
@@ -648,7 +601,7 @@ RSpec.describe "Admin Console events", type: :request do
       Current.account = other_account
       other_event = create(:event, account: other_account, name: "Other Tenant Event 2")
 
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       patch admin_event_path(other_event.slug), params: { event: { name: "Hijacked" } }
 

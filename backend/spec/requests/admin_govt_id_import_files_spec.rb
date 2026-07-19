@@ -34,7 +34,7 @@ RSpec.describe "Admin Console govt ID import", type: :request do
   end
 
   describe "GET /admin/events/:event_id/govt_id_import_files/new" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "shows the current pool's available/assigned counts and links to the sample template" do
       event = create_event
@@ -54,7 +54,7 @@ RSpec.describe "Admin Console govt ID import", type: :request do
   end
 
   describe "POST /admin/events/:event_id/govt_id_import_files" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "attaches the upload, enqueues GovtIdImportJob, and redirects to the progress page" do
       event = create_event
@@ -81,7 +81,7 @@ RSpec.describe "Admin Console govt ID import", type: :request do
   end
 
   describe "GET /admin/events/:event_id/govt_id_import_files/sample" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "downloads a real single-column workbook GovtIdImportJob itself can read straight back in" do
       event = create_event
@@ -107,7 +107,7 @@ RSpec.describe "Admin Console govt ID import", type: :request do
   describe "access control" do
     it "blocks checkin_staff from starting a govt ID import" do
       event = create_event
-      sign_in_with_role(:checkin_staff)
+      sign_in_with_role(:admin_staff)
 
       post admin_event_govt_id_import_files_path(event), params: { govt_id_import_file: {} }
 
@@ -129,7 +129,7 @@ RSpec.describe "Admin Console govt ID import", type: :request do
       Current.account = other_account
       other_event = create(:event, account: other_account)
 
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       get new_admin_event_govt_id_import_file_path(other_event.slug)
 

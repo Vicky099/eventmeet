@@ -10,6 +10,10 @@ module Admin
     # via config.parent_controller = "Admin::BaseController", config/initializers/devise.rb) would
     # otherwise make the login page itself require being already logged in.
     skip_before_action :authenticate_user!
+    # Fixed-hierarchy pivot (requirement.md revisit): also inherited from Admin::BaseController —
+    # login must work identically whether TenantResolvable resolved a tenant or an agency subdomain
+    # (the check this skips only matters for *substantive* tenant-only actions past the login page).
+    skip_before_action :redirect_agency_context_to_agency_console
 
     layout "auth"
 
@@ -56,8 +60,12 @@ module Admin
     # correctness depends on devise_for registration order. stored_location_for is preserved —
     # e.g. hitting a protected admin URL while signed out still returns you there after login,
     # only the *fallback* (no stored location) is pinned to this scope's own root.
+    # Fixed-hierarchy pivot (requirement.md revisit): user_root_path (admin/dashboard) is the
+    # tenant Admin Console's own landing page — wrong destination entirely for a login that just
+    # resolved against an agency subdomain (Current.agency, TenantResolvable's own lenient
+    # resolution), which needs agency_root_path (AgencyConsole::DashboardController) instead.
     def after_sign_in_path_for(resource_or_scope)
-      stored_location_for(resource_or_scope) || user_root_path
+      stored_location_for(resource_or_scope) || (Current.agency ? agency_root_path : user_root_path)
     end
   end
 end

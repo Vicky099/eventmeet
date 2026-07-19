@@ -7,7 +7,7 @@
 # requirement.md, so these are illustrative until the platform operator provides real ones (set the
 # matching ENV vars in production; the fallback values below only show up in dev/test).
 module PlatformBankDetails
-  ACCOUNT_NAME = ENV.fetch("PLATFORM_BANK_ACCOUNT_NAME", "EventMeet Platform Pvt Ltd")
+  ACCOUNT_NAME = ENV.fetch("PLATFORM_BANK_ACCOUNT_NAME", "xEvent Platform Pvt Ltd")
   ACCOUNT_NUMBER = ENV.fetch("PLATFORM_BANK_ACCOUNT_NUMBER", "000000000000")
   IFSC_CODE = ENV.fetch("PLATFORM_BANK_IFSC_CODE", "PLAT0000000")
   BANK_NAME = ENV.fetch("PLATFORM_BANK_NAME", "Placeholder Bank")

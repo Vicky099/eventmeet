@@ -42,7 +42,7 @@
             <td><%= badge.output_type.humanize %></td>
             <td><%= badge.width_cm %> &times; <%= badge.height_cm %></td>
             <td class="text-end">
-              <button type="button" class="btn btn-sm btn-outline-secondary" title="Preview"
+              <button type="button" class="btn btn-m btn-outline-secondary" title="Preview"
                       data-bs-toggle="modal" data-bs-target="#badge-preview-modal-<%= badge.id %>">
                 <i class="bx bx-show"></i>
               </button>
@@ -58,16 +58,16 @@
                       pattern elsewhere in this app already uses for anything that isn't instantly
                       undoable. %>
                   <% if copy_targets.any? %>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" title="Copy to another ticket category"
+                    <button type="button" class="btn btn-m btn-outline-secondary" title="Copy to another ticket category"
                             data-bs-toggle="modal" data-bs-target="#badge-copy-modal-<%= badge.id %>">
                       <i class="bx bx-copy"></i>
                     </button>
                   <% end %>
-                  <%= link_to edit_admin_event_badge_path(event, badge), class: "btn btn-sm btn-outline-primary", title: "Edit" do %>
+                  <%= link_to edit_admin_event_badge_path(event, badge), class: "btn btn-m btn-outline-primary", title: "Edit" do %>
                     <i class="bx bx-edit"></i>
                   <% end %>
                   <%= button_to admin_event_badge_path(event, badge), method: :delete,
-                        class: "btn btn-sm btn-outline-danger", title: "Remove",
+                        class: "btn btn-m btn-outline-danger", title: "Remove",
                         data: { action: "click->confirm-dialog#show", title: "Remove Badge",
                                 message: "Remove #{badge.name}?", danger: "true" } do %>
                     <i class="bx bx-trash"></i>
@@ -107,7 +107,7 @@
           </div>
           <div class="modal-footer border-0 pt-3">
             <p class="text-muted font-size-12 me-auto mb-0">Preview uses sample participant data — QR/barcode and photo won't match a real attendee.</p>
-            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-secondary btn-m" data-bs-dismiss="modal">Close</button>
           </div>
         </div>
       </div>
@@ -133,8 +133,8 @@
                 <%= select_tag :ticket_category_id, options_for_select(copy_targets), id: "ticket_category_id_#{badge.id}", class: "form-select" %>
               </div>
               <div class="modal-footer border-0 pt-3">
-                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                <%= f.submit "Copy", class: "btn btn-primary btn-sm" %>
+                <button type="button" class="btn btn-outline-secondary btn-m" data-bs-dismiss="modal">Cancel</button>
+                <%= f.submit "Copy", class: "btn btn-primary btn-m" %>
               </div>
             <% end %>
           </div>

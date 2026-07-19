@@ -2,17 +2,9 @@
 # (check_in/check_out/manual_check_out/absent) tracked historically, not just as current state" —
 # one row per attendance-relevant ScanEvent (check_in/check_out), plus manual_check_out/absent
 # rows EventCompletionService writes when an event completes with participants still checked in
-# or never scanned at all. Monthly range-partitioned on `occurred_at`
-# (db/migrate/*_create_attendances.rb, lib/monthly_range_partitioning.rb) — same composite-primary-
-# key reasoning as ScanEvent.
+# or never scanned at all.
 class Attendance < ApplicationRecord
   include TenantScoped
-
-  # See ScanEvent's own comment on the identical line — Postgres' real primary key is the
-  # composite (id, occurred_at) pair (required for a partitioned table), but Rails auto-detecting
-  # that breaks ApplicationRecord's plain-UUID `id` assignment, so this is forced back to the
-  # single-column form at the ActiveRecord metadata level only.
-  self.primary_key = "id"
 
   belongs_to :event
   belongs_to :participant

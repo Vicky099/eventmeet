@@ -17,9 +17,9 @@
     <header class="checkin-header">
       <div class="checkin-header-inner">
         <div class="checkin-brand">
-          <span class="checkin-brand-mark">EM</span>
+          <%= tag.img src: ApplicationHelper::BRAND_LOGO_CIRCLE_URL, alt: "xEvent", class: "checkin-brand-mark" %>
           <div class="checkin-brand-text">
-            <span class="checkin-brand-app">EventMeet Check-in</span>
+            <span class="checkin-brand-app">xEvent Check-in</span>
             <% if @event %>
               <span class="checkin-brand-event"><%= @event.name %></span>
             <% end %>
@@ -52,7 +52,7 @@
         <% if @event %>
           <%= link_to "← Full dashboard", admin_event_scan_events_path(@event), class: "checkin-footer-link" %>
         <% end %>
-        <span class="checkin-footer-copy">&copy; <%= Date.current.year %> EventMeet</span>
+        <span class="checkin-footer-copy">&copy; <%= Date.current.year %> xEvent</span>
       </div>
     </footer>
 

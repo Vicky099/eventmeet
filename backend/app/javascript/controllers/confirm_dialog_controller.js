@@ -29,7 +29,7 @@ export default class extends Controller {
     modal.querySelector("#confirmDialogMessage").textContent = message
 
     const okBtn = modal.querySelector("#confirmDialogOk")
-    okBtn.className = `btn btn-sm ${danger ? "btn-danger" : "btn-primary"}`
+    okBtn.className = `btn btn-m ${danger ? "btn-danger" : "btn-primary"}`
 
     // Replace the button to wipe any previous confirmation's click listener rather than stacking
     // a new one on top each time the modal is reused for a different trigger.

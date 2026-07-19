@@ -1,0 +1,68 @@
+<%# requirement.md revisit: "when click on tenant name then open the modal and show tenant
+    details." Locals: account (Account), account_events (Array<Event>), participant_counts_by_event
+    (Hash) — all already loaded by the parent show action, no query of its own here. Read-only
+    details + the one piece of real oversight the removed standalone page still needs a home for:
+    Suspend/Reinstate (SuperAdmin::AccountsController, requirement.md revisit's own "this page ...
+    is not required" — everything else that page used to offer (edit) is gone, not relocated). %>
+<div class="modal fade" id="tenant-modal-<%= account.id %>" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-semibold"><%= account.name %></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <dl class="row mb-0">
+          <dt class="col-sm-4">Subdomain</dt>
+          <dd class="col-sm-8"><%= account.subdomain_slug %>.<%= Rails.application.config.x.platform_domain %></dd>
+
+          <dt class="col-sm-4">Status</dt>
+          <dd class="col-sm-8">
+            <span class="badge <%= account.active? ? "bg-success" : "bg-secondary" %>"><%= account.status.humanize %></span>
+          </dd>
+
+          <dt class="col-sm-4">Contact Email</dt>
+          <dd class="col-sm-8"><%= account.contact_email.presence || "—" %></dd>
+
+          <dt class="col-sm-4">Contact Number</dt>
+          <dd class="col-sm-8"><%= account.contact_num.presence || "—" %></dd>
+
+          <dt class="col-sm-4">Sender Email</dt>
+          <dd class="col-sm-8"><%= account.sender_email.presence || "—" %></dd>
+
+          <dt class="col-sm-4">Time Zone</dt>
+          <dd class="col-sm-8"><%= account.time_zone %></dd>
+
+          <dt class="col-sm-4">Created</dt>
+          <dd class="col-sm-8"><%= account.created_at.to_fs(:long) %></dd>
+
+          <dt class="col-sm-4">Events</dt>
+          <dd class="col-sm-8"><%= account_events.size %></dd>
+
+          <dt class="col-sm-4">Participants</dt>
+          <dd class="col-sm-8 mb-0"><%= account_events.sum { |event| participant_counts_by_event.fetch(event.id, 0) } %></dd>
+        </dl>
+      </div>
+      <div class="modal-footer border-0 pt-3">
+        <% if account.active? %>
+          <%= button_to suspend_platform_account_path(account), method: :patch,
+                class: "btn btn-m btn-outline-danger",
+                data: {
+                  action: "click->confirm-dialog#show",
+                  title: "Suspend Tenant",
+                  message: "Suspend #{account.name}? Its own admins won't be able to sign in until reinstated.",
+                  danger: "true"
+                } do %>
+            Suspend
+          <% end %>
+        <% else %>
+          <%= button_to reinstate_platform_account_path(account), method: :patch,
+                class: "btn btn-m btn-outline-success" do %>
+            Reinstate
+          <% end %>
+        <% end %>
+        <button type="button" class="btn btn-m btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>

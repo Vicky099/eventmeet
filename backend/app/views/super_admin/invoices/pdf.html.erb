@@ -1,6 +1,7 @@
 <%# Standalone HTML document for InvoicePdfService/Grover — rendered via render_to_string, never
-    served directly. Same _document partial the show page embeds, just without the console's own
-    layout/chrome around it, so the PDF and the on-screen page never visually drift apart. %>
+    served directly. Same shared/invoice_document partial the show page embeds, just without the
+    console's own layout/chrome around it, so the PDF and the on-screen page never visually drift
+    apart. %>
 <!DOCTYPE html>
 <html>
   <head>
@@ -8,6 +9,6 @@
     <title>Invoice INV-<%= @invoice.id[0..7].upcase %></title>
   </head>
   <body style="margin: 0; padding: 0;">
-    <%= render "document", invoice: @invoice %>
+    <%= render "shared/invoice_document", invoice: @invoice %>
   </body>
 </html>

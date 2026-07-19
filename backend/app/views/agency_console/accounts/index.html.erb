@@ -1,0 +1,82 @@
+<% content_for :page_title, "Tenants" %>
+
+<%# requirement.md revisit: "a sidebar which will have all the tenants with pagination" — the
+    full list behind the dashboard's own "View all" link (AgencyConsole::DashboardController's
+    Tenants card, capped to the latest 10) and its own sidebar entry (AgencyHelper#agency_nav_items). %>
+<%= render layout: "shared/page_header", locals: { icon: "bx-buildings",
+  crumbs: [ { label: Current.agency.name, path: agency_root_path }, { label: "Tenants" } ] } do %>
+  <% if @agency.contract_active? %>
+    <%= link_to "New Tenant", new_agency_account_path, class: "btn btn-m btn-primary" %>
+  <% else %>
+    <button type="button" class="btn btn-m btn-primary" disabled title="Your annual contract hasn't been paid yet">
+      New Tenant
+    </button>
+  <% end %>
+<% end %>
+
+<div class="card">
+  <div class="card-body">
+    <% if @accounts.none? %>
+      <%= render "shared/empty_state", icon: "bx-buildings", message: "No tenants yet — create your first one to get started." %>
+    <% else %>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Tenant</th>
+              <th>Status</th>
+              <th>Events</th>
+              <th>Participants</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @accounts.each do |account| %>
+              <tr>
+                <td><%= account.name %> <small class="text-muted">(<%= account.subdomain_slug %>)</small></td>
+                <td><span class="badge <%= account.active? ? "bg-success" : "bg-secondary" %>"><%= account.status.humanize %></span></td>
+                <td><%= @event_counts_by_account.fetch(account.id, 0) %></td>
+                <td><%= @participant_counts_by_account.fetch(account.id, 0) %></td>
+                <td class="text-end">
+                  <div class="d-flex justify-content-end gap-2">
+                    <% if account.active? %>
+                      <%# data-turbo="false" — same cross-subdomain reasoning as the dashboard's
+                          own identical button (app/views/agency_console/dashboard/index.html.erb's
+                          own comment). %>
+                      <%= button_to "Switch to this tenant", switch_agency_account_path(account), method: :post,
+                            class: "btn btn-m btn-outline-primary", form: { data: { turbo: false } } %>
+                      <%# requirement.md revisit: "have a action to suspend and reinstate" — mirrors
+                          super_admin/agencies/show.html.erb's own Suspend/Reinstate icon-button
+                          pair one tier down, scoped to just this agency's own tenants
+                          (AgencyConsole::AccountsController#suspend's own `Current.agency.accounts.find`
+                          is the authorization boundary). %>
+                      <%= button_to suspend_agency_account_path(account), method: :patch,
+                            class: "btn btn-m btn-outline-danger", title: "Suspend",
+                            data: {
+                              action: "click->confirm-dialog#show",
+                              title: "Suspend Tenant",
+                              message: "Suspend #{account.name}? Its own admins won't be able to sign in until reinstated.",
+                              danger: "true"
+                            } do %>
+                        <i class="bx bx-pause-circle"></i>
+                      <% end %>
+                    <% else %>
+                      <%= button_to reinstate_agency_account_path(account), method: :patch,
+                            class: "btn btn-m btn-outline-success", title: "Reinstate" do %>
+                        <i class="bx bx-play-circle"></i>
+                      <% end %>
+                    <% end %>
+                  </div>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  </div>
+</div>
+
+<div class="d-flex justify-content-end mt-3">
+  <%== pagy_nav(@pagy) if @accounts.any? %>
+</div>

@@ -1,15 +1,14 @@
-<h1>Welcome to EventMeet</h1>
+<%= render "shared/mailer/heading", title: "Welcome to xEvent", subtitle: @account.name %>
 
-<p>Your account, <strong><%= @account.name %></strong>, has been created. You've been added as its owner.</p>
+<div style="color:#686868;padding-top:16px;font-size:13px;line-height:1.6;">
+  Your account, <strong style="color:#1f1f1f;"><%= @account.name %></strong>, has been created. You've been added as its admin.
+</div>
 
-<p>
-  Sign in at
-  <%= link_to new_user_session_url, new_user_session_url %>
-</p>
+<%= render "shared/mailer/details_table", rows: [
+  [ "Email", @user.email ],
+  [ "Temporary password", @temp_password ]
+] %>
 
-<p>
-  Email: <strong><%= @user.email %></strong><br>
-  Temporary password: <strong><%= @temp_password %></strong>
-</p>
+<%= render "shared/mailer/button", url: new_user_session_url, label: "Sign in to xEvent →" %>
 
-<p>You'll be asked to set a new password the first time you sign in.</p>
+<%= render "shared/mailer/notice", body: "You'll be asked to set a new password the first time you sign in." %>

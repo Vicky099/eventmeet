@@ -6,7 +6,6 @@
 
 <div class="mb-3 d-flex align-items-center gap-2">
   <span class="badge bg-info-subtle text-info"><%= @event.status.humanize %></span>
-  <span class="badge <%= approval_status_badge_class(@event.approval_status) %>"><%= @event.approval_status.humanize %></span>
   <% if @event.published? %>
     <span class="badge bg-success-subtle text-success"><i class="bx bx-check-circle"></i> Published</span>
   <% end %>
@@ -49,9 +48,9 @@
     smaller 34px circles, a single thin connecting line behind them (one absolutely-positioned div,
     not a per-step connector), and steps that only take as much horizontal room as they need
     (`min-width` on the row + `overflow-auto`, not `flex-grow` stretching to fill the card) rather
-    than spreading out to fill whatever width the card happens to be. Kept EventMeet's own
+    than spreading out to fill whatever width the card happens to be. Kept xEvent's own
     per-step boxicon glyphs (shopmate's own version uses plain numbers instead, since its wizard is
-    sequentially gated and EventMeet's isn't).
+    sequentially gated and xEvent's isn't).
 
     Later feedback still: a third "done" state was added after all — green + a checkmark glyph
     (Event#step_complete?) for any non-active step that already has real content. Unlike
@@ -94,28 +93,28 @@
 <% when "sessions" %>
   <%= render "sessions_step", event: @event %>
   <div class="d-flex align-items-start gap-3 mt-4">
-    <%= link_to "Previous", edit_admin_event_path(@event, step: "basic_info"), class: "btn btn-sm btn-outline-secondary" %>
-    <%= link_to "Next", edit_admin_event_path(@event, step: "speaker"), class: "btn btn-sm btn-primary ms-auto" %>
+    <%= link_to "Previous", edit_admin_event_path(@event, step: "basic_info"), class: "btn btn-m btn-outline-secondary" %>
+    <%= link_to "Next", edit_admin_event_path(@event, step: "speaker"), class: "btn btn-m btn-primary ms-auto" %>
   </div>
 <% when "speaker" %>
   <%= render "speaker_step", event: @event %>
   <div class="d-flex align-items-start gap-3 mt-4">
-    <%= link_to "Previous", edit_admin_event_path(@event, step: "sessions"), class: "btn btn-sm btn-outline-secondary" %>
-    <%= link_to "Next", edit_admin_event_path(@event, step: "event_schedule"), class: "btn btn-sm btn-primary ms-auto" %>
+    <%= link_to "Previous", edit_admin_event_path(@event, step: "sessions"), class: "btn btn-m btn-outline-secondary" %>
+    <%= link_to "Next", edit_admin_event_path(@event, step: "event_schedule"), class: "btn btn-m btn-primary ms-auto" %>
   </div>
 <% when "event_schedule" %>
   <%= render "event_schedule_step", event: @event %>
   <div class="d-flex align-items-start gap-3 mt-4">
-    <%= link_to "Previous", edit_admin_event_path(@event, step: "speaker"), class: "btn btn-sm btn-outline-secondary" %>
-    <%= link_to "Next", edit_admin_event_path(@event, step: "tickets"), class: "btn btn-sm btn-primary ms-auto" %>
+    <%= link_to "Previous", edit_admin_event_path(@event, step: "speaker"), class: "btn btn-m btn-outline-secondary" %>
+    <%= link_to "Next", edit_admin_event_path(@event, step: "tickets"), class: "btn btn-m btn-primary ms-auto" %>
   </div>
 <% when "tickets" %>
   <%= render "tickets_step", event: @event %>
 <% when "badge" %>
   <%= render "badge_step", event: @event %>
   <div class="d-flex align-items-start gap-3 mt-4">
-    <%= link_to "Previous", edit_admin_event_path(@event, step: "tickets"), class: "btn btn-sm btn-outline-secondary" %>
-    <%= link_to "Next", edit_admin_event_path(@event, step: "review"), class: "btn btn-sm btn-primary ms-auto" %>
+    <%= link_to "Previous", edit_admin_event_path(@event, step: "tickets"), class: "btn btn-m btn-outline-secondary" %>
+    <%= link_to "Next", edit_admin_event_path(@event, step: "review"), class: "btn btn-m btn-primary ms-auto" %>
   </div>
 <% when "review" %>
   <%= render "review_step", event: @event %>

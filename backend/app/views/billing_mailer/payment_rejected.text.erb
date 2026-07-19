@@ -1,7 +1,8 @@
-Payment proof rejected for <%= @invoice.event.name %>
+<% subtitle = @invoice.event ? @invoice.event.name : "your annual contract" %>
+Payment proof rejected for <%= subtitle %>
 
 A Super Admin reviewed your payment submission (UTR: <%= @invoice.utr_reference %>) and rejected it:
 
 <%= @invoice.rejection_reason %>
 
-Sign in to submit a new payment proof at <%= admin_invoice_url(@invoice) %>
+Sign in to submit a new payment proof at <%= agency_invoice_url(@invoice) %>

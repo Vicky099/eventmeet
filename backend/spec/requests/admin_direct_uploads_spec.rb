@@ -18,7 +18,7 @@ RSpec.describe "Admin Console direct uploads", type: :request do
   end
 
   it "creates a blob under a tenant-namespaced key for a participant document" do
-    sign_in_with_role(:owner)
+    sign_in_with_role(:event_admin)
     Current.account = account
     event = create(:event, account: account)
 
@@ -32,7 +32,7 @@ RSpec.describe "Admin Console direct uploads", type: :request do
   end
 
   it "rejects an unknown scope type" do
-    sign_in_with_role(:owner)
+    sign_in_with_role(:event_admin)
     Current.account = account
     event = create(:event, account: account)
 

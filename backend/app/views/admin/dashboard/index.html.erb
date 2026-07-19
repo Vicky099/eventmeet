@@ -64,7 +64,7 @@
                   <td><%= event.participants.count %></td>
                   <td><%= event.checked_in_participant_count %></td>
                   <td><%= event.currently_in_venue_count %></td>
-                  <td class="text-end"><%= link_to "View Analytics", admin_event_path(event), class: "btn btn-sm btn-outline-success" %></td>
+                  <td class="text-end"><%= link_to "View Analytics", admin_event_path(event), class: "btn btn-m btn-outline-success" %></td>
                 </tr>
               <% end %>
             </tbody>
@@ -156,35 +156,7 @@
     </div>
   </div>
 
-  <% if @attention_events.any? %>
-    <%# Actionable, not just informational — a pending event is waiting on the Super Admin, a
-        rejected one needs the organizer to see why and fix it (rejection_reason). %>
-    <div class="card mb-0">
-      <div class="card-header"><span class="fw-semibold">Needs Attention</span></div>
-      <div class="card-body">
-        <div class="table-responsive">
-          <table class="table table-sm table-hover align-middle mb-0">
-            <thead>
-              <tr>
-                <th>Event</th>
-                <th>Status</th>
-                <th>Details</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              <% @attention_events.each do |event| %>
-                <tr>
-                  <td><%= link_to event.name, admin_event_path(event) %></td>
-                  <td><span class="badge <%= approval_status_badge_class(event.approval_status) %>"><%= event.approval_status.humanize %></span></td>
-                  <td class="text-muted"><%= event.rejected? ? event.rejection_reason : "Awaiting Super Admin review." %></td>
-                  <td class="text-end"><%= link_to "View", admin_event_path(event), class: "btn btn-sm btn-outline-secondary" %></td>
-                </tr>
-              <% end %>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  <% end %>
+  <%# Fixed-hierarchy pivot (requirement.md revisit): no more "Needs Attention" table — there's no
+      Super-Admin-review/rejection state left for an event to be stuck in; every event that exists
+      is already usable. %>
 <% end %>

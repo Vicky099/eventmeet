@@ -10,6 +10,6 @@ class AccountMailer < ApplicationMailer
     # sign-in link) resolves to this Account's own subdomain, not the platform-wide default host.
     @tenant_account = account
 
-    mail(to: user.email, subject: "Welcome to EventMeet — #{account.name} is ready")
+    mail(to: user.email, subject: "Welcome to xEvent — #{account.name} is ready")
   end
 end

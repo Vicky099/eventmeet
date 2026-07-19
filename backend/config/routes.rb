@@ -74,6 +74,13 @@ Rails.application.routes.draw do
     # exercised by spec/requests/hosting_spec.rb — distinct from user_root above since Phase 3.
     get "admin/__smoke", to: "admin/smoke#show"
 
+    # Agency → Tenant account switch (requirement.md revisit): the redeem half of
+    # AccountSwitch — reachable while signed out (Admin::AccountSwitchesController skips
+    # authenticate_user!, same as Admin::SessionsController), same reason it's a GET, not a POST:
+    # a plain redirect_to from AgencyConsole::AccountsController#switch has to work as an ordinary
+    # cross-origin browser redirect, the same shape Devise's own password-reset link already uses.
+    get "admin/switch", to: "admin/account_switches#redeem", as: :redeem_account_switch
+
     # Phase 4 — Event Lifecycle (requirement.md §3.2, §5.2). scope path/as: "admin" so these carry
     # the same /admin/... URL namespace as every other Admin Console route (module comment at the
     # top of this file), same pattern Phase 2 established for /platform/accounts. :show (Phase
@@ -84,7 +91,6 @@ Rails.application.routes.draw do
         member do
           post :duplicate
           post :publish
-          post :submit_for_review
         end
 
         # Phase 6 — Ticketing (requirement.md §5.3). TicketCategory itself has no routes of its
@@ -253,8 +259,7 @@ Rails.application.routes.draw do
           end
         end
         # Phase 10 revisit — Bulk Print (requirement.md §3.6/§5.5's baseline "bulk print queue").
-        # Only :new/:create/:show — a run is started once and then only ever watched, same
-        # "no :edit/:update" shape :quotations already takes for a request-then-respond flow.
+        # Only :new/:create/:show — a run is started once and then only ever watched.
         resources :bulk_print_runs, controller: "admin/bulk_print_runs", only: [ :new, :create, :show ]
       end
 
@@ -264,32 +269,63 @@ Rails.application.routes.draw do
       # workspace, there's no separate read-only page" reasoning as :badges/:events.
       resources :badge_templates, controller: "admin/badge_templates", except: [ :show ]
 
-      # Phase 15 — Platform Billing & Invoicing, revisited (requirement.md §4.6, confirmed with the
-      # user): the tenant's own half of the per-event pricing negotiation — standalone from
-      # :events (a Quotation exists *before* any Event row can, Event's own
-      # quotation_must_be_approved_and_available is the actual gate). No :edit/:update/:destroy —
-      # requested once, then only ever responded to (#approve/#reject).
-      resources :quotations, controller: "admin/quotations", only: [ :index, :new, :create, :show ] do
-        member do
-          post :approve
-          post :reject
-        end
-      end
-
-      # The tenant's own view of what's been invoiced, plus the "Mark as Paid" flow —
-      # #submit_payment is a member action (modal-driven from #index/#show), not a nested resource;
-      # the simplified design folds PaymentSubmission directly onto Invoice.
-      resources :invoices, controller: "admin/invoices", only: [ :index, :show ] do
-        member do
-          post :submit_payment
-        end
-      end
-
       # This app's own authenticated, tenant-scoped replacement for Rails' built-in
       # active_storage_direct_uploads route — see Admin::DirectUploadsController for why the
       # stock one can't be used as-is (it has no way to compute this app's tenant-namespaced blob
       # key). Singular resource, :create only, same shape the framework route itself uses.
       resource :direct_uploads, only: [ :create ], controller: "admin/direct_uploads"
+    end
+
+    # Fixed-hierarchy pivot (requirement.md revisit, confirmed with the user): the Agency
+    # Console — a third console tier sharing this exact same subdomain constraint and the exact
+    # same devise_for :users login above (AgencyConsole::BaseController's own comment has the full
+    # "why no separate Devise scope"). #new/#create is the only place a new tenant Account comes
+    # into existence now (AgencyConsole::AccountsController, AccountProvisioning's existing
+    # agency: kwarg).
+    #
+    # requirement.md revisit: "show only latest 10 tenants and top right corner of tenant will
+    # have view all link and also have a sidebar which will have all the tenants with pagination"
+    # — the dashboard's own Tenants card is a preview now, not the full list; #index is that full,
+    # paginated list, its own sidebar nav entry (AgencyHelper#agency_nav_items).
+    #
+    # Controller module is AgencyConsole:: (not Agency::) — Agency is already a top-level model
+    # class, and Zeitwerk can't resolve a name as both a class and a controller namespace module.
+    # Route path/name (as: "agency", agency_root_path etc.) are independent of the controller
+    # module name and stay as they were designed.
+    get "agency", to: "agency_console/dashboard#index", as: :agency_root
+    scope path: "agency", as: "agency" do
+      resources :accounts, controller: "agency_console/accounts", only: [ :index, :new, :create ] do
+        # Agency → Tenant account switch (requirement.md revisit): mints a one-time
+        # AccountSwitch and redirects straight to that tenant's own admin/switch — the SSO
+        # handoff itself lives on the Admin:: side (see the top-level redeem_account_switch
+        # route), this is only ever the "start" half.
+        #
+        # requirement.md revisit: "have a action to suspend and reinstate" on the tenant list —
+        # the agency's own oversight of its own tenants, mirrors the Platform Console's identical
+        # pair (suspend_platform_account_path/reinstate_platform_account_path) one tier down.
+        member do
+          post :switch
+          patch :suspend
+          patch :reinstate
+        end
+      end
+      # Invoices moved to the Agency Console entirely (requirement.md revisit) — every Invoice
+      # this agency is responsible for: its own upfront annual-contract Invoice (Agency#invoice)
+      # for an `annual` agency, or every per-event Invoice across its own tenants for a
+      # `per_event` one (Invoice.for_agency covers both). Plus the "Mark as Paid" flow.
+      resources :invoices, controller: "agency_console/invoices", only: [ :index, :show ] do
+        member do
+          get :download
+          post :submit_payment
+        end
+      end
+
+      # This console's own copy of Admin::DirectUploadsController's route (see that controller's
+      # own comment for why the stock ActiveStorage one can't be used as-is) — needed now that the
+      # payment-receipt upload (AgencyConsole::InvoicesController#submit_payment) auto-uploads
+      # straight to Cloudinary the same way Participant#photo/#document already do, rather than a
+      # plain relayed file_field_tag.
+      resource :direct_uploads, only: [ :create ], controller: "agency_console/direct_uploads"
     end
 
     # Phase 9 revisit — the check-in kiosk, deliberately OUTSIDE `scope path: "admin"` and the
@@ -339,58 +375,57 @@ Rails.application.routes.draw do
     # exercised by spec/requests/hosting_spec.rb — distinct from platform_staff_root above since Phase 3.
     get "platform/__smoke", to: "super_admin/smoke#show"
 
-    # Phase 2 — Tenant Provisioning (requirement.md §4.1, §4.3, §4.7). scope path/as: "platform"
-    # (not a bare `resources :accounts`) so these carry the same /platform/... URL namespace as
-    # every other Platform Console route (module comment at the top of this file) and get
-    # platform_accounts_path/platform_account_path/etc. route helpers, distinct from Devise's own
-    # platform_staff_* helpers above.
+    # Phase 2 — Tenant Provisioning (requirement.md §4.1, §4.3, §4.7), revisited for the
+    # fixed-hierarchy pivot: no :new/:create here anymore — AgencyConsole::AccountsController (the
+    # agency's own console) is the only place a tenant Account is created now. requirement.md
+    # revisit: "this page and sidebar link is not required as we have a agency to handle the
+    # tenant accounts" — the standalone index/show/edit pages are gone too; a tenant's own details
+    # now render as a modal directly on its owning Agency's own show page
+    # (super_admin/agencies/show.html.erb), using data that page already loaded, no separate
+    # request. Only #suspend/#reinstate are left as real routes — pure actions, no page of their
+    # own, triggered from that same modal.
     scope path: "platform", as: "platform" do
-      resources :accounts, controller: "super_admin/accounts", only: [ :index, :new, :create, :show, :edit, :update ] do
+      resources :accounts, controller: "super_admin/accounts", only: [] do
         member do
           patch :suspend
           patch :reinstate
         end
-        collection do
-          get :check_slug
-        end
       end
 
-      # Phase 5 — Event Approval Workflow (requirement.md §4.7 item 2, §5.2). No :new/:create/
-      # :edit/:update/:destroy — Super Admin reviews events, it doesn't build or own them.
-      resources :event_reviews, controller: "super_admin/event_reviews", only: [ :index, :show ] do
+      # Fixed-hierarchy pivot (requirement.md revisit, confirmed with the user): the agency is now
+      # the only place a tenant Account comes from — "Add Tenant" no longer exists on this page at
+      # all (AgencyConsole::AccountsController, the agency's own console, is where that happens now).
+      # #grant_events tops up a per_event agency's pool (Agency#grant_more!) — additive, not a raw
+      # edit, same reasoning as that method's own comment. agency_memberships is the agency's own
+      # admin roster — #create/#destroy plus #resend_invite (regenerates a temp password and
+      # re-sends the welcome email to a not-yet-onboarded agency_admin).
+      resources :agencies, controller: "super_admin/agencies", only: [ :index, :new, :create, :show, :edit, :update ] do
         member do
-          post :approve
-          post :reject
+          patch :suspend
+          patch :reinstate
+          post :grant_events
+        end
+        resources :agency_memberships, controller: "super_admin/agency_memberships", only: [ :create, :destroy ] do
+          member do
+            post :resend_invite
+          end
         end
       end
 
       # Phase 15 — Platform Billing & Invoicing, revisited (requirement.md §4.6, confirmed with the
-      # user): invoices are auto-generated the day after an event ends (InvoiceGenerationJob) —
-      # this is plain `resources :invoices`, not nested under Event; #deliver sends a draft to the
-      # tenant, #verify/#reject review whatever payment proof the tenant submits (folded directly
-      # onto Invoice, no separate PaymentSubmission model in the simplified design). `deliver` (not
-      # `send` — Kernel#send collision, see that action's own comment).
+      # user): invoices are auto-generated the day after an event ends (InvoiceGenerationJob), or
+      # (fixed-hierarchy pivot) once, at agency-provisioning time, for an `annual` agency's own
+      # upfront contract (AgencyProvisioning). Plain `resources :invoices`, not nested under
+      # Event/Agency — #deliver sends a draft to the tenant/agency, #verify/#reject review whatever
+      # payment proof they submit (folded directly onto Invoice, no separate PaymentSubmission
+      # model in the simplified design). `deliver` (not `send` — Kernel#send collision, see that
+      # action's own comment).
       resources :invoices, controller: "super_admin/invoices", only: [ :index, :show ] do
         member do
           get :download
           post :deliver
           post :verify
           post :reject
-        end
-      end
-
-      # The Super Admin's own half of the per-event pricing negotiation —
-      # Admin::QuotationsController is the tenant's. #send_amount handles both the first offer and
-      # every revision.
-      resources :quotations, controller: "super_admin/quotations", only: [ :index, :show ] do
-        member do
-          post :send_amount
-          # Manual counterpart to InvoiceGenerationJob's own hourly sweep — lets a Super Admin
-          # trigger the draft invoice for an approved quotation's consumed event right away
-          # instead of waiting for the day-after-event-ends cron tick. Same idempotency guard
-          # either way: never a second Invoice for an event that already has one (Invoice#event_id
-          # is uniquely indexed).
-          post :create_invoice
         end
       end
     end

@@ -22,16 +22,16 @@
 
   <div class="ms-auto d-flex gap-2">
     <% if @participant.email.present? %>
-      <%= button_to "Resend invitation", resend_admin_event_participant_path(@event, @participant), method: :post, class: "btn btn-sm btn-outline-secondary" %>
+      <%= button_to "Resend invitation", resend_admin_event_participant_path(@event, @participant), method: :post, class: "btn btn-m btn-outline-secondary" %>
     <% end %>
     <%# Phase 10 — Print Agent (Electron) Integration, revisited (requirement.md §5.5.1). %>
-    <%= link_to print_admin_event_participant_path(@event, @participant), class: "btn btn-sm btn-outline-secondary", target: "_blank", rel: "noopener" do %>
+    <%= link_to print_admin_event_participant_path(@event, @participant), class: "btn btn-m btn-outline-secondary", target: "_blank", rel: "noopener" do %>
       <i class="bx bx-printer"></i> Print
     <% end %>
-    <%= link_to badge_admin_event_participant_path(@event, @participant), class: "btn btn-sm btn-outline-secondary", target: "_blank", rel: "noopener" do %>
+    <%= link_to badge_admin_event_participant_path(@event, @participant), class: "btn btn-m btn-outline-secondary", target: "_blank", rel: "noopener" do %>
       <i class="bx bx-id-card"></i> Download badge
     <% end %>
-    <%= link_to "Edit", edit_admin_event_participant_path(@event, @participant), class: "btn btn-sm btn-primary" %>
+    <%= link_to "Edit", edit_admin_event_participant_path(@event, @participant), class: "btn btn-m btn-primary" %>
   </div>
 </div>
 
@@ -40,8 +40,10 @@
     <div class="card mb-3">
       <div class="card-header d-flex align-items-center gap-3">
         <% if @participant.photo.attached? %>
-          <%# Not image_tag(attachment) — see super_admin/accounts/show.html.erb's own comment
-              for the full "breaks against a real Cloudinary attachment" story. %>
+          <%# Not image_tag(attachment) — that generates Rails' own /rails/active_storage/...
+              redirect URL by default, an unnecessary extra hop through this server; calling
+              .url explicitly resolves straight through the Cloudinary service's own #url method
+              to a real, already-public CDN URL instead. %>
           <%= tag.img src: @participant.photo.url, class: "rounded-circle", style: "width: 48px; height: 48px; object-fit: cover;" %>
         <% else %>
           <i class="bx bx-user-circle font-size-24 text-muted"></i>

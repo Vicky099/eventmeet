@@ -42,6 +42,22 @@ CREATE TABLE public.account_memberships (
 
 
 --
+-- Name: account_switches; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.account_switches (
+    id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    account_id uuid NOT NULL,
+    token character varying NOT NULL,
+    expires_at timestamp(6) without time zone NOT NULL,
+    redeemed_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: accounts; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -56,7 +72,8 @@ CREATE TABLE public.accounts (
     contact_email character varying,
     contact_num character varying,
     sender_email character varying,
-    time_zone character varying DEFAULT 'UTC'::character varying NOT NULL
+    time_zone character varying DEFAULT 'UTC'::character varying NOT NULL,
+    agency_id uuid
 );
 
 
@@ -103,6 +120,42 @@ CREATE TABLE public.active_storage_variant_records (
 
 
 --
+-- Name: agencies; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.agencies (
+    id uuid NOT NULL,
+    name character varying NOT NULL,
+    contact_email character varying,
+    contact_num character varying,
+    status integer DEFAULT 0 NOT NULL,
+    price_per_event numeric(12,2),
+    currency character varying DEFAULT 'INR'::character varying NOT NULL,
+    events_granted integer DEFAULT 0 NOT NULL,
+    events_used integer DEFAULT 0 NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    subdomain_slug character varying,
+    billing_cycle integer DEFAULT 0 NOT NULL,
+    annual_price numeric(12,2)
+);
+
+
+--
+-- Name: agency_memberships; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.agency_memberships (
+    id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    agency_id uuid NOT NULL,
+    role integer DEFAULT 0 NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: ar_internal_metadata; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -120,7 +173,6 @@ CREATE TABLE public.ar_internal_metadata (
 
 CREATE TABLE public.attendances (
     id uuid NOT NULL,
-    occurred_at timestamp(6) without time zone NOT NULL,
     account_id uuid NOT NULL,
     event_id uuid NOT NULL,
     participant_id uuid NOT NULL,
@@ -128,87 +180,7 @@ CREATE TABLE public.attendances (
     "from" integer DEFAULT 0 NOT NULL,
     status integer DEFAULT 0 NOT NULL,
     time_spent_seconds integer,
-    created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL,
-    session_id uuid
-)
-PARTITION BY RANGE (occurred_at);
-
-
---
--- Name: attendances_2026_06; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.attendances_2026_06 (
-    id uuid NOT NULL,
     occurred_at timestamp(6) without time zone NOT NULL,
-    account_id uuid NOT NULL,
-    event_id uuid NOT NULL,
-    participant_id uuid NOT NULL,
-    scan_event_id uuid,
-    "from" integer DEFAULT 0 NOT NULL,
-    status integer DEFAULT 0 NOT NULL,
-    time_spent_seconds integer,
-    created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL,
-    session_id uuid
-);
-
-
---
--- Name: attendances_2026_07; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.attendances_2026_07 (
-    id uuid NOT NULL,
-    occurred_at timestamp(6) without time zone NOT NULL,
-    account_id uuid NOT NULL,
-    event_id uuid NOT NULL,
-    participant_id uuid NOT NULL,
-    scan_event_id uuid,
-    "from" integer DEFAULT 0 NOT NULL,
-    status integer DEFAULT 0 NOT NULL,
-    time_spent_seconds integer,
-    created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL,
-    session_id uuid
-);
-
-
---
--- Name: attendances_2026_08; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.attendances_2026_08 (
-    id uuid NOT NULL,
-    occurred_at timestamp(6) without time zone NOT NULL,
-    account_id uuid NOT NULL,
-    event_id uuid NOT NULL,
-    participant_id uuid NOT NULL,
-    scan_event_id uuid,
-    "from" integer DEFAULT 0 NOT NULL,
-    status integer DEFAULT 0 NOT NULL,
-    time_spent_seconds integer,
-    created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL,
-    session_id uuid
-);
-
-
---
--- Name: attendances_2026_09; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.attendances_2026_09 (
-    id uuid NOT NULL,
-    occurred_at timestamp(6) without time zone NOT NULL,
-    account_id uuid NOT NULL,
-    event_id uuid NOT NULL,
-    participant_id uuid NOT NULL,
-    scan_event_id uuid,
-    "from" integer DEFAULT 0 NOT NULL,
-    status integer DEFAULT 0 NOT NULL,
-    time_spent_seconds integer,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     session_id uuid
@@ -348,7 +320,6 @@ CREATE TABLE public.events (
     slug character varying NOT NULL,
     mode integer DEFAULT 0 NOT NULL,
     status integer DEFAULT 0 NOT NULL,
-    approval_status integer DEFAULT 3 NOT NULL,
     banner_orientation integer DEFAULT 0 NOT NULL,
     starts_at timestamp(6) without time zone NOT NULL,
     ends_at timestamp(6) without time zone NOT NULL,
@@ -359,10 +330,6 @@ CREATE TABLE public.events (
     updated_at timestamp(6) without time zone NOT NULL,
     map_url character varying,
     published_at timestamp(6) without time zone,
-    submitted_at timestamp(6) without time zone,
-    approved_by_id uuid,
-    approved_at timestamp(6) without time zone,
-    rejection_reason text,
     seat_limit integer,
     participant_approval_required boolean DEFAULT false NOT NULL,
     has_seat_limit boolean DEFAULT false NOT NULL,
@@ -371,7 +338,6 @@ CREATE TABLE public.events (
     send_registration_email boolean DEFAULT false NOT NULL,
     scheduled_report_frequency integer DEFAULT 0 NOT NULL,
     last_report_sent_at timestamp(6) without time zone,
-    quotation_id uuid,
     auto_print_enabled boolean DEFAULT false NOT NULL,
     default_print_station_id uuid
 );
@@ -458,8 +424,8 @@ CREATE TABLE public.import_files (
 
 CREATE TABLE public.invoices (
     id uuid NOT NULL,
-    account_id uuid NOT NULL,
-    event_id uuid NOT NULL,
+    account_id uuid,
+    event_id uuid,
     amount numeric(12,2) NOT NULL,
     status integer DEFAULT 0 NOT NULL,
     sent_at timestamp(6) without time zone,
@@ -471,7 +437,8 @@ CREATE TABLE public.invoices (
     verified_by_id uuid,
     verified_at timestamp(6) without time zone,
     rejection_reason text,
-    currency character varying DEFAULT 'INR'::character varying NOT NULL
+    currency character varying DEFAULT 'INR'::character varying NOT NULL,
+    agency_id uuid
 );
 
 
@@ -713,48 +680,6 @@ CREATE TABLE public.print_stations (
 
 
 --
--- Name: quotation_revisions; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.quotation_revisions (
-    id uuid NOT NULL,
-    account_id uuid NOT NULL,
-    quotation_id uuid NOT NULL,
-    amount numeric(12,2) NOT NULL,
-    rejection_note text NOT NULL,
-    created_by_id uuid NOT NULL,
-    created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL,
-    currency character varying DEFAULT 'INR'::character varying NOT NULL
-);
-
-
---
--- Name: quotations; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.quotations (
-    id uuid NOT NULL,
-    account_id uuid NOT NULL,
-    event_name character varying NOT NULL,
-    current_amount numeric(12,2),
-    status integer DEFAULT 0 NOT NULL,
-    requested_by_id uuid NOT NULL,
-    approved_by_id uuid,
-    sent_at timestamp(6) without time zone,
-    approved_at timestamp(6) without time zone,
-    created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL,
-    currency character varying DEFAULT 'INR'::character varying NOT NULL,
-    expected_participant_count integer,
-    invite_via_email boolean DEFAULT true NOT NULL,
-    invite_via_whatsapp boolean DEFAULT false NOT NULL,
-    support_requested boolean DEFAULT false NOT NULL,
-    additional_notes text
-);
-
-
---
 -- Name: registration_forms; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -777,85 +702,12 @@ CREATE TABLE public.registration_forms (
 
 CREATE TABLE public.scan_events (
     id uuid NOT NULL,
-    scanned_at timestamp(6) without time zone NOT NULL,
     account_id uuid NOT NULL,
     event_id uuid NOT NULL,
     participant_id uuid NOT NULL,
     scan_type integer DEFAULT 0 NOT NULL,
     source integer DEFAULT 1 NOT NULL,
-    created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL,
-    session_id uuid
-)
-PARTITION BY RANGE (scanned_at);
-
-
---
--- Name: scan_events_2026_06; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.scan_events_2026_06 (
-    id uuid NOT NULL,
     scanned_at timestamp(6) without time zone NOT NULL,
-    account_id uuid NOT NULL,
-    event_id uuid NOT NULL,
-    participant_id uuid NOT NULL,
-    scan_type integer DEFAULT 0 NOT NULL,
-    source integer DEFAULT 1 NOT NULL,
-    created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL,
-    session_id uuid
-);
-
-
---
--- Name: scan_events_2026_07; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.scan_events_2026_07 (
-    id uuid NOT NULL,
-    scanned_at timestamp(6) without time zone NOT NULL,
-    account_id uuid NOT NULL,
-    event_id uuid NOT NULL,
-    participant_id uuid NOT NULL,
-    scan_type integer DEFAULT 0 NOT NULL,
-    source integer DEFAULT 1 NOT NULL,
-    created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL,
-    session_id uuid
-);
-
-
---
--- Name: scan_events_2026_08; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.scan_events_2026_08 (
-    id uuid NOT NULL,
-    scanned_at timestamp(6) without time zone NOT NULL,
-    account_id uuid NOT NULL,
-    event_id uuid NOT NULL,
-    participant_id uuid NOT NULL,
-    scan_type integer DEFAULT 0 NOT NULL,
-    source integer DEFAULT 1 NOT NULL,
-    created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL,
-    session_id uuid
-);
-
-
---
--- Name: scan_events_2026_09; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.scan_events_2026_09 (
-    id uuid NOT NULL,
-    scanned_at timestamp(6) without time zone NOT NULL,
-    account_id uuid NOT NULL,
-    event_id uuid NOT NULL,
-    participant_id uuid NOT NULL,
-    scan_type integer DEFAULT 0 NOT NULL,
-    source integer DEFAULT 1 NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     session_id uuid
@@ -1022,62 +874,6 @@ CREATE TABLE public.users (
 
 
 --
--- Name: attendances_2026_06; Type: TABLE ATTACH; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.attendances ATTACH PARTITION public.attendances_2026_06 FOR VALUES FROM ('2026-06-01 00:00:00') TO ('2026-07-01 00:00:00');
-
-
---
--- Name: attendances_2026_07; Type: TABLE ATTACH; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.attendances ATTACH PARTITION public.attendances_2026_07 FOR VALUES FROM ('2026-07-01 00:00:00') TO ('2026-08-01 00:00:00');
-
-
---
--- Name: attendances_2026_08; Type: TABLE ATTACH; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.attendances ATTACH PARTITION public.attendances_2026_08 FOR VALUES FROM ('2026-08-01 00:00:00') TO ('2026-09-01 00:00:00');
-
-
---
--- Name: attendances_2026_09; Type: TABLE ATTACH; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.attendances ATTACH PARTITION public.attendances_2026_09 FOR VALUES FROM ('2026-09-01 00:00:00') TO ('2026-10-01 00:00:00');
-
-
---
--- Name: scan_events_2026_06; Type: TABLE ATTACH; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.scan_events ATTACH PARTITION public.scan_events_2026_06 FOR VALUES FROM ('2026-06-01 00:00:00') TO ('2026-07-01 00:00:00');
-
-
---
--- Name: scan_events_2026_07; Type: TABLE ATTACH; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.scan_events ATTACH PARTITION public.scan_events_2026_07 FOR VALUES FROM ('2026-07-01 00:00:00') TO ('2026-08-01 00:00:00');
-
-
---
--- Name: scan_events_2026_08; Type: TABLE ATTACH; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.scan_events ATTACH PARTITION public.scan_events_2026_08 FOR VALUES FROM ('2026-08-01 00:00:00') TO ('2026-09-01 00:00:00');
-
-
---
--- Name: scan_events_2026_09; Type: TABLE ATTACH; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.scan_events ATTACH PARTITION public.scan_events_2026_09 FOR VALUES FROM ('2026-09-01 00:00:00') TO ('2026-10-01 00:00:00');
-
-
---
 -- Name: oauth_access_grants id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1104,6 +900,14 @@ ALTER TABLE ONLY public.oauth_applications ALTER COLUMN id SET DEFAULT nextval('
 
 ALTER TABLE ONLY public.account_memberships
     ADD CONSTRAINT account_memberships_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: account_switches account_switches_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_switches
+    ADD CONSTRAINT account_switches_pkey PRIMARY KEY (id);
 
 
 --
@@ -1139,6 +943,22 @@ ALTER TABLE ONLY public.active_storage_variant_records
 
 
 --
+-- Name: agencies agencies_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agencies
+    ADD CONSTRAINT agencies_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: agency_memberships agency_memberships_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agency_memberships
+    ADD CONSTRAINT agency_memberships_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: ar_internal_metadata ar_internal_metadata_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1151,39 +971,7 @@ ALTER TABLE ONLY public.ar_internal_metadata
 --
 
 ALTER TABLE ONLY public.attendances
-    ADD CONSTRAINT attendances_pkey PRIMARY KEY (id, occurred_at);
-
-
---
--- Name: attendances_2026_06 attendances_2026_06_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.attendances_2026_06
-    ADD CONSTRAINT attendances_2026_06_pkey PRIMARY KEY (id, occurred_at);
-
-
---
--- Name: attendances_2026_07 attendances_2026_07_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.attendances_2026_07
-    ADD CONSTRAINT attendances_2026_07_pkey PRIMARY KEY (id, occurred_at);
-
-
---
--- Name: attendances_2026_08 attendances_2026_08_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.attendances_2026_08
-    ADD CONSTRAINT attendances_2026_08_pkey PRIMARY KEY (id, occurred_at);
-
-
---
--- Name: attendances_2026_09 attendances_2026_09_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.attendances_2026_09
-    ADD CONSTRAINT attendances_2026_09_pkey PRIMARY KEY (id, occurred_at);
+    ADD CONSTRAINT attendances_pkey PRIMARY KEY (id);
 
 
 --
@@ -1363,22 +1151,6 @@ ALTER TABLE ONLY public.print_stations
 
 
 --
--- Name: quotation_revisions quotation_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.quotation_revisions
-    ADD CONSTRAINT quotation_revisions_pkey PRIMARY KEY (id);
-
-
---
--- Name: quotations quotations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.quotations
-    ADD CONSTRAINT quotations_pkey PRIMARY KEY (id);
-
-
---
 -- Name: registration_forms registration_forms_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1391,39 +1163,7 @@ ALTER TABLE ONLY public.registration_forms
 --
 
 ALTER TABLE ONLY public.scan_events
-    ADD CONSTRAINT scan_events_pkey PRIMARY KEY (id, scanned_at);
-
-
---
--- Name: scan_events_2026_06 scan_events_2026_06_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.scan_events_2026_06
-    ADD CONSTRAINT scan_events_2026_06_pkey PRIMARY KEY (id, scanned_at);
-
-
---
--- Name: scan_events_2026_07 scan_events_2026_07_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.scan_events_2026_07
-    ADD CONSTRAINT scan_events_2026_07_pkey PRIMARY KEY (id, scanned_at);
-
-
---
--- Name: scan_events_2026_08 scan_events_2026_08_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.scan_events_2026_08
-    ADD CONSTRAINT scan_events_2026_08_pkey PRIMARY KEY (id, scanned_at);
-
-
---
--- Name: scan_events_2026_09 scan_events_2026_09_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.scan_events_2026_09
-    ADD CONSTRAINT scan_events_2026_09_pkey PRIMARY KEY (id, scanned_at);
+    ADD CONSTRAINT scan_events_pkey PRIMARY KEY (id);
 
 
 --
@@ -1499,286 +1239,6 @@ ALTER TABLE ONLY public.users
 
 
 --
--- Name: index_attendances_on_account_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_attendances_on_account_id ON ONLY public.attendances USING btree (account_id);
-
-
---
--- Name: attendances_2026_06_account_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_06_account_id_idx ON public.attendances_2026_06 USING btree (account_id);
-
-
---
--- Name: index_attendances_on_event_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_attendances_on_event_id ON ONLY public.attendances USING btree (event_id);
-
-
---
--- Name: attendances_2026_06_event_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_06_event_id_idx ON public.attendances_2026_06 USING btree (event_id);
-
-
---
--- Name: index_attendances_on_event_participant_from_status_occurred_at; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_attendances_on_event_participant_from_status_occurred_at ON ONLY public.attendances USING btree (event_id, participant_id, "from", status, occurred_at);
-
-
---
--- Name: attendances_2026_06_event_id_participant_id_from_status_occ_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_06_event_id_participant_id_from_status_occ_idx ON public.attendances_2026_06 USING btree (event_id, participant_id, "from", status, occurred_at);
-
-
---
--- Name: index_attendances_on_participant_from_session_status; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_attendances_on_participant_from_session_status ON ONLY public.attendances USING btree (participant_id, "from", session_id, status, occurred_at);
-
-
---
--- Name: attendances_2026_06_participant_id_from_session_id_status_o_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_06_participant_id_from_session_id_status_o_idx ON public.attendances_2026_06 USING btree (participant_id, "from", session_id, status, occurred_at);
-
-
---
--- Name: index_attendances_on_participant_from_status_occurred_at; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_attendances_on_participant_from_status_occurred_at ON ONLY public.attendances USING btree (participant_id, "from", status, occurred_at);
-
-
---
--- Name: attendances_2026_06_participant_id_from_status_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_06_participant_id_from_status_occurred_at_idx ON public.attendances_2026_06 USING btree (participant_id, "from", status, occurred_at);
-
-
---
--- Name: index_attendances_on_participant_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_attendances_on_participant_id ON ONLY public.attendances USING btree (participant_id);
-
-
---
--- Name: attendances_2026_06_participant_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_06_participant_id_idx ON public.attendances_2026_06 USING btree (participant_id);
-
-
---
--- Name: index_attendances_on_scan_event_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_attendances_on_scan_event_id ON ONLY public.attendances USING btree (scan_event_id);
-
-
---
--- Name: attendances_2026_06_scan_event_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_06_scan_event_id_idx ON public.attendances_2026_06 USING btree (scan_event_id);
-
-
---
--- Name: index_attendances_on_session_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_attendances_on_session_id ON ONLY public.attendances USING btree (session_id);
-
-
---
--- Name: attendances_2026_06_session_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_06_session_id_idx ON public.attendances_2026_06 USING btree (session_id);
-
-
---
--- Name: attendances_2026_07_account_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_07_account_id_idx ON public.attendances_2026_07 USING btree (account_id);
-
-
---
--- Name: attendances_2026_07_event_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_07_event_id_idx ON public.attendances_2026_07 USING btree (event_id);
-
-
---
--- Name: attendances_2026_07_event_id_participant_id_from_status_occ_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_07_event_id_participant_id_from_status_occ_idx ON public.attendances_2026_07 USING btree (event_id, participant_id, "from", status, occurred_at);
-
-
---
--- Name: attendances_2026_07_participant_id_from_session_id_status_o_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_07_participant_id_from_session_id_status_o_idx ON public.attendances_2026_07 USING btree (participant_id, "from", session_id, status, occurred_at);
-
-
---
--- Name: attendances_2026_07_participant_id_from_status_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_07_participant_id_from_status_occurred_at_idx ON public.attendances_2026_07 USING btree (participant_id, "from", status, occurred_at);
-
-
---
--- Name: attendances_2026_07_participant_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_07_participant_id_idx ON public.attendances_2026_07 USING btree (participant_id);
-
-
---
--- Name: attendances_2026_07_scan_event_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_07_scan_event_id_idx ON public.attendances_2026_07 USING btree (scan_event_id);
-
-
---
--- Name: attendances_2026_07_session_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_07_session_id_idx ON public.attendances_2026_07 USING btree (session_id);
-
-
---
--- Name: attendances_2026_08_account_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_08_account_id_idx ON public.attendances_2026_08 USING btree (account_id);
-
-
---
--- Name: attendances_2026_08_event_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_08_event_id_idx ON public.attendances_2026_08 USING btree (event_id);
-
-
---
--- Name: attendances_2026_08_event_id_participant_id_from_status_occ_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_08_event_id_participant_id_from_status_occ_idx ON public.attendances_2026_08 USING btree (event_id, participant_id, "from", status, occurred_at);
-
-
---
--- Name: attendances_2026_08_participant_id_from_session_id_status_o_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_08_participant_id_from_session_id_status_o_idx ON public.attendances_2026_08 USING btree (participant_id, "from", session_id, status, occurred_at);
-
-
---
--- Name: attendances_2026_08_participant_id_from_status_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_08_participant_id_from_status_occurred_at_idx ON public.attendances_2026_08 USING btree (participant_id, "from", status, occurred_at);
-
-
---
--- Name: attendances_2026_08_participant_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_08_participant_id_idx ON public.attendances_2026_08 USING btree (participant_id);
-
-
---
--- Name: attendances_2026_08_scan_event_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_08_scan_event_id_idx ON public.attendances_2026_08 USING btree (scan_event_id);
-
-
---
--- Name: attendances_2026_08_session_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_08_session_id_idx ON public.attendances_2026_08 USING btree (session_id);
-
-
---
--- Name: attendances_2026_09_account_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_09_account_id_idx ON public.attendances_2026_09 USING btree (account_id);
-
-
---
--- Name: attendances_2026_09_event_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_09_event_id_idx ON public.attendances_2026_09 USING btree (event_id);
-
-
---
--- Name: attendances_2026_09_event_id_participant_id_from_status_occ_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_09_event_id_participant_id_from_status_occ_idx ON public.attendances_2026_09 USING btree (event_id, participant_id, "from", status, occurred_at);
-
-
---
--- Name: attendances_2026_09_participant_id_from_session_id_status_o_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_09_participant_id_from_session_id_status_o_idx ON public.attendances_2026_09 USING btree (participant_id, "from", session_id, status, occurred_at);
-
-
---
--- Name: attendances_2026_09_participant_id_from_status_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_09_participant_id_from_status_occurred_at_idx ON public.attendances_2026_09 USING btree (participant_id, "from", status, occurred_at);
-
-
---
--- Name: attendances_2026_09_participant_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_09_participant_id_idx ON public.attendances_2026_09 USING btree (participant_id);
-
-
---
--- Name: attendances_2026_09_scan_event_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_09_scan_event_id_idx ON public.attendances_2026_09 USING btree (scan_event_id);
-
-
---
--- Name: attendances_2026_09_session_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendances_2026_09_session_id_idx ON public.attendances_2026_09 USING btree (session_id);
-
-
---
 -- Name: idx_on_ticket_category_id_status_created_at_61ceb40daf; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1804,6 +1264,34 @@ CREATE INDEX index_account_memberships_on_user_id ON public.account_memberships 
 --
 
 CREATE UNIQUE INDEX index_account_memberships_on_user_id_and_account_id ON public.account_memberships USING btree (user_id, account_id);
+
+
+--
+-- Name: index_account_switches_on_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_account_switches_on_account_id ON public.account_switches USING btree (account_id);
+
+
+--
+-- Name: index_account_switches_on_token; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_account_switches_on_token ON public.account_switches USING btree (token);
+
+
+--
+-- Name: index_account_switches_on_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_account_switches_on_user_id ON public.account_switches USING btree (user_id);
+
+
+--
+-- Name: index_accounts_on_agency_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_accounts_on_agency_id ON public.accounts USING btree (agency_id);
 
 
 --
@@ -1839,6 +1327,90 @@ CREATE UNIQUE INDEX index_active_storage_blobs_on_key ON public.active_storage_b
 --
 
 CREATE UNIQUE INDEX index_active_storage_variant_records_uniqueness ON public.active_storage_variant_records USING btree (blob_id, variation_digest);
+
+
+--
+-- Name: index_agencies_on_subdomain_slug; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_agencies_on_subdomain_slug ON public.agencies USING btree (subdomain_slug);
+
+
+--
+-- Name: index_agency_memberships_on_agency_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_agency_memberships_on_agency_id ON public.agency_memberships USING btree (agency_id);
+
+
+--
+-- Name: index_agency_memberships_on_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_agency_memberships_on_user_id ON public.agency_memberships USING btree (user_id);
+
+
+--
+-- Name: index_agency_memberships_on_user_id_and_agency_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_agency_memberships_on_user_id_and_agency_id ON public.agency_memberships USING btree (user_id, agency_id);
+
+
+--
+-- Name: index_attendances_on_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_attendances_on_account_id ON public.attendances USING btree (account_id);
+
+
+--
+-- Name: index_attendances_on_event_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_attendances_on_event_id ON public.attendances USING btree (event_id);
+
+
+--
+-- Name: index_attendances_on_event_participant_from_status_occurred_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_attendances_on_event_participant_from_status_occurred_at ON public.attendances USING btree (event_id, participant_id, "from", status, occurred_at);
+
+
+--
+-- Name: index_attendances_on_participant_from_session_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_attendances_on_participant_from_session_status ON public.attendances USING btree (participant_id, "from", session_id, status, occurred_at);
+
+
+--
+-- Name: index_attendances_on_participant_from_status_occurred_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_attendances_on_participant_from_status_occurred_at ON public.attendances USING btree (participant_id, "from", status, occurred_at);
+
+
+--
+-- Name: index_attendances_on_participant_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_attendances_on_participant_id ON public.attendances USING btree (participant_id);
+
+
+--
+-- Name: index_attendances_on_scan_event_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_attendances_on_scan_event_id ON public.attendances USING btree (scan_event_id);
+
+
+--
+-- Name: index_attendances_on_session_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_attendances_on_session_id ON public.attendances USING btree (session_id);
 
 
 --
@@ -2010,31 +1582,10 @@ CREATE UNIQUE INDEX index_events_on_account_id_and_slug ON public.events USING b
 
 
 --
--- Name: index_events_on_approval_status_and_submitted_at; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_events_on_approval_status_and_submitted_at ON public.events USING btree (approval_status, submitted_at);
-
-
---
--- Name: index_events_on_approved_by_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_events_on_approved_by_id ON public.events USING btree (approved_by_id);
-
-
---
 -- Name: index_events_on_default_print_station_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX index_events_on_default_print_station_id ON public.events USING btree (default_print_station_id);
-
-
---
--- Name: index_events_on_quotation_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX index_events_on_quotation_id ON public.events USING btree (quotation_id);
 
 
 --
@@ -2133,6 +1684,13 @@ CREATE INDEX index_import_files_on_event_id ON public.import_files USING btree (
 --
 
 CREATE INDEX index_invoices_on_account_id ON public.invoices USING btree (account_id);
+
+
+--
+-- Name: index_invoices_on_agency_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_invoices_on_agency_id ON public.invoices USING btree (agency_id);
 
 
 --
@@ -2402,48 +1960,6 @@ CREATE UNIQUE INDEX index_print_stations_on_pairing_code ON public.print_station
 
 
 --
--- Name: index_quotation_revisions_on_account_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_quotation_revisions_on_account_id ON public.quotation_revisions USING btree (account_id);
-
-
---
--- Name: index_quotation_revisions_on_created_by_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_quotation_revisions_on_created_by_id ON public.quotation_revisions USING btree (created_by_id);
-
-
---
--- Name: index_quotation_revisions_on_quotation_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_quotation_revisions_on_quotation_id ON public.quotation_revisions USING btree (quotation_id);
-
-
---
--- Name: index_quotations_on_account_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_quotations_on_account_id ON public.quotations USING btree (account_id);
-
-
---
--- Name: index_quotations_on_approved_by_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_quotations_on_approved_by_id ON public.quotations USING btree (approved_by_id);
-
-
---
--- Name: index_quotations_on_requested_by_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_quotations_on_requested_by_id ON public.quotations USING btree (requested_by_id);
-
-
---
 -- Name: index_registration_forms_on_account_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2461,49 +1977,49 @@ CREATE INDEX index_registration_forms_on_event_id ON public.registration_forms U
 -- Name: index_scan_events_on_account_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_scan_events_on_account_id ON ONLY public.scan_events USING btree (account_id);
+CREATE INDEX index_scan_events_on_account_id ON public.scan_events USING btree (account_id);
 
 
 --
 -- Name: index_scan_events_on_event_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_scan_events_on_event_id ON ONLY public.scan_events USING btree (event_id);
+CREATE INDEX index_scan_events_on_event_id ON public.scan_events USING btree (event_id);
 
 
 --
 -- Name: index_scan_events_on_event_participant_type_scanned_at; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_scan_events_on_event_participant_type_scanned_at ON ONLY public.scan_events USING btree (event_id, participant_id, scan_type, scanned_at);
+CREATE INDEX index_scan_events_on_event_participant_type_scanned_at ON public.scan_events USING btree (event_id, participant_id, scan_type, scanned_at);
 
 
 --
 -- Name: index_scan_events_on_participant_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_scan_events_on_participant_id ON ONLY public.scan_events USING btree (participant_id);
+CREATE INDEX index_scan_events_on_participant_id ON public.scan_events USING btree (participant_id);
 
 
 --
 -- Name: index_scan_events_on_participant_type_scanned_at; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_scan_events_on_participant_type_scanned_at ON ONLY public.scan_events USING btree (participant_id, scan_type, scanned_at);
+CREATE INDEX index_scan_events_on_participant_type_scanned_at ON public.scan_events USING btree (participant_id, scan_type, scanned_at);
 
 
 --
 -- Name: index_scan_events_on_participant_type_session_scanned_at; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_scan_events_on_participant_type_session_scanned_at ON ONLY public.scan_events USING btree (participant_id, scan_type, session_id, scanned_at);
+CREATE INDEX index_scan_events_on_participant_type_session_scanned_at ON public.scan_events USING btree (participant_id, scan_type, session_id, scanned_at);
 
 
 --
 -- Name: index_scan_events_on_session_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_scan_events_on_session_id ON ONLY public.scan_events USING btree (session_id);
+CREATE INDEX index_scan_events_on_session_id ON public.scan_events USING btree (session_id);
 
 
 --
@@ -2661,691 +2177,11 @@ CREATE UNIQUE INDEX index_users_on_reset_password_token ON public.users USING bt
 
 
 --
--- Name: scan_events_2026_06_account_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_06_account_id_idx ON public.scan_events_2026_06 USING btree (account_id);
-
-
---
--- Name: scan_events_2026_06_event_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_06_event_id_idx ON public.scan_events_2026_06 USING btree (event_id);
-
-
---
--- Name: scan_events_2026_06_event_id_participant_id_scan_type_scann_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_06_event_id_participant_id_scan_type_scann_idx ON public.scan_events_2026_06 USING btree (event_id, participant_id, scan_type, scanned_at);
-
-
---
--- Name: scan_events_2026_06_participant_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_06_participant_id_idx ON public.scan_events_2026_06 USING btree (participant_id);
-
-
---
--- Name: scan_events_2026_06_participant_id_scan_type_scanned_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_06_participant_id_scan_type_scanned_at_idx ON public.scan_events_2026_06 USING btree (participant_id, scan_type, scanned_at);
-
-
---
--- Name: scan_events_2026_06_participant_id_scan_type_session_id_sca_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_06_participant_id_scan_type_session_id_sca_idx ON public.scan_events_2026_06 USING btree (participant_id, scan_type, session_id, scanned_at);
-
-
---
--- Name: scan_events_2026_06_session_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_06_session_id_idx ON public.scan_events_2026_06 USING btree (session_id);
-
-
---
--- Name: scan_events_2026_07_account_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_07_account_id_idx ON public.scan_events_2026_07 USING btree (account_id);
-
-
---
--- Name: scan_events_2026_07_event_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_07_event_id_idx ON public.scan_events_2026_07 USING btree (event_id);
-
-
---
--- Name: scan_events_2026_07_event_id_participant_id_scan_type_scann_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_07_event_id_participant_id_scan_type_scann_idx ON public.scan_events_2026_07 USING btree (event_id, participant_id, scan_type, scanned_at);
-
-
---
--- Name: scan_events_2026_07_participant_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_07_participant_id_idx ON public.scan_events_2026_07 USING btree (participant_id);
-
-
---
--- Name: scan_events_2026_07_participant_id_scan_type_scanned_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_07_participant_id_scan_type_scanned_at_idx ON public.scan_events_2026_07 USING btree (participant_id, scan_type, scanned_at);
-
-
---
--- Name: scan_events_2026_07_participant_id_scan_type_session_id_sca_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_07_participant_id_scan_type_session_id_sca_idx ON public.scan_events_2026_07 USING btree (participant_id, scan_type, session_id, scanned_at);
-
-
---
--- Name: scan_events_2026_07_session_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_07_session_id_idx ON public.scan_events_2026_07 USING btree (session_id);
-
-
---
--- Name: scan_events_2026_08_account_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_08_account_id_idx ON public.scan_events_2026_08 USING btree (account_id);
-
-
---
--- Name: scan_events_2026_08_event_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_08_event_id_idx ON public.scan_events_2026_08 USING btree (event_id);
-
-
---
--- Name: scan_events_2026_08_event_id_participant_id_scan_type_scann_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_08_event_id_participant_id_scan_type_scann_idx ON public.scan_events_2026_08 USING btree (event_id, participant_id, scan_type, scanned_at);
-
-
---
--- Name: scan_events_2026_08_participant_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_08_participant_id_idx ON public.scan_events_2026_08 USING btree (participant_id);
-
-
---
--- Name: scan_events_2026_08_participant_id_scan_type_scanned_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_08_participant_id_scan_type_scanned_at_idx ON public.scan_events_2026_08 USING btree (participant_id, scan_type, scanned_at);
-
-
---
--- Name: scan_events_2026_08_participant_id_scan_type_session_id_sca_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_08_participant_id_scan_type_session_id_sca_idx ON public.scan_events_2026_08 USING btree (participant_id, scan_type, session_id, scanned_at);
-
-
---
--- Name: scan_events_2026_08_session_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_08_session_id_idx ON public.scan_events_2026_08 USING btree (session_id);
-
-
---
--- Name: scan_events_2026_09_account_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_09_account_id_idx ON public.scan_events_2026_09 USING btree (account_id);
-
-
---
--- Name: scan_events_2026_09_event_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_09_event_id_idx ON public.scan_events_2026_09 USING btree (event_id);
-
-
---
--- Name: scan_events_2026_09_event_id_participant_id_scan_type_scann_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_09_event_id_participant_id_scan_type_scann_idx ON public.scan_events_2026_09 USING btree (event_id, participant_id, scan_type, scanned_at);
-
-
---
--- Name: scan_events_2026_09_participant_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_09_participant_id_idx ON public.scan_events_2026_09 USING btree (participant_id);
-
-
---
--- Name: scan_events_2026_09_participant_id_scan_type_scanned_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_09_participant_id_scan_type_scanned_at_idx ON public.scan_events_2026_09 USING btree (participant_id, scan_type, scanned_at);
-
-
---
--- Name: scan_events_2026_09_participant_id_scan_type_session_id_sca_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_09_participant_id_scan_type_session_id_sca_idx ON public.scan_events_2026_09 USING btree (participant_id, scan_type, session_id, scanned_at);
-
-
---
--- Name: scan_events_2026_09_session_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scan_events_2026_09_session_id_idx ON public.scan_events_2026_09 USING btree (session_id);
-
-
---
--- Name: attendances_2026_06_account_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_account_id ATTACH PARTITION public.attendances_2026_06_account_id_idx;
-
-
---
--- Name: attendances_2026_06_event_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_event_id ATTACH PARTITION public.attendances_2026_06_event_id_idx;
-
-
---
--- Name: attendances_2026_06_event_id_participant_id_from_status_occ_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_event_participant_from_status_occurred_at ATTACH PARTITION public.attendances_2026_06_event_id_participant_id_from_status_occ_idx;
-
-
---
--- Name: attendances_2026_06_participant_id_from_session_id_status_o_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_participant_from_session_status ATTACH PARTITION public.attendances_2026_06_participant_id_from_session_id_status_o_idx;
-
-
---
--- Name: attendances_2026_06_participant_id_from_status_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_participant_from_status_occurred_at ATTACH PARTITION public.attendances_2026_06_participant_id_from_status_occurred_at_idx;
-
-
---
--- Name: attendances_2026_06_participant_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_participant_id ATTACH PARTITION public.attendances_2026_06_participant_id_idx;
-
-
---
--- Name: attendances_2026_06_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.attendances_pkey ATTACH PARTITION public.attendances_2026_06_pkey;
-
-
---
--- Name: attendances_2026_06_scan_event_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_scan_event_id ATTACH PARTITION public.attendances_2026_06_scan_event_id_idx;
-
-
---
--- Name: attendances_2026_06_session_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_session_id ATTACH PARTITION public.attendances_2026_06_session_id_idx;
-
-
---
--- Name: attendances_2026_07_account_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_account_id ATTACH PARTITION public.attendances_2026_07_account_id_idx;
-
-
---
--- Name: attendances_2026_07_event_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_event_id ATTACH PARTITION public.attendances_2026_07_event_id_idx;
-
-
---
--- Name: attendances_2026_07_event_id_participant_id_from_status_occ_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_event_participant_from_status_occurred_at ATTACH PARTITION public.attendances_2026_07_event_id_participant_id_from_status_occ_idx;
-
-
---
--- Name: attendances_2026_07_participant_id_from_session_id_status_o_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_participant_from_session_status ATTACH PARTITION public.attendances_2026_07_participant_id_from_session_id_status_o_idx;
-
-
---
--- Name: attendances_2026_07_participant_id_from_status_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_participant_from_status_occurred_at ATTACH PARTITION public.attendances_2026_07_participant_id_from_status_occurred_at_idx;
-
-
---
--- Name: attendances_2026_07_participant_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_participant_id ATTACH PARTITION public.attendances_2026_07_participant_id_idx;
-
-
---
--- Name: attendances_2026_07_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.attendances_pkey ATTACH PARTITION public.attendances_2026_07_pkey;
-
-
---
--- Name: attendances_2026_07_scan_event_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_scan_event_id ATTACH PARTITION public.attendances_2026_07_scan_event_id_idx;
-
-
---
--- Name: attendances_2026_07_session_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_session_id ATTACH PARTITION public.attendances_2026_07_session_id_idx;
-
-
---
--- Name: attendances_2026_08_account_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_account_id ATTACH PARTITION public.attendances_2026_08_account_id_idx;
-
-
---
--- Name: attendances_2026_08_event_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_event_id ATTACH PARTITION public.attendances_2026_08_event_id_idx;
-
-
---
--- Name: attendances_2026_08_event_id_participant_id_from_status_occ_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_event_participant_from_status_occurred_at ATTACH PARTITION public.attendances_2026_08_event_id_participant_id_from_status_occ_idx;
-
-
---
--- Name: attendances_2026_08_participant_id_from_session_id_status_o_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_participant_from_session_status ATTACH PARTITION public.attendances_2026_08_participant_id_from_session_id_status_o_idx;
-
-
---
--- Name: attendances_2026_08_participant_id_from_status_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_participant_from_status_occurred_at ATTACH PARTITION public.attendances_2026_08_participant_id_from_status_occurred_at_idx;
-
-
---
--- Name: attendances_2026_08_participant_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_participant_id ATTACH PARTITION public.attendances_2026_08_participant_id_idx;
-
-
---
--- Name: attendances_2026_08_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.attendances_pkey ATTACH PARTITION public.attendances_2026_08_pkey;
-
-
---
--- Name: attendances_2026_08_scan_event_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_scan_event_id ATTACH PARTITION public.attendances_2026_08_scan_event_id_idx;
-
-
---
--- Name: attendances_2026_08_session_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_session_id ATTACH PARTITION public.attendances_2026_08_session_id_idx;
-
-
---
--- Name: attendances_2026_09_account_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_account_id ATTACH PARTITION public.attendances_2026_09_account_id_idx;
-
-
---
--- Name: attendances_2026_09_event_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_event_id ATTACH PARTITION public.attendances_2026_09_event_id_idx;
-
-
---
--- Name: attendances_2026_09_event_id_participant_id_from_status_occ_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_event_participant_from_status_occurred_at ATTACH PARTITION public.attendances_2026_09_event_id_participant_id_from_status_occ_idx;
-
-
---
--- Name: attendances_2026_09_participant_id_from_session_id_status_o_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_participant_from_session_status ATTACH PARTITION public.attendances_2026_09_participant_id_from_session_id_status_o_idx;
-
-
---
--- Name: attendances_2026_09_participant_id_from_status_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_participant_from_status_occurred_at ATTACH PARTITION public.attendances_2026_09_participant_id_from_status_occurred_at_idx;
-
-
---
--- Name: attendances_2026_09_participant_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_participant_id ATTACH PARTITION public.attendances_2026_09_participant_id_idx;
-
-
---
--- Name: attendances_2026_09_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.attendances_pkey ATTACH PARTITION public.attendances_2026_09_pkey;
-
-
---
--- Name: attendances_2026_09_scan_event_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_scan_event_id ATTACH PARTITION public.attendances_2026_09_scan_event_id_idx;
-
-
---
--- Name: attendances_2026_09_session_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_attendances_on_session_id ATTACH PARTITION public.attendances_2026_09_session_id_idx;
-
-
---
--- Name: scan_events_2026_06_account_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_account_id ATTACH PARTITION public.scan_events_2026_06_account_id_idx;
-
-
---
--- Name: scan_events_2026_06_event_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_event_id ATTACH PARTITION public.scan_events_2026_06_event_id_idx;
-
-
---
--- Name: scan_events_2026_06_event_id_participant_id_scan_type_scann_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_event_participant_type_scanned_at ATTACH PARTITION public.scan_events_2026_06_event_id_participant_id_scan_type_scann_idx;
-
-
---
--- Name: scan_events_2026_06_participant_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_participant_id ATTACH PARTITION public.scan_events_2026_06_participant_id_idx;
-
-
---
--- Name: scan_events_2026_06_participant_id_scan_type_scanned_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_participant_type_scanned_at ATTACH PARTITION public.scan_events_2026_06_participant_id_scan_type_scanned_at_idx;
-
-
---
--- Name: scan_events_2026_06_participant_id_scan_type_session_id_sca_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_participant_type_session_scanned_at ATTACH PARTITION public.scan_events_2026_06_participant_id_scan_type_session_id_sca_idx;
-
-
---
--- Name: scan_events_2026_06_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.scan_events_pkey ATTACH PARTITION public.scan_events_2026_06_pkey;
-
-
---
--- Name: scan_events_2026_06_session_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_session_id ATTACH PARTITION public.scan_events_2026_06_session_id_idx;
-
-
---
--- Name: scan_events_2026_07_account_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_account_id ATTACH PARTITION public.scan_events_2026_07_account_id_idx;
-
-
---
--- Name: scan_events_2026_07_event_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_event_id ATTACH PARTITION public.scan_events_2026_07_event_id_idx;
-
-
---
--- Name: scan_events_2026_07_event_id_participant_id_scan_type_scann_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_event_participant_type_scanned_at ATTACH PARTITION public.scan_events_2026_07_event_id_participant_id_scan_type_scann_idx;
-
-
---
--- Name: scan_events_2026_07_participant_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_participant_id ATTACH PARTITION public.scan_events_2026_07_participant_id_idx;
-
-
---
--- Name: scan_events_2026_07_participant_id_scan_type_scanned_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_participant_type_scanned_at ATTACH PARTITION public.scan_events_2026_07_participant_id_scan_type_scanned_at_idx;
-
-
---
--- Name: scan_events_2026_07_participant_id_scan_type_session_id_sca_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_participant_type_session_scanned_at ATTACH PARTITION public.scan_events_2026_07_participant_id_scan_type_session_id_sca_idx;
-
-
---
--- Name: scan_events_2026_07_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.scan_events_pkey ATTACH PARTITION public.scan_events_2026_07_pkey;
-
-
---
--- Name: scan_events_2026_07_session_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_session_id ATTACH PARTITION public.scan_events_2026_07_session_id_idx;
-
-
---
--- Name: scan_events_2026_08_account_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_account_id ATTACH PARTITION public.scan_events_2026_08_account_id_idx;
-
-
---
--- Name: scan_events_2026_08_event_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_event_id ATTACH PARTITION public.scan_events_2026_08_event_id_idx;
-
-
---
--- Name: scan_events_2026_08_event_id_participant_id_scan_type_scann_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_event_participant_type_scanned_at ATTACH PARTITION public.scan_events_2026_08_event_id_participant_id_scan_type_scann_idx;
-
-
---
--- Name: scan_events_2026_08_participant_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_participant_id ATTACH PARTITION public.scan_events_2026_08_participant_id_idx;
-
-
---
--- Name: scan_events_2026_08_participant_id_scan_type_scanned_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_participant_type_scanned_at ATTACH PARTITION public.scan_events_2026_08_participant_id_scan_type_scanned_at_idx;
-
-
---
--- Name: scan_events_2026_08_participant_id_scan_type_session_id_sca_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_participant_type_session_scanned_at ATTACH PARTITION public.scan_events_2026_08_participant_id_scan_type_session_id_sca_idx;
-
-
---
--- Name: scan_events_2026_08_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.scan_events_pkey ATTACH PARTITION public.scan_events_2026_08_pkey;
-
-
---
--- Name: scan_events_2026_08_session_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_session_id ATTACH PARTITION public.scan_events_2026_08_session_id_idx;
-
-
---
--- Name: scan_events_2026_09_account_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_account_id ATTACH PARTITION public.scan_events_2026_09_account_id_idx;
-
-
---
--- Name: scan_events_2026_09_event_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_event_id ATTACH PARTITION public.scan_events_2026_09_event_id_idx;
-
-
---
--- Name: scan_events_2026_09_event_id_participant_id_scan_type_scann_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_event_participant_type_scanned_at ATTACH PARTITION public.scan_events_2026_09_event_id_participant_id_scan_type_scann_idx;
-
-
---
--- Name: scan_events_2026_09_participant_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_participant_id ATTACH PARTITION public.scan_events_2026_09_participant_id_idx;
-
-
---
--- Name: scan_events_2026_09_participant_id_scan_type_scanned_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_participant_type_scanned_at ATTACH PARTITION public.scan_events_2026_09_participant_id_scan_type_scanned_at_idx;
-
-
---
--- Name: scan_events_2026_09_participant_id_scan_type_session_id_sca_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_participant_type_session_scanned_at ATTACH PARTITION public.scan_events_2026_09_participant_id_scan_type_session_id_sca_idx;
-
-
---
--- Name: scan_events_2026_09_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.scan_events_pkey ATTACH PARTITION public.scan_events_2026_09_pkey;
-
-
---
--- Name: scan_events_2026_09_session_id_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_scan_events_on_session_id ATTACH PARTITION public.scan_events_2026_09_session_id_idx;
-
-
---
 -- Name: print_jobs fk_rails_01cc9771d0; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.print_jobs
     ADD CONSTRAINT fk_rails_01cc9771d0 FOREIGN KEY (bulk_print_run_id) REFERENCES public.bulk_print_runs(id);
-
-
---
--- Name: quotation_revisions fk_rails_0442bb12bd; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.quotation_revisions
-    ADD CONSTRAINT fk_rails_0442bb12bd FOREIGN KEY (quotation_id) REFERENCES public.quotations(id);
 
 
 --
@@ -3386,22 +2222,6 @@ ALTER TABLE ONLY public.live_metric_buckets
 
 ALTER TABLE ONLY public.govt_id_import_files
     ADD CONSTRAINT fk_rails_0d05a62e1a FOREIGN KEY (created_by_id) REFERENCES public.users(id);
-
-
---
--- Name: quotations fk_rails_0d46ba7518; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.quotations
-    ADD CONSTRAINT fk_rails_0d46ba7518 FOREIGN KEY (account_id) REFERENCES public.accounts(id);
-
-
---
--- Name: quotation_revisions fk_rails_103c64e9f7; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.quotation_revisions
-    ADD CONSTRAINT fk_rails_103c64e9f7 FOREIGN KEY (account_id) REFERENCES public.accounts(id);
 
 
 --
@@ -3453,6 +2273,14 @@ ALTER TABLE ONLY public.oauth_applications
 
 
 --
+-- Name: agency_memberships fk_rails_273f2f9052; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agency_memberships
+    ADD CONSTRAINT fk_rails_273f2f9052 FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
 -- Name: participants fk_rails_277582be2b; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3461,19 +2289,19 @@ ALTER TABLE ONLY public.participants
 
 
 --
+-- Name: attendances fk_rails_2964ee025e; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.attendances
+    ADD CONSTRAINT fk_rails_2964ee025e FOREIGN KEY (scan_event_id) REFERENCES public.scan_events(id);
+
+
+--
 -- Name: session_live_stats fk_rails_2da9181c6a; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.session_live_stats
     ADD CONSTRAINT fk_rails_2da9181c6a FOREIGN KEY (event_id) REFERENCES public.events(id);
-
-
---
--- Name: quotations fk_rails_32938bb9e1; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.quotations
-    ADD CONSTRAINT fk_rails_32938bb9e1 FOREIGN KEY (requested_by_id) REFERENCES public.users(id);
 
 
 --
@@ -3493,19 +2321,27 @@ ALTER TABLE ONLY public.registration_forms
 
 
 --
+-- Name: accounts fk_rails_3727d03534; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.accounts
+    ADD CONSTRAINT fk_rails_3727d03534 FOREIGN KEY (agency_id) REFERENCES public.agencies(id);
+
+
+--
+-- Name: agency_memberships fk_rails_3bdac11d3b; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agency_memberships
+    ADD CONSTRAINT fk_rails_3bdac11d3b FOREIGN KEY (agency_id) REFERENCES public.agencies(id);
+
+
+--
 -- Name: ticket_reservations fk_rails_3d564f1d49; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.ticket_reservations
     ADD CONSTRAINT fk_rails_3d564f1d49 FOREIGN KEY (account_id) REFERENCES public.accounts(id);
-
-
---
--- Name: quotation_revisions fk_rails_4071465ff5; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.quotation_revisions
-    ADD CONSTRAINT fk_rails_4071465ff5 FOREIGN KEY (created_by_id) REFERENCES public.users(id);
 
 
 --
@@ -3557,10 +2393,18 @@ ALTER TABLE ONLY public.badge_templates
 
 
 --
+-- Name: account_switches fk_rails_51a6f30384; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_switches
+    ADD CONSTRAINT fk_rails_51a6f30384 FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
 -- Name: scan_events fk_rails_52eec40412; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE public.scan_events
+ALTER TABLE ONLY public.scan_events
     ADD CONSTRAINT fk_rails_52eec40412 FOREIGN KEY (session_id) REFERENCES public.sessions(id);
 
 
@@ -3568,7 +2412,7 @@ ALTER TABLE public.scan_events
 -- Name: attendances fk_rails_554712257a; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE public.attendances
+ALTER TABLE ONLY public.attendances
     ADD CONSTRAINT fk_rails_554712257a FOREIGN KEY (participant_id) REFERENCES public.participants(id);
 
 
@@ -3645,14 +2489,6 @@ ALTER TABLE ONLY public.email_templates
 
 
 --
--- Name: events fk_rails_623259ecf6; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.events
-    ADD CONSTRAINT fk_rails_623259ecf6 FOREIGN KEY (quotation_id) REFERENCES public.quotations(id);
-
-
---
 -- Name: custom_fields fk_rails_63a869fd87; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3674,6 +2510,14 @@ ALTER TABLE ONLY public.govt_id_import_files
 
 ALTER TABLE ONLY public.print_stations
     ADD CONSTRAINT fk_rails_66022c3ff6 FOREIGN KEY (event_id) REFERENCES public.events(id);
+
+
+--
+-- Name: account_switches fk_rails_66b1620b17; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_switches
+    ADD CONSTRAINT fk_rails_66b1620b17 FOREIGN KEY (account_id) REFERENCES public.accounts(id);
 
 
 --
@@ -3704,7 +2548,7 @@ ALTER TABLE ONLY public.oauth_access_tokens
 -- Name: attendances fk_rails_777eb7170a; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE public.attendances
+ALTER TABLE ONLY public.attendances
     ADD CONSTRAINT fk_rails_777eb7170a FOREIGN KEY (event_id) REFERENCES public.events(id);
 
 
@@ -3754,6 +2598,14 @@ ALTER TABLE ONLY public.govt_ids
 
 ALTER TABLE ONLY public.session_live_stats
     ADD CONSTRAINT fk_rails_8713d44924 FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
+-- Name: invoices fk_rails_8c3712adee; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoices
+    ADD CONSTRAINT fk_rails_8c3712adee FOREIGN KEY (agency_id) REFERENCES public.agencies(id);
 
 
 --
@@ -3816,7 +2668,7 @@ ALTER TABLE ONLY public.speakers
 -- Name: scan_events fk_rails_a4e11069cf; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE public.scan_events
+ALTER TABLE ONLY public.scan_events
     ADD CONSTRAINT fk_rails_a4e11069cf FOREIGN KEY (event_id) REFERENCES public.events(id);
 
 
@@ -3850,14 +2702,6 @@ ALTER TABLE ONLY public.print_jobs
 
 ALTER TABLE ONLY public.invoices
     ADD CONSTRAINT fk_rails_afb4b1e584 FOREIGN KEY (account_id) REFERENCES public.accounts(id);
-
-
---
--- Name: quotations fk_rails_b4b1365732; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.quotations
-    ADD CONSTRAINT fk_rails_b4b1365732 FOREIGN KEY (approved_by_id) REFERENCES public.users(id);
 
 
 --
@@ -3904,7 +2748,7 @@ ALTER TABLE ONLY public.event_live_stats
 -- Name: scan_events fk_rails_baf8197b7a; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE public.scan_events
+ALTER TABLE ONLY public.scan_events
     ADD CONSTRAINT fk_rails_baf8197b7a FOREIGN KEY (account_id) REFERENCES public.accounts(id);
 
 
@@ -3928,7 +2772,7 @@ ALTER TABLE ONLY public.registration_forms
 -- Name: scan_events fk_rails_bf7c511cdc; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE public.scan_events
+ALTER TABLE ONLY public.scan_events
     ADD CONSTRAINT fk_rails_bf7c511cdc FOREIGN KEY (participant_id) REFERENCES public.participants(id);
 
 
@@ -4032,7 +2876,7 @@ ALTER TABLE ONLY public.bulk_print_runs
 -- Name: attendances fk_rails_cebb463e84; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE public.attendances
+ALTER TABLE ONLY public.attendances
     ADD CONSTRAINT fk_rails_cebb463e84 FOREIGN KEY (account_id) REFERENCES public.accounts(id);
 
 
@@ -4040,7 +2884,7 @@ ALTER TABLE public.attendances
 -- Name: attendances fk_rails_e470d5040d; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE public.attendances
+ALTER TABLE ONLY public.attendances
     ADD CONSTRAINT fk_rails_e470d5040d FOREIGN KEY (session_id) REFERENCES public.sessions(id);
 
 
@@ -4058,14 +2902,6 @@ ALTER TABLE ONLY public.govt_ids
 
 ALTER TABLE ONLY public.custom_fields
     ADD CONSTRAINT fk_rails_e9bd640638 FOREIGN KEY (registration_form_id) REFERENCES public.registration_forms(id);
-
-
---
--- Name: events fk_rails_eb6a58ca43; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.events
-    ADD CONSTRAINT fk_rails_eb6a58ca43 FOREIGN KEY (approved_by_id) REFERENCES public.users(id);
 
 
 --
@@ -4187,12 +3023,6 @@ ALTER TABLE public.govt_ids ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.import_files ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: invoices; Type: ROW SECURITY; Schema: public; Owner: -
---
-
-ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
-
---
 -- Name: live_metric_buckets; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -4227,18 +3057,6 @@ ALTER TABLE public.print_jobs ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.print_stations ENABLE ROW LEVEL SECURITY;
-
---
--- Name: quotation_revisions; Type: ROW SECURITY; Schema: public; Owner: -
---
-
-ALTER TABLE public.quotation_revisions ENABLE ROW LEVEL SECURITY;
-
---
--- Name: quotations; Type: ROW SECURITY; Schema: public; Owner: -
---
-
-ALTER TABLE public.quotations ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: registration_forms; Type: ROW SECURITY; Schema: public; Owner: -
@@ -4368,13 +3186,6 @@ CREATE POLICY tenant_isolation ON public.import_files USING ((account_id = (curr
 
 
 --
--- Name: invoices tenant_isolation; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY tenant_isolation ON public.invoices USING ((account_id = (current_setting('app.current_account_id'::text, true))::uuid));
-
-
---
 -- Name: live_metric_buckets tenant_isolation; Type: POLICY; Schema: public; Owner: -
 --
 
@@ -4414,20 +3225,6 @@ CREATE POLICY tenant_isolation ON public.print_jobs USING ((account_id = (curren
 --
 
 CREATE POLICY tenant_isolation ON public.print_stations USING ((account_id = (current_setting('app.current_account_id'::text, true))::uuid));
-
-
---
--- Name: quotation_revisions tenant_isolation; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY tenant_isolation ON public.quotation_revisions USING ((account_id = (current_setting('app.current_account_id'::text, true))::uuid));
-
-
---
--- Name: quotations tenant_isolation; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY tenant_isolation ON public.quotations USING ((account_id = (current_setting('app.current_account_id'::text, true))::uuid));
 
 
 --
@@ -4505,6 +3302,15 @@ ALTER TABLE public.ticket_reservations ENABLE ROW LEVEL SECURITY;
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260719070000'),
+('20260719060300'),
+('20260719060200'),
+('20260719060100'),
+('20260719060000'),
+('20260719050300'),
+('20260719050200'),
+('20260719050100'),
+('20260719050000'),
 ('20260719000005'),
 ('20260719000004'),
 ('20260719000003'),

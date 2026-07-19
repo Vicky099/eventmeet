@@ -11,12 +11,19 @@
 # Admin action, `SuperAdmin::InvoicesController#deliver`). Confirmed with the user: the system
 # auto-creates the invoice so nobody has to remember to "raise" one, but a human still reviews the
 # computed amount before it actually reaches the tenant.
+#
+# Fixed-hierarchy pivot (requirement.md revisit): scoped to `per_event`-billing_cycle agencies
+# only — an `annual` agency's events are truly unlimited/already paid for up front, so they never
+# get a per-event Invoice at all; without this filter, every one of their completed events would
+# keep matching `where.missing(:invoice)` and get re-checked (harmlessly, but pointlessly) on
+# every single hourly tick forever.
 class InvoiceGenerationJob < ApplicationJob
   queue_as :default
 
   def perform
     Event.unscoped_across_tenants do
-      Event.where(status: :completed).where.missing(:invoice).find_each do |event|
+      Event.joins(account: :agency).where(agencies: { billing_cycle: :per_event })
+        .where(status: :completed).where.missing(:invoice).find_each do |event|
         begin
           Current.account = event.account
           Invoice.generate_for(event)

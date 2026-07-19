@@ -1,5 +1,5 @@
 <% content_for :page_title, "Forgot password" %>
-<% content_for :auth_brand, Current.account&.name || "EventMeet" %>
+<% content_for :auth_brand, Current.account&.name || Current.agency&.name %>
 
 <div class="text-center mt-2">
   <h5>Forgot your password?</h5>
@@ -18,7 +18,7 @@
     </div>
 
     <div class="mt-3">
-      <%= f.submit "Send reset instructions", class: "btn btn-sm btn-primary w-100 waves-effect waves-light" %>
+      <%= f.submit "Send reset instructions", class: "btn btn-m btn-primary w-100 waves-effect waves-light" %>
     </div>
   <% end %>
 

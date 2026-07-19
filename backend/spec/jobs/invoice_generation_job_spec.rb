@@ -16,15 +16,18 @@ RSpec.describe InvoiceGenerationJob, type: :job do
     event
   end
 
+  # Invoice is no longer TenantScoped (fixed-hierarchy pivot, an agency-contract invoice has no
+  # account at all to scope against) — a plain Invoice.find_by works fine with no
+  # unscoped_across_tenants wrapper needed, unlike Event above.
   it "generates a draft invoice for a completed event that has none yet" do
     event = create_completed_event(ends_at: 1.hour.ago)
 
     InvoiceGenerationJob.perform_now
 
-    invoice = Invoice.unscoped_across_tenants { Invoice.find_by(event_id: event.id) }
+    invoice = Invoice.find_by(event_id: event.id)
     expect(invoice).to be_present
     expect(invoice).to be_draft
-    expect(invoice.amount).to eq(event.quotation.current_amount)
+    expect(invoice.amount).to eq(event.account.agency.price_per_event)
   end
 
   it "doesn't generate a second invoice for an event that already has one" do
@@ -34,7 +37,7 @@ RSpec.describe InvoiceGenerationJob, type: :job do
 
     InvoiceGenerationJob.perform_now
 
-    expect(Invoice.unscoped_across_tenants { Invoice.where(event_id: event.id).count }).to eq(1)
+    expect(Invoice.where(event_id: event.id).count).to eq(1)
   end
 
   it "skips an event whose status isn't completed" do
@@ -43,6 +46,20 @@ RSpec.describe InvoiceGenerationJob, type: :job do
 
     InvoiceGenerationJob.perform_now
 
-    expect(Invoice.unscoped_across_tenants { Invoice.where(event_id: event.id).count }).to eq(0)
+    expect(Invoice.where(event_id: event.id).count).to eq(0)
+  end
+
+  # Fixed-hierarchy pivot (requirement.md revisit): an annual agency's events are unlimited/already
+  # paid for up front — never get a per-event Invoice at all.
+  it "skips a completed event whose agency is on an annual contract" do
+    annual_agency = create(:agency, :annual)
+    annual_account = create(:account, agency: annual_agency)
+    Current.account = annual_account
+    event = create(:event, account: annual_account, starts_at: 2.hours.ago, ends_at: 1.hour.ago)
+    Event.unscoped_across_tenants { event.update_column(:status, :completed) }
+
+    InvoiceGenerationJob.perform_now
+
+    expect(Invoice.where(event_id: event.id).count).to eq(0)
   end
 end

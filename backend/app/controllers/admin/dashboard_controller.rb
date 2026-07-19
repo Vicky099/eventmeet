@@ -21,7 +21,6 @@ module Admin
 
       @live_events = events.live.order(:starts_at)
       @upcoming_events = events.up_coming.order(:starts_at).limit(5)
-      @attention_events = events.where(approval_status: [ :pending, :rejected ]).order(:created_at)
       @status_counts = events.group(:status).count
 
       # Same "pluck + Ruby-side .to_date grouping" reasoning as Event#daily_registration_counts —

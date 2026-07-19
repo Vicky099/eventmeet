@@ -8,7 +8,7 @@ RSpec.describe "Tenant admin login", type: :request do
   let!(:user) { create(:user, email: "owner@acme.example", password: "password123!") }
 
   before do
-    create(:account_membership, user: user, account: account, role: :owner)
+    create(:account_membership, user: user, account: account, role: :event_admin)
     host! "acme.example.com"
   end
 
@@ -41,7 +41,7 @@ RSpec.describe "Tenant admin login", type: :request do
   it "rejects a user who is a member of a DIFFERENT Account (not this one) with the same generic message" do
     other_account = create(:account, subdomain_slug: "beta")
     other_member = create(:user, email: "owner@beta.example", password: "password123!")
-    create(:account_membership, user: other_member, account: other_account, role: :owner)
+    create(:account_membership, user: other_member, account: other_account, role: :event_admin)
 
     post user_session_path, params: { user: { email: other_member.email, password: "password123!" } }
     follow_redirect!

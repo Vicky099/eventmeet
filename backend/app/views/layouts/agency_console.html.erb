@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <%= render "shared/head" %>
+  </head>
+
+  <body>
+    <%= render layout: "shared/console_shell", locals: {
+      home_path: agency_root_path,
+      nav_items: agency_nav_items,
+      footer_text: "xEvent",
+      user_dropdown: user_signed_in? ? {
+        email: current_user.email,
+        subtitle: Current.agency&.name,
+        sign_out_path: destroy_user_session_path,
+        avatar_bg_class: "bg-primary-subtle",
+        avatar_text_class: "text-primary"
+      } : nil
+    } do %>
+      <%= yield %>
+    <% end %>
+  </body>
+</html>

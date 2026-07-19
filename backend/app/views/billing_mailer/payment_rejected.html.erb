@@ -1,10 +1,14 @@
-<h1>Payment proof rejected for <%= @invoice.event.name %></h1>
+<% subtitle = @invoice.event ? @invoice.event.name : "Annual Contract" %>
+<%= render "shared/mailer/heading", title: "Payment proof rejected", subtitle: subtitle %>
 
-<p>A Super Admin reviewed your payment submission (UTR: <strong><%= @invoice.utr_reference %></strong>) and rejected it:</p>
+<div style="color:#686868;padding-top:16px;font-size:13px;line-height:1.6;">
+  A Super Admin reviewed your payment submission (UTR: <strong style="color:#1f1f1f;"><%= @invoice.utr_reference %></strong>) and rejected it:
+</div>
 
-<blockquote><%= @invoice.rejection_reason %></blockquote>
+<%= render "shared/mailer/notice", tone: :danger, body: @invoice.rejection_reason %>
 
-<p>
-  Sign in to submit a new payment proof at
-  <%= link_to admin_invoice_url(@invoice), admin_invoice_url(@invoice) %>
-</p>
+<div style="padding-top:20px;">
+  <%= render "shared/mailer/button",
+        url: agency_invoice_url(@invoice),
+        label: "Submit New Payment Proof →" %>
+</div>

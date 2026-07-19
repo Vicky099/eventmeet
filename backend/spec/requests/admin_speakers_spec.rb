@@ -20,7 +20,7 @@ RSpec.describe "Admin Console speakers", type: :request do
   end
 
   describe "tenant scoping" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "never lists another tenant's speakers" do
       other_account = create(:account)
@@ -55,7 +55,7 @@ RSpec.describe "Admin Console speakers", type: :request do
 
   describe "role permissions (requirement.md §5.1)" do
     it "owner can create a speaker, redirected back into the wizard's Speaker step (not a separate manage page)" do
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
       event = create_event
 
       expect {
@@ -66,7 +66,7 @@ RSpec.describe "Admin Console speakers", type: :request do
     end
 
     it "finance_readonly cannot create a speaker" do
-      sign_in_with_role(:finance_readonly)
+      sign_in_with_role(:admin_staff)
       event = create_event
 
       post admin_event_speakers_path(event), params: { speaker: { name: "Jane Doe" } }
@@ -76,7 +76,7 @@ RSpec.describe "Admin Console speakers", type: :request do
   end
 
   describe "DELETE /admin/events/:event_id/speakers/:id" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "removes a speaker with no scheduled talks" do
       event = create_event

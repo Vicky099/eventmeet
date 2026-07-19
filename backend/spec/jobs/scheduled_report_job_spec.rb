@@ -42,7 +42,7 @@ RSpec.describe ScheduledReportJob, type: :job do
   it "sends a report to every owner for a daily event with no last_report_sent_at yet" do
     event = create_event(scheduled_report_frequency: :daily, name: "Annual Meetup")
     owner = create(:user, email: "owner@acme.example")
-    create(:account_membership, user: owner, account: account, role: :owner)
+    create(:account_membership, user: owner, account: account, role: :event_admin)
 
     perform_enqueued_jobs(only: NotificationDeliveryJob) { described_class.perform_now }
     Current.account = account
@@ -66,7 +66,7 @@ RSpec.describe ScheduledReportJob, type: :job do
 
   it "sends a daily event whose last report was sent more than a day ago" do
     event = create_event(scheduled_report_frequency: :daily, last_report_sent_at: 25.hours.ago)
-    create(:account_membership, user: create(:user), account: account, role: :owner)
+    create(:account_membership, user: create(:user), account: account, role: :event_admin)
 
     perform_enqueued_jobs(only: NotificationDeliveryJob) { described_class.perform_now }
     Current.account = account
@@ -87,7 +87,7 @@ RSpec.describe ScheduledReportJob, type: :job do
 
   it "sends a weekly event whose last report was sent more than 7 days ago" do
     event = create_event(scheduled_report_frequency: :weekly, last_report_sent_at: 8.days.ago)
-    create(:account_membership, user: create(:user), account: account, role: :owner)
+    create(:account_membership, user: create(:user), account: account, role: :event_admin)
 
     perform_enqueued_jobs(only: NotificationDeliveryJob) { described_class.perform_now }
     Current.account = account
@@ -97,7 +97,7 @@ RSpec.describe ScheduledReportJob, type: :job do
 
   it "skips an unpublished event even with a frequency set" do
     event = create(:event, account: account, scheduled_report_frequency: :daily, published_at: nil)
-    create(:account_membership, user: create(:user), account: account, role: :owner)
+    create(:account_membership, user: create(:user), account: account, role: :event_admin)
 
     perform_enqueued_jobs(only: NotificationDeliveryJob) { described_class.perform_now }
     Current.account = account
@@ -109,7 +109,7 @@ RSpec.describe ScheduledReportJob, type: :job do
   it "one event blowing up doesn't block another event's report" do
     broken = create_event(scheduled_report_frequency: :daily, name: "Broken Event")
     healthy = create_event(scheduled_report_frequency: :daily, name: "Healthy Event")
-    create(:account_membership, user: create(:user), account: account, role: :owner)
+    create(:account_membership, user: create(:user), account: account, role: :event_admin)
     # AR's own `==` compares by class+id, so this matches the *row* even though the job's own
     # find_each loads a fresh Ruby object, not this exact instance.
     allow(Notifier).to receive(:email).and_wrap_original do |original, **kwargs|
@@ -129,7 +129,7 @@ RSpec.describe ScheduledReportJob, type: :job do
     it "includes registration/check-in stats and the most-attended session" do
       event = create_event(scheduled_report_frequency: :daily)
       owner = create(:user, email: "owner@acme.example")
-      create(:account_membership, user: owner, account: account, role: :owner)
+      create(:account_membership, user: owner, account: account, role: :event_admin)
       session = create(:session, account: account, event: event, name: "Keynote Hall")
       participant = create(:participant, account: account, event: event)
       # Event-level check-in (session_id: nil) — Event#checked_in_participant_count's own scope,

@@ -11,7 +11,7 @@
 <div class="card">
   <div class="card-header d-flex justify-content-between align-items-center">
     <span class="fw-semibold">Event Schedule</span>
-    <%= link_to "New Talk", new_admin_event_schedule_path(event), class: "btn btn-sm btn-primary" %>
+    <%= link_to "New Talk", new_admin_event_schedule_path(event), class: "btn btn-m btn-primary" %>
   </div>
   <div class="card-body">
     <% if days.empty? && unscheduled_talks.none? %>
@@ -41,7 +41,7 @@
                             &mdash; <%= schedule.speaker.name %> (<%= schedule.starts_at.strftime("%H:%M") %>)
                           </span>
                           <%= button_to admin_event_schedule_path(event, schedule), method: :delete,
-                                class: "btn btn-sm btn-link text-danger p-0", title: "Remove talk",
+                                class: "btn btn-m btn-link text-danger p-0", title: "Remove talk",
                                 data: { action: "click->confirm-dialog#show", title: "Remove Talk",
                                         message: "Remove #{schedule.title}?", danger: "true" } do %>
                             <i class="bx bx-trash"></i>
@@ -68,7 +68,7 @@
                 &mdash; <%= schedule.speaker.name %> (<%= schedule.starts_at.strftime("%b %-d, %H:%M") %>)
               </span>
               <%= button_to admin_event_schedule_path(event, schedule), method: :delete,
-                    class: "btn btn-sm btn-link text-danger p-0", title: "Remove talk",
+                    class: "btn btn-m btn-link text-danger p-0", title: "Remove talk",
                     data: { action: "click->confirm-dialog#show", title: "Remove Talk",
                             message: "Remove #{schedule.title}?", danger: "true" } do %>
                 <i class="bx bx-trash"></i>

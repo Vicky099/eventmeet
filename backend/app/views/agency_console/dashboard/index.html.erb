@@ -1,0 +1,194 @@
+<% content_for :page_title, @agency.name %>
+
+<%= render layout: "shared/page_header", locals: { icon: "bx-briefcase", crumbs: [ { label: @agency.name } ] } do %>
+  <% if @agency.contract_active? %>
+    <%= link_to "New Tenant", new_agency_account_path, class: "btn btn-m btn-primary" %>
+  <% else %>
+    <button type="button" class="btn btn-m btn-primary" disabled title="Your annual contract hasn't been paid yet">
+      New Tenant
+    </button>
+  <% end %>
+<% end %>
+
+<%# At a Glance (requirement.md revisit: "design the agency analytics dashboard ... also include
+    one glance overview") — mirrors SuperAdmin::DashboardController's own stat row one tier down:
+    just this agency's own tenants, never platform-wide. Total Paid/Outstanding (not "Revenue" —
+    from this agency's own point of view it's money paid out, not collected) are always a single
+    number in @agency.currency, never a per-currency breakdown — Invoice.for_agency's own comment
+    is why that's always safe here, unlike the Platform Console's multi-agency dashboard. %>
+<div class="row g-3 mb-4">
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Tenants", value: @accounts.size, icon: "bx-buildings", color: "primary" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Live Events Now", value: @live_event_count, icon: "bx-broadcast", color: "danger" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Total Paid", value: money(@total_paid, @agency.currency), icon: "bx-wallet", color: "success" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Outstanding", value: money(@outstanding, @agency.currency), icon: "bx-error-circle", color: "warning" %>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header bg-white">
+        <h5 class="card-title mb-0">Contract</h5>
+      </div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-sm-5">Billing</dt>
+          <dd class="col-sm-7"><%= @agency.billing_cycle.humanize %></dd>
+
+          <% if @agency.per_event? %>
+            <dt class="col-sm-5">Price / Event</dt>
+            <dd class="col-sm-7"><%= money(@agency.price_per_event, @agency.currency) %></dd>
+
+            <dt class="col-sm-5">Event Pool</dt>
+            <dd class="col-sm-7">
+              <%= @agency.events_used %> used / <%= @agency.events_granted %> granted
+              <% if @agency.events_granted.positive? %>
+                <div class="progress mt-1" style="height: 6px;">
+                  <div class="progress-bar" role="progressbar"
+                       style="width: <%= [ 100.0 * @agency.events_used / @agency.events_granted, 100 ].min %>%"></div>
+                </div>
+              <% end %>
+            </dd>
+          <% else %>
+            <dt class="col-sm-5">Annual Price</dt>
+            <dd class="col-sm-7"><%= money(@agency.annual_price, @agency.currency) %></dd>
+
+            <dt class="col-sm-5">Contract Status</dt>
+            <dd class="col-sm-7">
+              <% if @agency.contract_active? %>
+                <span class="badge bg-success-subtle text-success">Paid — unlimited events</span>
+              <% else %>
+                <span class="badge bg-warning-subtle text-warning"><%= @agency.invoice&.status&.humanize || "Awaiting invoice" %></span>
+              <% end %>
+            </dd>
+          <% end %>
+        </dl>
+
+        <% if @agency.annual? && !@agency.contract_active? %>
+          <p class="text-muted small mt-3 mb-0">A Super Admin needs to send and verify payment on your annual contract invoice before you can create tenants or events.</p>
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <%# requirement.md revisit: "due invoices need actions" one tier down — this agency's own
+        payment queue, not a bare count: every row here is something the agency can act on
+        directly (Pay), unlike an already-submitted under_review invoice, which is waiting on the
+        Super Admin now (see AgencyConsole::DashboardController#index's own comment). %>
+    <%= render layout: "shared/card", locals: { title: "Invoices Needing Payment", icon: "bx-error-circle",
+      actions: (link_to "View all", agency_invoices_path, class: "btn btn-m btn-outline-secondary") } do %>
+      <% if @invoices_needing_payment.none? %>
+        <%= render "shared/empty_state", icon: "bx-check-shield", message: "Nothing due right now." %>
+      <% else %>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Invoice</th>
+                <th>Amount</th>
+                <th class="text-end">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @invoices_needing_payment.each do |invoice| %>
+                <tr>
+                  <td><%= invoice.event ? "#{invoice.account.name} — #{invoice.event.name}" : "Annual Contract" %></td>
+                  <td><%= money(invoice.amount, invoice.currency) %></td>
+                  <td class="text-end">
+                    <%= link_to "Pay Now", agency_invoice_path(invoice), class: "btn btn-m btn-primary" %>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% end %>
+    <% end %>
+  </div>
+</div>
+
+<div class="mb-4">
+  <%# requirement.md revisit: "show only latest 10 tenants and top right corner of tenant will
+      have view all link" — @recent_accounts is already capped to 10
+      (AgencyConsole::DashboardController#index's own comment); agency_accounts_path is the full,
+      paginated list (AgencyConsole::AccountsController#index). %>
+  <%= render layout: "shared/card", locals: { title: "Tenants", icon: "bx-buildings",
+    actions: (link_to "View all", agency_accounts_path, class: "btn btn-m btn-outline-secondary") } do %>
+    <% if @recent_accounts.none? %>
+      <%= render "shared/empty_state", icon: "bx-buildings", message: "No tenants yet — create your first one to get started." %>
+    <% else %>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Tenant</th>
+              <th>Status</th>
+              <th>Events</th>
+              <th>Participants</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @recent_accounts.each do |account| %>
+              <tr>
+                <td><%= account.name %> <small class="text-muted">(<%= account.subdomain_slug %>)</small></td>
+                <td><span class="badge <%= account.active? ? "bg-success" : "bg-secondary" %>"><%= account.status.humanize %></span></td>
+                <td><%= @events_by_account.fetch(account.id, []).size %></td>
+                <td><%= @participant_counts_by_account.fetch(account.id, 0) %></td>
+                <td class="text-end">
+                  <div class="d-flex justify-content-end gap-2">
+                    <% if account.active? %>
+                      <%# data-turbo="false" — this crosses an origin boundary (a different tenant
+                          subdomain entirely, not just an auth transition), the same reason the
+                          sign-in/sign-out forms already need it (see admin/sessions/new.html.erb's
+                          own comment): Turbo's fetch()-based form submission can't follow a
+                          cross-origin redirect, confirmed live ("TypeError: Failed to fetch") — a
+                          real full-page form submission handles it correctly. %>
+                      <%= button_to "Switch to this tenant", switch_agency_account_path(account), method: :post,
+                            class: "btn btn-m btn-outline-primary", form: { data: { turbo: false } } %>
+                      <%# requirement.md revisit: "same action here as well for tenants" — the
+                          dashboard's own Tenants preview gets the identical Suspend/Reinstate pair
+                          agency_console/accounts/index.html.erb's own table already has (that
+                          view's own comment has the full reasoning/authorization-boundary note). %>
+                      <%= button_to suspend_agency_account_path(account), method: :patch,
+                            class: "btn btn-m btn-outline-danger", title: "Suspend",
+                            data: {
+                              action: "click->confirm-dialog#show",
+                              title: "Suspend Tenant",
+                              message: "Suspend #{account.name}? Its own admins won't be able to sign in until reinstated.",
+                              danger: "true"
+                            } do %>
+                        <i class="bx bx-pause-circle"></i>
+                      <% end %>
+                    <% else %>
+                      <%= button_to reinstate_agency_account_path(account), method: :patch,
+                            class: "btn btn-m btn-outline-success", title: "Reinstate" do %>
+                        <i class="bx bx-play-circle"></i>
+                      <% end %>
+                    <% end %>
+                  </div>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  <% end %>
+</div>
+
+<%# requirement.md revisit: "design the agency analytics dashboard" — this agency's own live
+    pulse, subscribed to its own per-agency stream (LiveDashboard.agency_stream/
+    #broadcast_agency_pulse — fired from the same Event/ScanEvent write paths that already keep
+    the Platform Console's cross-tenant pulse live, one tier down). %>
+<%= turbo_stream_from LiveDashboard.agency_stream(@agency) %>
+
+<%= render "live_pulse", pulse: @live_pulse %>

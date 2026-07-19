@@ -18,6 +18,12 @@ class Account < ApplicationRecord
   has_many :account_memberships, dependent: :destroy
   has_many :users, through: :account_memberships
   has_many :tenant_domains, dependent: :destroy
+  # Fixed-hierarchy pivot (requirement.md revisit, confirmed with the user): every new Account is
+  # created from inside its Agency's own console now (AgencyConsole::AccountsController, AccountProvisioning's
+  # agency: kwarg) — `optional: true` only because legacy standalone accounts provisioned before
+  # this pivot (agency: nil) are left alone in the DB, not migrated onto one; the Super Admin's own
+  # tenant-creation form is gone (§2), so no *new* standalone Account can come into existence.
+  belongs_to :agency, optional: true
   # requirement.md §4.9 item 4: one OAuth application per Account, auto-created at provisioning
   # time (Phase 2). association extended onto Doorkeeper::Application in
   # config/initializers/doorkeeper_application_account.rb.
@@ -54,6 +60,9 @@ class Account < ApplicationRecord
                               },
                               length: { minimum: 3, maximum: 63 },
                               exclusion: { in: RESERVED_SLUGS, message: "is a reserved word" }
+  # Cross-table counterpart to Agency's own identical check — see that model's own comment for why
+  # (TenantResolvable's Account-then-Agency lookup needs an unambiguous answer).
+  validate :subdomain_slug_not_taken_by_an_agency
 
   # requirement.md revisit: "While registering the Tenant, we should capture ... contact email,
   # contact num ... sender email." on: :create only — a tenant provisioned before this feature
@@ -89,9 +98,14 @@ class Account < ApplicationRecord
 
   # Phase 13/14 — Communications/Reporting (requirement.md §3.10, §5.10, §5.11): "the organizer is
   # notified" recurs across event rejection (Phase 13), and now scheduled report delivery (Phase
-  # 14) — same recipient set both times, previously inlined separately at each call site.
-  def owner_users
-    account_memberships.owner.includes(:user).map(&:user)
+  # 14) — same recipient set both times, previously inlined separately at each call site. Renamed
+  # from #owner_users (Agency layer role remap, requirement.md revisit) — the `owner` role no
+  # longer exists; `event_admin` is its merged replacement (AccountMembership's own comment) and,
+  # for an agency-linked tenant, already includes that agency's own staff too (every agency_admin
+  # gets an event_admin AccountMembership auto-created on each of their agency's tenants —
+  # AccountProvisioning's own comment), so this needs no agency-specific branch of its own.
+  def admin_users
+    account_memberships.event_admin.includes(:user).map(&:user)
   end
 
   def attach_logo(uploaded_file)
@@ -103,5 +117,13 @@ class Account < ApplicationRecord
       content_type: uploaded_file.content_type,
       key: TenantScopedAttachment.blob_key(self, "logo", filename: uploaded_file.original_filename)
     )
+  end
+
+  private
+
+  def subdomain_slug_not_taken_by_an_agency
+    return if subdomain_slug.blank?
+
+    errors.add(:subdomain_slug, "has already been taken") if Agency.where("lower(subdomain_slug) = ?", subdomain_slug).exists?
   end
 end

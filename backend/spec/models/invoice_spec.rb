@@ -7,18 +7,57 @@ RSpec.describe Invoice, type: :model do
   before { Current.account = account }
 
   describe ".generate_for" do
-    it "creates a draft invoice for the event's approved quotation amount and currency" do
-      quotation = create(:quotation, :approved, account: account, requested_by: create(:user), current_amount: 45_000, currency: "USD")
-      event = create(:event, account: account, quotation: quotation)
+    # Fixed-hierarchy pivot (requirement.md revisit): every event's price comes from its account's
+    # own Agency (no more per-tenant Quotation negotiation) — read fresh at completion time, not a
+    # snapshot from whenever the event was created.
+    it "creates a draft invoice for the event's Agency price/currency" do
+      agency = create(:agency, price_per_event: 15_000, currency: "USD", events_granted: 1)
+      agency_account = create(:account, agency: agency)
+      Current.account = agency_account
+      event = create(:event, account: agency_account)
 
       invoice = Invoice.generate_for(event)
 
       expect(invoice).to be_persisted
       expect(invoice).to be_draft
-      expect(invoice.amount).to eq(45_000)
+      expect(invoice.amount).to eq(15_000)
       expect(invoice.currency).to eq("USD")
       expect(invoice.event).to eq(event)
-      expect(invoice.account).to eq(account)
+      expect(invoice.account).to eq(agency_account)
+    end
+  end
+
+  describe ".generate_for_agency_contract" do
+    it "creates a draft invoice for the agency's own annual_price/currency, with no event or account" do
+      agency = create(:agency, billing_cycle: :annual, annual_price: 500_000, currency: "USD", price_per_event: nil, events_granted: 0)
+
+      invoice = Invoice.generate_for_agency_contract(agency)
+
+      expect(invoice).to be_persisted
+      expect(invoice).to be_draft
+      expect(invoice.amount).to eq(500_000)
+      expect(invoice.currency).to eq("USD")
+      expect(invoice.agency).to eq(agency)
+      expect(invoice.event).to be_nil
+      expect(invoice.account).to be_nil
+    end
+  end
+
+  describe "#exactly_one_of_event_or_agency" do
+    it "is invalid with neither an event nor an agency" do
+      invoice = build(:invoice, event: nil, account: nil, agency: nil)
+
+      expect(invoice).not_to be_valid
+      expect(invoice.errors[:base]).to be_present
+    end
+
+    it "is invalid with both an event and an agency" do
+      event = create(:event, account: account)
+      agency = create(:agency, billing_cycle: :annual, annual_price: 100_000, price_per_event: nil, events_granted: 0)
+      invoice = build(:invoice, event: event, account: account, agency: agency)
+
+      expect(invoice).not_to be_valid
+      expect(invoice.errors[:base]).to be_present
     end
   end
 

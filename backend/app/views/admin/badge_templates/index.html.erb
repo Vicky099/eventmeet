@@ -2,7 +2,7 @@
 
 <%= render layout: "shared/page_header",
   locals: { icon: "bx-id-card", crumbs: [ { label: "Badge Templates" } ] } do %>
-  <%= link_to "New Template", new_admin_badge_template_path, class: "btn btn-sm btn-primary" %>
+  <%= link_to "New Template", new_admin_badge_template_path, class: "btn btn-m btn-primary" %>
 <% end %>
 
 <div class="card">
@@ -33,11 +33,11 @@
                 <td><%= template.width_cm %> &times; <%= template.height_cm %></td>
                 <td class="text-end">
                   <div class="d-flex justify-content-end gap-2">
-                    <%= link_to edit_admin_badge_template_path(template), class: "btn btn-sm btn-outline-primary", title: "Edit" do %>
+                    <%= link_to edit_admin_badge_template_path(template), class: "btn btn-m btn-outline-primary", title: "Edit" do %>
                       <i class="bx bx-edit"></i>
                     <% end %>
                     <%= button_to admin_badge_template_path(template), method: :delete,
-                          class: "btn btn-sm btn-outline-danger", title: "Remove",
+                          class: "btn btn-m btn-outline-danger", title: "Remove",
                           data: { action: "click->confirm-dialog#show", title: "Remove Badge Template",
                                   message: "Remove #{template.name}? Badges already built from it are unaffected.", danger: "true" } do %>
                       <i class="bx bx-trash"></i>

@@ -6,18 +6,6 @@ RSpec.describe BillingMailer, type: :mailer do
 
   before { Current.account = account }
 
-  describe "#quotation_amount_sent" do
-    it "includes the event name and amount" do
-      quotation = create(:quotation, :sent, account: account, requested_by: create(:user), event_name: "Annual Summit")
-
-      mail = described_class.quotation_amount_sent(quotation, "owner@acme.example")
-
-      expect(mail.to).to eq([ "owner@acme.example" ])
-      expect(mail.subject).to include("Annual Summit")
-      expect(mail.html_part.body.to_s).to include("₹30,000.00")
-    end
-  end
-
   describe "#invoice_sent" do
     it "includes the event name and amount" do
       event = create(:event, account: account, name: "Annual Summit")
@@ -27,6 +15,19 @@ RSpec.describe BillingMailer, type: :mailer do
 
       expect(mail.subject).to include("Annual Summit")
       expect(mail.html_part.body.to_s).to include("120")
+    end
+
+    # Fixed-hierarchy pivot (requirement.md revisit): an annual agency's own upfront contract
+    # invoice has no event/account at all — same mailer, a different subject/body branch.
+    it "includes the agency name and amount for an agency-contract invoice with no event" do
+      agency = create(:agency, name: "Acme Agency", billing_cycle: :annual, annual_price: 500_000, price_per_event: nil, events_granted: 0)
+      invoice = Invoice.generate_for_agency_contract(agency)
+
+      mail = described_class.invoice_sent(invoice, "agency-admin@example.com")
+
+      expect(mail.subject).to include("annual contract")
+      expect(mail.html_part.body.to_s).to include("Acme Agency")
+      expect(mail.html_part.body.to_s).to include("500,000")
     end
   end
 

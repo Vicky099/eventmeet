@@ -14,7 +14,7 @@
                               every route carries its console's /admin or /platform namespace
                               (config/routes.rb)
       nav_items           — Array of { path:, icon:, label: } — see app/helpers/{admin,super_admin}_helper.rb
-      footer_text          — String, e.g. "EventMeet" / "EventMeet Platform"
+      footer_text          — String, e.g. "xEvent" / "xEvent Platform"
       user_dropdown        — Hash of locals for shared/_user_dropdown, or nil if signed out
       back_link            — optional Hash { label:, path:, context:, context_subtitle: } —
                               currently only layouts/admin.html.erb, whenever the event-scoped
@@ -58,7 +58,7 @@
           <%= render "shared/brand_link", home_path: home_path %>
         </div>
 
-        <button type="button" class="btn btn-sm px-3 font-size-24 header-item waves-effect" data-action="sidebar#toggle">
+        <button type="button" class="btn btn-m px-3 font-size-24 header-item waves-effect" data-action="sidebar#toggle">
           <i class="bx bx-menu align-middle"></i>
         </button>
 
@@ -79,16 +79,6 @@
     </div>
 
     <div class="sidebar-menu-scroll">
-      <%# Tenant side only — Current.account is nil on the Platform Console (Super Admin has no
-          AccountMembership at all, requirement.md §4.1). Lives inside .sidebar-menu-scroll, not
-          as a direct sibling of .navbar-brand-box: app.min.css offsets .sidebar-menu-scroll
-          itself by margin-top:75px to clear the *fixed-position* brand box above it (the brand
-          box is taken out of document flow, so nothing after it gets pushed down "for free" —
-          same class of bug as the missing isvertical-topbar class and the collapsed-sidebar logo
-          overlap). A sibling div here would render underneath the brand box instead, not below
-          it — caught the same way those were, by actually looking at the rendered page. %>
-      <%= render "shared/account_switcher" if Current.account %>
-
       <%# Identity card for whatever back_link[:context] names (here, the selected event) — same
           avatar-circle-initial + bold-name(+muted-subtitle) shape as shopmate-backend's own
           tenant identity card, directly above the nav <ul> whose first item is the back link

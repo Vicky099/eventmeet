@@ -31,7 +31,7 @@ RSpec.describe "Admin Console participants", type: :request do
 
     it "blocks checkin_staff from creating a participant" do
       event = create_event
-      sign_in_with_role(:checkin_staff)
+      sign_in_with_role(:admin_staff)
 
       expect {
         post admin_event_participants_path(event), params: { participant: { first_name: "Alice" } }
@@ -42,7 +42,7 @@ RSpec.describe "Admin Console participants", type: :request do
   end
 
   describe "GET /admin/events/:event_id/participants" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "lists and searches participants across identifier fields" do
       event = create_event
@@ -83,7 +83,7 @@ RSpec.describe "Admin Console participants", type: :request do
   # requirement.md revisit: "a participant show page where we can show the profile of
   # participant, his in and out activity and his badge with all filled data."
   describe "GET /admin/events/:event_id/participants/:id (show)" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "shows the participant's own profile fields" do
       event = create_event
@@ -163,7 +163,7 @@ RSpec.describe "Admin Console participants", type: :request do
       event = create_event
       Current.account = account
       participant = create(:participant, account: account, event: event)
-      sign_in_with_role(:checkin_staff)
+      sign_in_with_role(:admin_staff)
 
       get admin_event_participant_path(event, participant)
 
@@ -172,7 +172,7 @@ RSpec.describe "Admin Console participants", type: :request do
   end
 
   describe "GET /admin/events/:event_id/participants/:id/document" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "streams the participant's own attached document through CloudinaryRawFile" do
       event = create_event
@@ -208,7 +208,7 @@ RSpec.describe "Admin Console participants", type: :request do
   # (every field that renders is now always required), so a plain ">Company<"-style check would
   # never match a real enabled field in the first place.
   describe "GET participants/new and /:id/edit (field visibility)" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "only shows catalog fields the selected ticket_category's form has enabled" do
       event = create_event
@@ -235,7 +235,7 @@ RSpec.describe "Admin Console participants", type: :request do
   end
 
   describe "POST /admin/events/:event_id/participants" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "creates a participant with source: manual and the event's default status" do
       event = create_event
@@ -385,7 +385,7 @@ RSpec.describe "Admin Console participants", type: :request do
   end
 
   describe "PATCH /admin/events/:event_id/participants/:id/approve" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "confirms a pending participant" do
       event = create_event(participant_approval_required: true)
@@ -399,7 +399,7 @@ RSpec.describe "Admin Console participants", type: :request do
   end
 
   describe "POST /admin/events/:event_id/participants/bulk_destroy" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "removes only the selected participants" do
       event = create_event
@@ -420,7 +420,7 @@ RSpec.describe "Admin Console participants", type: :request do
   # Phase 13 — Communications (requirement.md §3.10): "Resend invitation per participant and send
   # to all pending batch job."
   describe "POST /admin/events/:event_id/participants/:id/resend" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "tracks and enqueues an email Notification for the participant" do
       event = create_event
@@ -440,7 +440,7 @@ RSpec.describe "Admin Console participants", type: :request do
       event = create_event
       Current.account = account
       participant = create(:participant, account: account, event: event)
-      sign_in_with_role(:checkin_staff)
+      sign_in_with_role(:admin_staff)
 
       post resend_admin_event_participant_path(event, participant)
 
@@ -449,7 +449,7 @@ RSpec.describe "Admin Console participants", type: :request do
   end
 
   describe "POST /admin/events/:event_id/participants/send_to_pending" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "sends only to participants with status: pending" do
       event = create_event
@@ -475,7 +475,7 @@ RSpec.describe "Admin Console participants", type: :request do
       create(:participant, account: other_account, event: other_event, first_name: "Other", last_name: "Tenant Person")
 
       event = create_event
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       get admin_event_participants_path(event)
 
@@ -487,7 +487,7 @@ RSpec.describe "Admin Console participants", type: :request do
       Current.account = other_account
       other_event = create(:event, account: other_account)
 
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       get admin_event_participants_path(other_event.slug)
 

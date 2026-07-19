@@ -1,0 +1,15 @@
+<% content_for :page_title, "New Agency" %>
+
+<%= render "shared/page_header",
+  icon: "bx-briefcase",
+  crumbs: [ { label: "Agencies", path: platform_agencies_path }, { label: "New Agency" } ] %>
+
+<div class="row">
+  <div class="col-xl-7 col-lg-9">
+    <div class="card">
+      <div class="card-body">
+        <%= render "form", agency: @agency %>
+      </div>
+    </div>
+  </div>
+</div>

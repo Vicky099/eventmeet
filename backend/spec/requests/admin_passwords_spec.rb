@@ -12,7 +12,7 @@ RSpec.describe "Tenant forgot-password", type: :request do
   let!(:user) { create(:user, email: "owner@acme.example") }
 
   before do
-    create(:account_membership, user: user, account: account, role: :owner)
+    create(:account_membership, user: user, account: account, role: :event_admin)
     host! "acme.example.com"
   end
 

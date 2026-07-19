@@ -19,6 +19,14 @@
 # gets it via the `$QRCODE$` placeholder (EmailTemplateRenderer) — so the PDF picks it up for free
 # with no QR-specific logic of its own.
 class ParticipantMailer < ApplicationMailer
+  # Every view here (both #confirmation's default branch and its/#quick_email's custom-EmailTemplate
+  # branch) is already a complete, self-contained, tenant-branded HTML document — never the
+  # platform-branded layouts/mailer.html.erb card every other mailer in this app composes into
+  # (that layout's own comment has the full "why"). Applies at the class level so #confirmation's
+  # plain, no-block `mail(...)` call (the default-template path) skips it too, not just
+  # #quick_email's explicit `render html: ..., layout: false`.
+  layout false
+
   def confirmation(participant)
     @participant = participant
     @event = participant.event

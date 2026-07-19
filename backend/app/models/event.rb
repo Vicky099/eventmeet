@@ -42,22 +42,11 @@ class Event < ApplicationRecord
   # nil) is invisible to that job and stays `draft` indefinitely regardless of its schedule. See
   # `publish!` / `published_at` below — the wizard's Review step is what calls it.
   enum :status, { draft: 0, up_coming: 1, live: 2, completed: 3 }
-  # Independent of `status` above (requirement.md §5.2, workflow built in Phase 5). `unsubmitted`
-  # (schema default) is the real starting state — an event only becomes `pending` (and so only
-  # shows up in SuperAdmin::EventReviewsController's queue) once the organizer explicitly calls
-  # `submit_for_review!` from the Review step; that method also handles the reject → edit →
-  # resubmit cycle back into `pending`.
-  enum :approval_status, { pending: 0, approved: 1, rejected: 2, unsubmitted: 3 }
   enum :banner_orientation, { landscape: 0, portrait: 1 }
   # Phase 14 — Reporting, Import/Export & Analytics (requirement.md §5.11): "Scheduled report
   # delivery (emailed weekly/daily summary to organizers)." Organizer opt-in, off (`none`) by
   # default — see ScheduledReportJob for what actually reads this.
   enum :scheduled_report_frequency, { none: 0, daily: 1, weekly: 2 }, prefix: :report
-
-  # requirement.md §5.2: "typically reviewed within 24 hours" — the review queue's own SLA
-  # target, plus how far out from breaching it the queue starts visually flagging an item.
-  REVIEW_SLA = 24.hours
-  REVIEW_SLA_WARNING_WINDOW = 4.hours
 
   # What the wizard's Next buttons actually persist per step so far (only Basic Info has real
   # fields until later phases fill in Agenda/Tickets/Badge) — also what
@@ -88,7 +77,7 @@ class Event < ApplicationRecord
   has_many :registration_forms, dependent: :destroy
   has_many :participants, dependent: :destroy
   # Phase 9 — Check-in, Attendance & Real-Time Live Dashboards (requirement.md §3.7, §5.15).
-  # event_id is a denormalized column on both (partitioned) tables, so these are direct read
+  # event_id is a denormalized column on both tables, so these are direct read
   # associations for the check-in kiosk's "recent scans" list and EventCompletionService's
   # end-of-event sweep — not `dependent: :destroy`. Actual destroy-time protection for scan/
   # attendance history lives on Participant#scan_events/#attendances (restrict_with_error), which
@@ -132,32 +121,18 @@ class Event < ApplicationRecord
   has_many :print_stations, dependent: :destroy
   has_many :print_jobs, dependent: :destroy
   has_many :bulk_print_runs, dependent: :destroy
-  # The Super Admin who approved it (SuperAdmin::EventReviewsController#approve) — optional since
-  # it's nil for the whole unsubmitted/pending/rejected lifetime, not just historically before
-  # Phase 5.
-  belongs_to :approved_by, class_name: "User", optional: true
-  # Phase 15 — Platform Billing & Invoicing, revisited (requirement.md §4.6, confirmed with the
-  # user): "we don't have plans. we have only business plan where we customize the amount based on
-  # the event size and need" — every event, not just some tier, is created against a specific,
-  # now-consumed Quotation (Quotation has a matching `has_one :event`); no `optional: true` — a
-  # plain `belongs_to` already presence-validates by default, which is exactly "no event without a
-  # quotation." Historical events from before this redesign may still have a nil quotation_id at
-  # the DB level (deliberately left nullable there, see this column's own migration) — this
-  # validation only applies to *new* creates, not a retroactive requirement on old rows.
-  belongs_to :quotation
   has_one :invoice, dependent: :destroy
 
   validates :name, presence: true
   validates :starts_at, :ends_at, presence: true
-  validates :rejection_reason, presence: true, if: :rejected?
-  # requirement.md §4.6: "one quotation -> one event" — the tenant must approve the quotation
-  # before the event can be created at all, and that same quotation can never be reused for a
-  # second event. Enforced here, not just at the controller layer, so nothing can create an Event
-  # any other way (console, import, future API) without going through this gate. The `belongs_to`
-  # above already covers "quotation_id present" — this covers the rest: it must be *this account's
-  # own*, *approved*, and *not already consumed* by a different event (the unique index on
-  # events.quotation_id is the DB backstop for a race between two simultaneous creates).
-  validate :quotation_must_be_approved_and_available, on: :create
+  # Fixed-hierarchy pivot (requirement.md revisit, confirmed with the user): "remove all the
+  # workflows where super admin allow to create the events" — every tenant Account is created under
+  # an Agency now (AgencyConsole::AccountsController is the only place a new Account comes from), and
+  # every event on it is created directly, with no per-event Quotation negotiation and no per-event
+  # Super Admin content review at all. The only thing left to gate on is the agency's own contract
+  # actually being active (Agency#contract_active?) — a per_event agency's pool having a slot left,
+  # or an annual agency's one upfront contract Invoice actually being paid.
+  validate :agency_contract_must_be_active, on: :create
   # Once "This event has a seat limit" is toggled on, seat_limit stops being optional — a toggle
   # that's on but has no actual number attached to it isn't a meaningful state.
   validates :seat_limit, presence: true, if: :has_seat_limit?
@@ -178,6 +153,13 @@ class Event < ApplicationRecord
   # category needs clearing too, not just the event's own seat_limit.
   before_validation :clear_category_total_counts_unless_seat_limited
   before_save :revert_to_draft_if_published_content_changed
+  # Fixed-hierarchy pivot (requirement.md revisit): runs after agency_contract_must_be_active has
+  # already passed (a before_create callback, not before_validation — this must never fire on a
+  # record that's about to be rejected anyway, same "validate first, mutate second" ordering every
+  # bang-method in this app already takes). Unconditional now — every event's account has an agency
+  # (§2's own comment); only a per_event agency actually has a pool to decrement, an annual one is
+  # truly unlimited.
+  before_create :consume_agency_slot_if_metered
 
   # Drives the Basic Info step's completeness indicator (requirement.md Phase 4: "each tab shows
   # its own completeness indicator") — the same presence/mode rules as the validations above,
@@ -228,50 +210,13 @@ class Event < ApplicationRecord
     "up_coming"
   end
 
-  # The wizard Review step's Publish action — the tenant's own, manual, and only reachable once a
-  # Super Admin has approved (requirement.md §5.2 revisited: Publish used to be independent of
-  # approval; now it's gated behind it — see Admin::EventsController#publish, which is where that
-  # `approved?` check actually lives, same "controller pre-checks the business rule, model method
-  # is a raw mutation" split basic_info_complete? already gets there).
+  # The wizard Review step's Publish action — the tenant's own, manual step. Fixed-hierarchy pivot
+  # (requirement.md revisit): no more Super-Admin-approval gate — every event created at all has
+  # already cleared Agency#contract_active? at creation time (agency_contract_must_be_active), so
+  # the only thing left to check before publishing is the content itself
+  # (Admin::EventsController#publish's own basic_info_complete? check).
   def publish!
     update!(published_at: Time.current, status: computed_status)
-  end
-
-  # Phase 5 (requirement.md §5.2, §4.7 item 2): the organizer's explicit "submit for approval"
-  # action from the Review step — the only thing that ever moves an event out of `unsubmitted`
-  # (or back out of `rejected`) into `pending`, which is what puts it in
-  # SuperAdmin::EventReviewsController's queue for the first time. Stamps a fresh `submitted_at`
-  # and clears whatever the previous review left behind. Deliberately doesn't touch
-  # `status`/`published_at` — publish! is a distinct, later, manual step the tenant takes once
-  # approved (see #publish! above), and `revert_to_draft_if_published_content_changed` already
-  # handles the "edited after publish" side of the schedule/draft cycle on its own.
-  def submit_for_review!
-    update!(approval_status: :pending, submitted_at: Time.current, rejection_reason: nil, approved_by: nil, approved_at: nil)
-  end
-
-  # SuperAdmin::EventReviewsController#approve. A raw approval only — it does NOT publish the
-  # event; that's the tenant's own subsequent manual action, unlocked (not performed) by this
-  # (Admin::EventsController#publish requires approved? now). requirement.md §5.2 v8:
-  # "re-approval on edit" — once approved, further edits do NOT revert this (unlike
-  # `status`/`published_at`, which `revert_to_draft_if_published_content_changed` does reset) —
-  # billing is per event, not content-gated, so there's nothing here that needs to watch
-  # CONTENT_ATTRIBUTES the way that callback does.
-  def approve!(by:)
-    update!(approval_status: :approved, approved_by: by, approved_at: Time.current)
-  end
-
-  # SuperAdmin::EventReviewsController#reject — `reason` is required (validates :rejection_reason,
-  # presence: true, if: :rejected? above); the event stays otherwise untouched and editable, and
-  # the organizer sees the reason via `submit_for_review!`'s resubmit path.
-  def reject!(reason:)
-    update!(approval_status: :rejected, rejection_reason: reason)
-  end
-
-  # Whether this event's review is close to or past requirement.md §5.2's 24h SLA — drives the
-  # review queue's visual flag. Only meaningful while actually pending; an approved/rejected event
-  # isn't "at risk" of anything anymore.
-  def review_sla_at_risk?
-    pending? && submitted_at.present? && Time.current >= submitted_at + REVIEW_SLA - REVIEW_SLA_WARNING_WINDOW
   end
 
   # Phase 7 (requirement.md §5.4): what a brand-new Participant's status should start as —
@@ -398,28 +343,39 @@ class Event < ApplicationRecord
 
   private
 
-  # The `belongs_to :quotation` above already covers bare presence — this covers the rest: it must
-  # be *this account's own*, *approved*, and *not already consumed* by a different event.
-  #
-  # A real query (`Event.exists?`), not `quotation.event.present?` — confirmed live, twice: Rails'
-  # own inverse_of auto-detection between this `belongs_to :quotation` and Quotation's `has_one
-  # :event` means `quotation.event` reads back whatever was most recently *assigned* in memory,
-  # not what's actually persisted — it returned this very not-yet-saved record on a legitimate
-  # first use (false positive), and after reassigning the same in-memory `quotation` to a second,
-  # different Event instance, it silently followed that reassignment too (false negative — no
-  # longer pointed at the first, already-persisted consumer at all). Only a fresh DB read is
-  # reliable here; this validation is create-only, so there's never a persisted `self` row to
-  # exclude from the count.
-  def quotation_must_be_approved_and_available
-    return if quotation.nil? # already reported by the belongs_to presence validation
+  # Fixed-hierarchy pivot (requirement.md revisit): the sole gate on event creation now.
+  # `account.agency` nil covers the legacy-standalone-tenant edge case (§2's own comment — Super
+  # Admin's own tenant-creation form is gone, so this can only ever be a pre-pivot Account) with a
+  # real validation error instead of a NoMethodError; every *new* tenant is created under an Agency
+  # (AgencyConsole::AccountsController), so this branch is defensive, not a real day-to-day path.
+  # A plain boolean read here (not the atomic guarded decrement) is enough at validation time — the
+  # actual concurrency-safe consumption happens in consume_agency_slot_if_metered below, right
+  # before create.
+  # Two genuinely separate checks, not one `contract_active?` call — that method's own "per_event
+  # is always active" reads correctly for AgencyConsole::AccountsController's tenant-creation gate (a
+  # per_event agency's pool never blocks *creating a tenant*), but would silently never catch an
+  # exhausted per_event pool here if reused as-is; events_remaining is the real, event-creation-time
+  # counterpart `contract_active?` doesn't cover on its own.
+  def agency_contract_must_be_active
+    agency = account&.agency
 
-    if quotation.account_id != account_id
-      errors.add(:quotation_id, "does not belong to this account")
-    elsif !quotation.approved?
-      errors.add(:quotation_id, "must be an approved quotation")
-    elsif Event.exists?(quotation_id: quotation.id)
-      errors.add(:quotation_id, "has already been used to create an event")
+    if agency.nil?
+      errors.add(:base, "This tenant has no agency — ask the Super Admin to link one before creating events.")
+    elsif agency.annual? && !agency.contract_active?
+      errors.add(:base, "This agency's annual contract hasn't been paid yet.")
+    elsif agency.per_event? && !agency.events_remaining.positive?
+      errors.add(:base, "This agency has no event slots remaining — ask the Super Admin to grant more.")
     end
+  end
+
+  # Agency#consume_event_slot! itself raises Agency::NoEventSlotsRemainingError on the rare
+  # concurrent-create race that agency_contract_must_be_active's own plain read couldn't catch —
+  # left to propagate as a raw 500 rather than swallowed here, same "controller pre-checks, model
+  # method is a raw mutation, a race is a genuine server error" treatment as every other
+  # atomic-consumption path in this app. A no-op for an `annual` agency — truly unlimited, nothing
+  # to decrement.
+  def consume_agency_slot_if_metered
+    account.agency.consume_event_slot! if account.agency.per_event?
   end
 
   # "capacity validated against event-level seat limit if one is set" (Phase 6 checklist,

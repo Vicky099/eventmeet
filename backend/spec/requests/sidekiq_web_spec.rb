@@ -11,7 +11,7 @@ RSpec.describe "Sidekiq::Web", type: :request do
   let!(:account) { create(:account, subdomain_slug: "acme") }
   let!(:user) { create(:user) }
 
-  before { create(:account_membership, user: user, account: account, role: :owner) }
+  before { create(:account_membership, user: user, account: account, role: :event_admin) }
 
   # `authenticated` (not the throwing `authenticate`) — real bug caught live: the throwing variant
   # redirects to a broken, mount-relative login path from inside Sidekiq::Web's own dispatch

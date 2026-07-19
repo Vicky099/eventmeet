@@ -36,7 +36,10 @@ class LiveDashboard
       locals: { event: event }
     )
 
-    broadcast_platform_pulse if event.live?
+    if event.live?
+      broadcast_platform_pulse
+      broadcast_agency_pulse(event.account.agency)
+    end
   end
 
   # Phase 11 backfill (requirement.md §5.15: "the same mechanism extends to per-session
@@ -60,6 +63,42 @@ class LiveDashboard
       partial: "super_admin/dashboard/live_pulse",
       locals: { pulse: platform_pulse }
     )
+  end
+
+  # requirement.md revisit: "design the agency analytics dashboard" — the Agency Console's own
+  # cross-tenant-but-single-agency mirror of #broadcast_platform_pulse/#platform_pulse above, one
+  # tier down: every currently-live event across just this agency's own tenants, not the whole
+  # platform. Guarded on `agency` being present — a legacy standalone Account (requirement.md
+  # revisit's own "left alone, not migrated" carve-out) has none, and a live event on one of those
+  # has nothing to broadcast to here.
+  def self.broadcast_agency_pulse(agency)
+    return unless agency
+
+    Turbo::StreamsChannel.broadcast_replace_to(
+      agency_stream(agency),
+      target: "agency-live-pulse",
+      partial: "agency_console/dashboard/live_pulse",
+      locals: { pulse: agency_pulse(agency) }
+    )
+  end
+
+  def self.agency_pulse(agency)
+    EventLiveStats.unscoped_across_tenants do
+      live_stats = EventLiveStats.joins(:event).merge(Event.live.where(account_id: agency.accounts.select(:id)))
+      {
+        live_event_count: live_stats.count,
+        registered_count: live_stats.sum(:registered_count),
+        checked_in_count: live_stats.sum(:checked_in_count),
+        occupancy_count: live_stats.sum(:occupancy_count)
+      }
+    end
+  end
+
+  # A plain string streamable, same shape as PLATFORM_STREAM above, just parameterized per
+  # agency — AgencyConsole::DashboardController's own view signs this same literal name via
+  # turbo_stream_from.
+  def self.agency_stream(agency)
+    "agency_live_pulse_#{agency.id}"
   end
 
   # requirement.md §5.15: aggregate across every currently-live event, every tenant — read by

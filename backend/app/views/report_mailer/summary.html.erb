@@ -1,17 +1,15 @@
-<h1><%= @event.scheduled_report_frequency.capitalize %> report — <%= @event.name %></h1>
+<%= render "shared/mailer/heading", title: "#{@event.scheduled_report_frequency.capitalize} report", subtitle: @event.name %>
 
-<p>Here's how <strong><%= @event.name %></strong> is doing:</p>
+<div style="color:#686868;padding-top:16px;font-size:13px;line-height:1.6;">
+  Here's how <strong style="color:#1f1f1f;"><%= @event.name %></strong> is doing:
+</div>
 
-<ul>
-  <li><strong>Total registrations:</strong> <%= @stats[:registered_count] %></li>
-  <li><strong>New since last report:</strong> <%= @stats[:new_registrations] %></li>
-  <li><strong>Checked in:</strong> <%= @stats[:checked_in_count] %> (<%= @stats[:check_in_rate] %>%)</li>
-  <li><strong>Currently in venue:</strong> <%= @stats[:currently_in_venue_count] %></li>
-  <% if @stats[:top_session] %>
-    <li><strong>Most attended session:</strong> <%= @stats[:top_session] %></li>
-  <% end %>
-</ul>
+<%= render "shared/mailer/details_table", rows: [
+  [ "Total registrations", @stats[:registered_count] ],
+  [ "New since last report", @stats[:new_registrations] ],
+  [ "Checked in", "#{@stats[:checked_in_count]} (#{@stats[:check_in_rate]}%)" ],
+  [ "Currently in venue", @stats[:currently_in_venue_count] ],
+  ([ "Most attended session", @stats[:top_session] ] if @stats[:top_session])
+] %>
 
-<p>
-  <%= link_to "View live dashboard", admin_event_url(@event) %>
-</p>
+<%= render "shared/mailer/button", url: admin_event_url(@event), label: "View Live Dashboard →" %>

@@ -24,8 +24,8 @@ RSpec.describe "Admin Console check-in dashboard", type: :request do
   end
 
   describe "GET /admin/events/:event_id/scan_events" do
-    it "checkin_staff can reach the dashboard (requirement.md §5.1)" do
-      sign_in_with_role(:checkin_staff)
+    it "admin_staff can reach the dashboard (requirement.md §5.1)" do
+      sign_in_with_role(:admin_staff)
       event = create_event
 
       get admin_event_scan_events_path(event)
@@ -34,7 +34,7 @@ RSpec.describe "Admin Console check-in dashboard", type: :request do
     end
 
     it "owner/event_manager can reach it too" do
-      sign_in_with_role(:event_manager)
+      sign_in_with_role(:event_admin)
       event = create_event
 
       get admin_event_scan_events_path(event)
@@ -42,17 +42,8 @@ RSpec.describe "Admin Console check-in dashboard", type: :request do
       expect(response).to have_http_status(:ok)
     end
 
-    it "finance_readonly is not authorized" do
-      sign_in_with_role(:finance_readonly)
-      event = create_event
-
-      get admin_event_scan_events_path(event)
-
-      expect(response).to redirect_to(user_root_path)
-    end
-
     it "links out to the standalone check-in kiosk instead of embedding a scan form" do
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
       event = create_event
 
       get admin_event_scan_events_path(event)
@@ -64,7 +55,7 @@ RSpec.describe "Admin Console check-in dashboard", type: :request do
     # requirement.md revisit: "Arrived today ... ticket category wise check-ins ... overall how
     # much full and category wise ticket sold data."
     it "shows arrived-today, overall capacity, and ticket-category-wise check-in breakdowns" do
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
       event = create_event(has_seat_limit: true, seat_limit: 50)
       Current.account = account
       category = create(:ticket_category, account: account, event: event, total_count: 10)
@@ -86,7 +77,7 @@ RSpec.describe "Admin Console check-in dashboard", type: :request do
     # participant scanned in/out/in again (each past the 30s debounce window) must still read as
     # 1 checked in, not 3 — never more than that category's own `registered` count.
     it "counts a repeatedly-scanned participant once, not once per scan" do
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
       event = create_event
       Current.account = account
       category = create(:ticket_category, account: account, event: event)
@@ -111,7 +102,7 @@ RSpec.describe "Admin Console check-in dashboard", type: :request do
     # to 10 against a real participant count of 5. The Registered tile must reflect real
     # Participant rows, not that denormalized (and here, deliberately corrupted) counter.
     it "shows the real participant count for Registered, not a stale denormalized counter" do
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
       event = create_event
       Current.account = account
       create_list(:participant, 3, account: account, event: event)
@@ -128,7 +119,7 @@ RSpec.describe "Admin Console check-in dashboard", type: :request do
     # window) on the event's one and only participant must still read 1 across the board, not 2
     # or 3.
     it "never shows Checked In or Currently In Venue higher than Registered, even with repeat scans" do
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
       event = create_event
       Current.account = account
       participant = create(:participant, account: account, event: event)
@@ -157,13 +148,8 @@ RSpec.describe "Admin Console check-in dashboard", type: :request do
       travel_to(Time.zone.local(2026, 1, 1)) { example.run }
     end
 
-    before do
-      MonthlyRangePartitioning.ensure_partitions!(ActiveRecord::Base.connection, :scan_events, partition_column: :scanned_at, months_behind: 0, months_ahead: 0)
-      MonthlyRangePartitioning.ensure_partitions!(ActiveRecord::Base.connection, :attendances, partition_column: :occurred_at, months_behind: 0, months_ahead: 0)
-    end
-
     it "stays hidden for an event that hasn't completed yet" do
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
       event = create_event(starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
       Event.unscoped_across_tenants { event.update!(status: :live) }
 
@@ -173,11 +159,7 @@ RSpec.describe "Admin Console check-in dashboard", type: :request do
     end
 
     it "shows the real count once the event has completed" do
-      sign_in_with_role(:owner)
-      # ends_at must stay inside the one partition provisioned above (January 2026, matching the
-      # frozen clock) — EventCompletionService stamps the absent Attendance row's occurred_at
-      # from event.ends_at itself, same reasoning event_scheduler_job_spec's own equivalent setup
-      # already established.
+      sign_in_with_role(:event_admin)
       event = create_event(starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
       Current.account = account
       create(:participant, account: account, event: event)

@@ -97,7 +97,7 @@
       <% end %>
     </template>
 
-    <button type="button" class="btn btn-sm btn-outline-primary mb-0" data-action="nested-fields#add">
+    <button type="button" class="btn btn-m btn-outline-primary mb-0" data-action="nested-fields#add">
       <i class="bx bx-plus"></i> Add another field
     </button>
   </div>
@@ -136,7 +136,7 @@
   </div>
 
   <div class="d-flex align-items-start gap-3 mt-4">
-    <%= f.submit registration_form.persisted? ? "Save" : "Create Form", class: "btn btn-sm btn-primary" %>
-    <%= link_to "Cancel", admin_event_registration_forms_path(@event), class: "btn btn-sm btn-outline-secondary" %>
+    <%= f.submit registration_form.persisted? ? "Save" : "Create Form", class: "btn btn-m btn-primary" %>
+    <%= link_to "Cancel", admin_event_registration_forms_path(@event), class: "btn btn-m btn-outline-secondary" %>
   </div>
 <% end %>

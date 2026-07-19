@@ -1,0 +1,65 @@
+<%# requirement.md revisit: "when click on event name then show the event details on modal."
+    Locals: event (Event, already loaded — .includes(:account, :invoice) on the parent show
+    action — no query of its own here), participant_counts_by_event, whatsapp_counts_by_event
+    (both pre-grouped Hashes, SuperAdmin::AgenciesController#show's own comment on the latter).
+    Read-only — a Super Admin viewing an agency's own rollup has no reason to edit an event
+    directly; that stays the tenant's own console. %>
+<div class="modal fade" id="event-modal-<%= event.id %>" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-semibold"><%= event.name %></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <dl class="row mb-0">
+          <dt class="col-sm-4">Tenant</dt>
+          <dd class="col-sm-8"><%= event.account.name %></dd>
+
+          <dt class="col-sm-4">Status</dt>
+          <dd class="col-sm-8"><span class="badge bg-info-subtle text-info"><%= event.status.humanize %></span></dd>
+
+          <dt class="col-sm-4">Mode</dt>
+          <dd class="col-sm-8"><%= event.mode.humanize %></dd>
+
+          <dt class="col-sm-4">Starts</dt>
+          <dd class="col-sm-8"><%= event.starts_at.to_fs(:long) %></dd>
+
+          <dt class="col-sm-4">Ends</dt>
+          <dd class="col-sm-8"><%= event.ends_at.to_fs(:long) %></dd>
+
+          <% if event.address.present? %>
+            <dt class="col-sm-4">Address</dt>
+            <dd class="col-sm-8"><%= event.address %></dd>
+          <% end %>
+
+          <dt class="col-sm-4">Participants</dt>
+          <dd class="col-sm-8"><%= participant_counts_by_event.fetch(event.id, 0) %></dd>
+
+          <%# requirement.md revisit: "if event has used the whatsApp messages for invitation
+              then show the messages sent via whatsApp count" — only shown when this event's own
+              Invoice actually had a WhatsApp send go out (invoice-sent/payment-rejected — the
+              only WhatsApp this app ever sends, SuperAdmin::AgenciesController#show's own comment);
+              silent (not a "0") for an event with no such history at all. %>
+          <% if whatsapp_counts_by_event.fetch(event.id, 0).positive? %>
+            <dt class="col-sm-4">WhatsApp Messages</dt>
+            <dd class="col-sm-8"><%= whatsapp_counts_by_event.fetch(event.id, 0) %></dd>
+          <% end %>
+
+          <dt class="col-sm-4">Invoice</dt>
+          <dd class="col-sm-8 mb-0">
+            <% if event.invoice.nil? %>
+              <span class="text-muted">Not yet raised</span>
+            <% else %>
+              <%= link_to "#{money(event.invoice.amount, event.invoice.currency)} — #{event.invoice.status.humanize}",
+                    platform_invoice_path(event.invoice) %>
+            <% end %>
+          </dd>
+        </dl>
+      </div>
+      <div class="modal-footer border-0 pt-3">
+        <button type="button" class="btn btn-m btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,26 @@
+<%# requirement.md revisit: "design the agency analytics dashboard" — mirrors
+    super_admin/dashboard/_live_pulse.html.erb exactly, one tier down (this agency's own tenants
+    only, LiveDashboard.agency_pulse/#broadcast_agency_pulse). Same locals shape: pulse — Hash
+    (:live_event_count, :registered_count, :checked_in_count, :occupancy_count). %>
+<div id="agency-live-pulse">
+  <%= render layout: "shared/card", locals: { title: "Live Pulse", icon: "bx-pulse" } do %>
+    <% if pulse[:live_event_count].zero? %>
+      <%= render "shared/empty_state", icon: "bx-pulse", message: "No events are currently live across any of your tenants." %>
+    <% else %>
+      <div class="row g-3">
+        <div class="col-md-6 col-xl-3">
+          <%= render "shared/stat_widget", label: "Live Events", value: pulse[:live_event_count], icon: "bx-broadcast", color: "primary" %>
+        </div>
+        <div class="col-md-6 col-xl-3">
+          <%= render "shared/stat_widget", label: "Registered", value: pulse[:registered_count], icon: "bx-user-plus", color: "info" %>
+        </div>
+        <div class="col-md-6 col-xl-3">
+          <%= render "shared/stat_widget", label: "Checked In", value: pulse[:checked_in_count], icon: "bx-log-in-circle", color: "success" %>
+        </div>
+        <div class="col-md-6 col-xl-3">
+          <%= render "shared/stat_widget", label: "Currently In Venue", value: pulse[:occupancy_count], icon: "bx-walk", color: "warning" %>
+        </div>
+      </div>
+    <% end %>
+  <% end %>
+</div>

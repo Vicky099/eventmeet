@@ -12,11 +12,11 @@
       with a hint rather than hidden outright — the button staying visible is what tells an admin
       the feature exists at all. %>
   <% if @sendable_kinds.any? %>
-    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#quick-email-send-modal">
+    <button type="button" class="btn btn-m btn-primary" data-bs-toggle="modal" data-bs-target="#quick-email-send-modal">
       <i class="bx bx-send"></i> Quick Email Send
     </button>
   <% else %>
-    <button type="button" class="btn btn-sm btn-primary" disabled title="Customize and activate a template below first">
+    <button type="button" class="btn btn-m btn-primary" disabled title="Customize and activate a template below first">
       <i class="bx bx-send"></i> Quick Email Send
     </button>
   <% end %>
@@ -50,7 +50,7 @@
                 <% end %>
               </td>
               <td class="text-end">
-                <%= link_to edit_admin_event_email_template_path(@event, kind: email_template.kind), class: "btn btn-sm btn-outline-primary", title: "Edit" do %>
+                <%= link_to edit_admin_event_email_template_path(@event, kind: email_template.kind), class: "btn btn-m btn-outline-primary", title: "Edit" do %>
                   <i class="bx bx-edit"></i> Edit
                 <% end %>
               </td>
@@ -80,8 +80,8 @@
             <%= select_tag :kind, options_for_select(@sendable_kinds.map { |kind| [ EmailTemplate::KIND_LABELS.fetch(kind), kind ] }), class: "form-select" %>
           </div>
           <div class="modal-footer border-0 pt-3">
-            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-            <%= f.submit "Send", class: "btn btn-primary btn-sm" %>
+            <button type="button" class="btn btn-outline-secondary btn-m" data-bs-dismiss="modal">Cancel</button>
+            <%= f.submit "Send", class: "btn btn-primary btn-m" %>
           </div>
         <% end %>
       </div>

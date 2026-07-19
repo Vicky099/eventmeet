@@ -25,7 +25,7 @@ RSpec.describe "Admin Console sessions (agenda)", type: :request do
   end
 
   describe "tenant scoping" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "never lists another tenant's sessions" do
       other_account = create(:account)
@@ -43,7 +43,7 @@ RSpec.describe "Admin Console sessions (agenda)", type: :request do
 
   describe "role permissions" do
     it "event_manager can create a session, redirected back into the wizard's Sessions step (not a separate manage page)" do
-      sign_in_with_role(:event_manager)
+      sign_in_with_role(:event_admin)
       event = create_event
 
       post admin_event_sessions_path(event), params: {
@@ -54,7 +54,7 @@ RSpec.describe "Admin Console sessions (agenda)", type: :request do
     end
 
     it "finance_readonly cannot create a session" do
-      sign_in_with_role(:finance_readonly)
+      sign_in_with_role(:admin_staff)
       event = create_event
 
       post admin_event_sessions_path(event), params: {
@@ -66,7 +66,7 @@ RSpec.describe "Admin Console sessions (agenda)", type: :request do
   end
 
   describe "GET /admin/events/:event_id/sessions" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "lists this event's own sessions" do
       event = create_event
@@ -82,7 +82,7 @@ RSpec.describe "Admin Console sessions (agenda)", type: :request do
   end
 
   describe "DELETE /admin/events/:event_id/sessions/:id" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "refuses to remove a session with real check-in history, back on the wizard's Sessions step" do
       event = create_event

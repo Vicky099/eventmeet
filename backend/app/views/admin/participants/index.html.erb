@@ -3,7 +3,7 @@
 <%= render layout: "shared/page_header",
   locals: { icon: "bx-group", crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) }, { label: "Participants" } ] } do %>
   <div class="d-flex gap-2">
-    <%= link_to "New Participant", new_admin_event_participant_path(@event), class: "btn btn-sm btn-primary" %>
+    <%= link_to "New Participant", new_admin_event_participant_path(@event), class: "btn btn-m btn-primary" %>
   </div>
 <% end %>
 
@@ -18,7 +18,7 @@
 
   <%= form_with url: admin_event_participants_path(@event), method: :get, local: true, class: "d-flex gap-2 flex-grow-1" do %>
     <%= text_field_tag :q, @query, class: "form-control", placeholder: "Search name, email, phone, govt ID, RFID, hex/client ID" %>
-    <%= submit_tag "Search", class: "btn btn-sm btn-outline-secondary" %>
+    <%= submit_tag "Search", class: "btn btn-m btn-outline-secondary" %>
   <% end %>
 </div>
 
@@ -33,8 +33,8 @@
     <span class="fw-semibold">Participants</span>
     <div class="d-flex gap-2">
       <%# Phase 13 — Communications (requirement.md §3.10): "send to all pending batch job." %>
-      <%= button_to "Send to Pending", send_to_pending_admin_event_participants_path(@event), method: :post, class: "btn btn-sm btn-outline-primary" %>
-      <button type="submit" form="participants-bulk-form" class="btn btn-sm btn-outline-danger"
+      <%= button_to "Send to Pending", send_to_pending_admin_event_participants_path(@event), method: :post, class: "btn btn-m btn-outline-primary" %>
+      <button type="submit" form="participants-bulk-form" class="btn btn-m btn-outline-danger"
         data-action="click->confirm-dialog#show" data-title="Remove Selected Participants"
         data-message="Remove every selected participant? This can't be undone." data-danger="true">
         <i class="bx bx-trash"></i> Remove selected
@@ -80,7 +80,7 @@
               <td class="text-end">
                 <div class="d-flex justify-content-end gap-2">
                   <% if participant.pending? %>
-                    <%= button_to "Approve", approve_admin_event_participant_path(@event, participant), method: :patch, class: "btn btn-sm btn-outline-success" %>
+                    <%= button_to "Approve", approve_admin_event_participant_path(@event, participant), method: :patch, class: "btn btn-m btn-outline-success" %>
                   <% end %>
                   <%# Phase 10 — Print Agent (Electron) Integration, revisited (requirement.md
                       §5.5.1): replaces the "Resend invitation" row action — this is now Print
@@ -88,20 +88,20 @@
                       same inline PDF the Download badge link below already streams). Resend
                       invitation stays on the participant show page (Admin::ParticipantsController
                       #print's own comment). %>
-                  <%= link_to print_admin_event_participant_path(@event, participant), class: "btn btn-sm btn-outline-secondary", title: "Print", target: "_blank", rel: "noopener" do %>
+                  <%= link_to print_admin_event_participant_path(@event, participant), class: "btn btn-m btn-outline-secondary", title: "Print", target: "_blank", rel: "noopener" do %>
                     <i class="bx bx-printer"></i>
                   <% end %>
                   <%# Phase 8 — requirement.md §3.6 "on-demand single-badge download endpoint."
                       target: "_blank" — a PDF opening in a new tab, not navigating away from the
                       participant list an admin is actively working through. %>
-                  <%= link_to badge_admin_event_participant_path(@event, participant), class: "btn btn-sm btn-outline-secondary", title: "Download badge", target: "_blank", rel: "noopener" do %>
+                  <%= link_to badge_admin_event_participant_path(@event, participant), class: "btn btn-m btn-outline-secondary", title: "Download badge", target: "_blank", rel: "noopener" do %>
                     <i class="bx bx-id-card"></i>
                   <% end %>
-                  <%= link_to edit_admin_event_participant_path(@event, participant), class: "btn btn-sm btn-outline-primary", title: "Edit" do %>
+                  <%= link_to edit_admin_event_participant_path(@event, participant), class: "btn btn-m btn-outline-primary", title: "Edit" do %>
                     <i class="bx bx-edit"></i>
                   <% end %>
                   <%= button_to admin_event_participant_path(@event, participant), method: :delete,
-                        class: "btn btn-sm btn-outline-danger", title: "Remove",
+                        class: "btn btn-m btn-outline-danger", title: "Remove",
                         data: { action: "click->confirm-dialog#show", title: "Remove Participant",
                                 message: "Remove #{participant.name}?", danger: "true" } do %>
                     <i class="bx bx-trash"></i>

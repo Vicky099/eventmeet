@@ -245,147 +245,6 @@ RSpec.describe Event, type: :model do
     end
   end
 
-  describe "approval_status enum" do
-    it "defaults to unsubmitted, with no submitted_at until explicitly submitted" do
-      event = create(:event, account: account)
-
-      expect(event.approval_status).to eq("unsubmitted")
-      expect(event.submitted_at).to be_nil
-    end
-
-    it "only enters pending (and so the review queue) via an explicit submit_for_review!" do
-      event = create(:event, account: account)
-
-      event.submit_for_review!
-
-      expect(event.approval_status).to eq("pending")
-      expect(event.submitted_at).to be_present
-    end
-  end
-
-  describe "#approve!" do
-    it "sets approval_status, approved_by, and approved_at" do
-      event = create(:event, account: account)
-      staff = create(:user, :platform_staff)
-
-      event.approve!(by: staff)
-
-      expect(event.approval_status).to eq("approved")
-      expect(event.approved_by).to eq(staff)
-      expect(event.approved_at).to be_present
-    end
-
-    it "is not reverted by a later content edit (requirement.md §5.2 v8 re-approval-on-edit)" do
-      event = create(:event, account: account)
-      event.approve!(by: create(:user, :platform_staff))
-
-      event.update!(name: "Renamed After Approval")
-
-      expect(event.reload.approval_status).to eq("approved")
-    end
-
-    it "does not publish the event — that's the tenant's own subsequent manual step" do
-      event = create(:event, account: account, starts_at: 1.hour.ago, ends_at: 1.hour.from_now)
-      expect(event.published?).to be false
-
-      event.approve!(by: create(:user, :platform_staff))
-
-      expect(event.published?).to be false
-      expect(event.status).to eq("draft")
-    end
-  end
-
-  describe "#reject!" do
-    it "requires a reason and sets rejection_reason" do
-      event = create(:event, account: account)
-
-      event.reject!(reason: "Missing venue details")
-
-      expect(event.approval_status).to eq("rejected")
-      expect(event.rejection_reason).to eq("Missing venue details")
-    end
-
-    it "is invalid without a rejection_reason" do
-      event = build(:event, account: account, approval_status: :rejected, rejection_reason: nil)
-      expect(event).not_to be_valid
-      expect(event.errors[:rejection_reason]).to be_present
-    end
-  end
-
-  describe "#submit_for_review!" do
-    it "resets a rejected event back to pending and clears the previous review" do
-      event = create(:event, account: account)
-      event.reject!(reason: "Fix the schedule")
-
-      event.submit_for_review!
-
-      expect(event.approval_status).to eq("pending")
-      expect(event.rejection_reason).to be_nil
-      expect(event.approved_by).to be_nil
-      expect(event.approved_at).to be_nil
-    end
-
-    it "refreshes submitted_at on a resubmit, not just the first submission" do
-      event = create(:event, account: account)
-      event.submit_for_review!
-      first_submitted_at = event.submitted_at
-      event.reject!(reason: "Fix the schedule")
-
-      travel_to(1.day.from_now) { event.submit_for_review! }
-
-      expect(event.submitted_at).to be > first_submitted_at
-    end
-  end
-
-  it "walks the full unsubmitted -> pending -> rejected -> resubmitted -> approved review cycle" do
-    event = create(:event, account: account)
-    staff = create(:user, :platform_staff)
-    expect(event.approval_status).to eq("unsubmitted")
-
-    event.submit_for_review!
-    expect(event.approval_status).to eq("pending")
-
-    event.reject!(reason: "Fix the schedule")
-    expect(event.approval_status).to eq("rejected")
-    expect(event.rejection_reason).to eq("Fix the schedule")
-
-    event.submit_for_review!
-    expect(event.approval_status).to eq("pending")
-    expect(event.rejection_reason).to be_nil
-
-    event.approve!(by: staff)
-    expect(event.approval_status).to eq("approved")
-    expect(event.approved_by).to eq(staff)
-  end
-
-  describe "#review_sla_at_risk?" do
-    it "is false well within the 24h SLA" do
-      event = create(:event, :pending_review, account: account, submitted_at: 1.hour.ago)
-      expect(event.review_sla_at_risk?).to be false
-    end
-
-    it "is true once within the warning window of the 24h SLA" do
-      event = create(:event, :pending_review, account: account, submitted_at: 21.hours.ago)
-      expect(event.review_sla_at_risk?).to be true
-    end
-
-    it "is true once the SLA has been breached outright" do
-      event = create(:event, :pending_review, account: account, submitted_at: 25.hours.ago)
-      expect(event.review_sla_at_risk?).to be true
-    end
-
-    it "is false when never submitted, regardless of how stale the record is" do
-      event = create(:event, account: account)
-      expect(event.review_sla_at_risk?).to be false
-    end
-
-    it "is false once no longer pending, regardless of how long ago it was submitted" do
-      event = create(:event, :pending_review, account: account, submitted_at: 30.hours.ago)
-      event.approve!(by: create(:user, :platform_staff))
-
-      expect(event.review_sla_at_risk?).to be false
-    end
-  end
 
   describe "#clear_seat_limit_unless_flagged" do
     it "discards a stale seat_limit when has_seat_limit is false" do
@@ -600,51 +459,67 @@ RSpec.describe Event, type: :model do
   # Phase 15 — Platform Billing & Invoicing, revisited (requirement.md §4.6, confirmed with the
   # user): "one quotation -> one event" — every event now requires an approved, not-yet-consumed
   # Quotation on the same account; there are no plan tiers left to distinguish.
-  describe "quotation_must_be_approved_and_available" do
-    let(:tenant_user) { create(:user) }
+  # Fixed-hierarchy pivot (requirement.md revisit): "agency manages all the events without
+  # approval of the super admin" — every event's account has an Agency (spec/factories/accounts.rb's
+  # own default), consuming a slot from its fixed pool at create time, no Quotation/Super-Admin
+  # review left at all.
+  describe "agency_contract_must_be_active / consume_agency_slot_if_metered" do
+    let(:agency) { create(:agency, events_granted: 2, events_used: 0) }
+    let(:agency_account) { create(:account, agency: agency) }
 
-    it "blocks creation with no quotation at all" do
-      event = build(:event, account: account, quotation: nil)
+    before { Current.account = agency_account }
 
-      expect(event).not_to be_valid
-      expect(event.errors[:quotation]).to be_present
-    end
-
-    it "blocks creation against a quotation that hasn't been approved yet" do
-      quotation = create(:quotation, :sent, account: account, requested_by: tenant_user)
-      event = build(:event, account: account, quotation: quotation)
-
-      expect(event).not_to be_valid
-      expect(event.errors[:quotation_id]).to be_present
-    end
-
-    it "blocks creation against another account's quotation" do
-      other_account = create(:account)
-      Current.account = other_account
-      quotation = create(:quotation, :approved, account: other_account, requested_by: create(:user))
-      Current.account = account
-
-      event = build(:event, account: account, quotation: quotation)
-
-      expect(event).not_to be_valid
-      expect(event.errors[:quotation_id]).to be_present
-    end
-
-    it "unblocks creation immediately once the quotation is approved" do
-      quotation = create(:quotation, :approved, account: account, requested_by: tenant_user)
-      event = build(:event, account: account, quotation: quotation)
+    it "is valid against an account whose agency has room in its pool" do
+      event = build(:event, account: agency_account)
 
       expect(event).to be_valid
     end
 
-    it "blocks a second event from consuming an already-used quotation" do
-      quotation = create(:quotation, :approved, account: account, requested_by: tenant_user)
-      create(:event, account: account, quotation: quotation)
+    it "consumes one slot from the agency's pool on create" do
+      expect {
+        create(:event, account: agency_account)
+      }.to change { agency.reload.events_used }.by(1)
+    end
 
-      second_event = build(:event, account: account, quotation: quotation)
+    it "blocks creation once the agency's pool is exhausted" do
+      create(:event, account: agency_account)
+      create(:event, account: agency_account)
 
-      expect(second_event).not_to be_valid
-      expect(second_event.errors[:quotation_id]).to be_present
+      event = build(:event, account: agency_account)
+
+      expect(event).not_to be_valid
+      expect(event.errors[:base]).to be_present
+    end
+
+    it "blocks creation for a tenant with no agency at all (legacy standalone account)" do
+      standalone_account = create(:account, agency: nil)
+      Current.account = standalone_account
+
+      event = build(:event, account: standalone_account)
+
+      expect(event).not_to be_valid
+      expect(event.errors[:base]).to be_present
+    end
+
+    it "is unlimited (no pool decrement) for an annual agency" do
+      annual_agency = create(:agency, :annual)
+      annual_account = create(:account, agency: annual_agency)
+      Current.account = annual_account
+
+      3.times { create(:event, account: annual_account) }
+
+      expect(annual_agency.reload.events_used).to eq(0)
+    end
+
+    it "blocks creation for an annual agency whose contract hasn't been paid yet" do
+      unpaid_agency = create(:agency, billing_cycle: :annual, annual_price: 100_000, price_per_event: nil, events_granted: 0)
+      unpaid_account = create(:account, agency: unpaid_agency)
+      Current.account = unpaid_account
+
+      event = build(:event, account: unpaid_account)
+
+      expect(event).not_to be_valid
+      expect(event.errors[:base]).to be_present
     end
   end
 

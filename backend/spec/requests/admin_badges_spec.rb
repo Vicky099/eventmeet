@@ -18,7 +18,7 @@ RSpec.describe "Admin Console badges", type: :request do
   end
 
   describe "PATCH /admin/badge_templates/:id (library)" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "creates a blank template then saves canvas content/mapping to it" do
       post admin_badge_templates_path, params: { badge_template: { name: "Standard", width_cm: "8.5", height_cm: "5.4" } }
@@ -39,7 +39,7 @@ RSpec.describe "Admin Console badges", type: :request do
   end
 
   describe "PATCH /admin/events/:event_id/badges (per-event, requirement.md §5.5 conditional layouts)" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "rejects creating a second default badge for the same event" do
       event = create_event
@@ -79,7 +79,7 @@ RSpec.describe "Admin Console badges", type: :request do
   end
 
   describe "PATCH/DELETE /admin/events/:event_id/badges/:id (redirect back to the wizard step, not the standalone index)" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "redirects to the Badge wizard step after saving" do
       event = create_event
@@ -100,10 +100,62 @@ RSpec.describe "Admin Console badges", type: :request do
 
       expect(response).to redirect_to(edit_admin_event_path(event, step: "badge"))
     end
+
+    # Regression (found live): a direct-upload blob (Admin::DirectUploadsController, the real
+    # browser flow for background_image/logo) is created via
+    # ActiveStorage::Blob.create_before_direct_upload! — deliberately unidentified, since analysis
+    # is deferred until first attach. Attaching an unidentified blob by its signed_id used to raise
+    # ActiveRecord::ActiveRecordError ("Cannot touch on a new or destroyed record object") from
+    # deep inside ActiveStorage::Blob#touch_attachments — a Rails 8.0.5 ordering bug triggered by
+    # autosaving the blob's own pending identify_without_saving changes mid-flight, while the
+    # brand-new join Attachment row is still being saved for the first time (see
+    # TenantScopedAttachment#ensure_blob_identified's own comment for the full mechanism).
+    it "attaches a background_image and logo from unidentified direct-upload blobs, then replaces one" do
+      event = create_event
+      Current.account = account
+      badge = create(:badge, account: account, event: event, ticket_category: nil)
+
+      # Mirrors the real two-step flow: Admin::DirectUploadsController#create builds the (still
+      # unidentified) Blob row first, then the browser PUTs the actual bytes straight to the
+      # storage service — separately from, and before, this form submission. `upload_without_unfurling`
+      # is that second step, done directly against the test Disk service instead of over HTTP.
+      def pending_blob(account, filename)
+        content = "fake #{filename} bytes #{SecureRandom.hex(4)}"
+        blob = ActiveStorage::Blob.create_before_direct_upload!(
+          key: TenantScopedAttachment.blob_key(account, "events", "spec", "badges", filename, filename: filename),
+          filename: filename, byte_size: content.bytesize, checksum: Digest::MD5.base64digest(content),
+          content_type: "image/png"
+        )
+        blob.upload_without_unfurling(StringIO.new(content))
+        blob
+      end
+
+      bg_blob = pending_blob(account, "bg.png")
+      logo_blob = pending_blob(account, "logo.png")
+
+      patch admin_event_badge_path(event, badge), params: {
+        badge: { name: badge.name, background_image: bg_blob.signed_id, logo: logo_blob.signed_id }
+      }
+
+      expect(response).to redirect_to(edit_admin_event_path(event, step: "badge"))
+      Current.account = account
+      badge.reload
+      expect(badge.background_image).to be_attached
+      expect(badge.logo).to be_attached
+
+      # Replacing an already-attached field (second attach on the same has_one_attached slot) is
+      # the other shape this bug's autosave/touch ordering could plausibly hit — covered too.
+      replacement_blob = pending_blob(account, "bg2.png")
+      patch admin_event_badge_path(event, badge), params: { badge: { name: badge.name, background_image: replacement_blob.signed_id } }
+
+      expect(response).to redirect_to(edit_admin_event_path(event, step: "badge"))
+      Current.account = account
+      expect(badge.reload.background_image.blob.filename.to_s).to eq("bg2.png")
+    end
   end
 
   describe "POST /admin/events/:event_id/badges/:id/copy (requirement.md §5.5: reuse a designed badge across ticket categories)" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "copies content/mapping/size onto a new badge for the target ticket category and lands on its editor" do
       event = create_event
@@ -165,7 +217,7 @@ RSpec.describe "Admin Console badges", type: :request do
   end
 
   describe "GET /admin/events/:event_id/participants/:id/badge.pdf (requirement.md §3.6: on-demand single-badge download)" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "returns a PDF sized to the badge's configured physical dimensions" do
       event = create_event
@@ -219,7 +271,7 @@ RSpec.describe "Admin Console badges", type: :request do
   # Print action — falls back to the same inline PDF #badge already streams when no station is
   # paired/online for the event (confirmed fallback behavior), dispatches a PrintJob otherwise.
   describe "GET /admin/events/:event_id/participants/:id/print" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "falls back to streaming the PDF inline when no station is paired" do
       event = create_event
@@ -273,7 +325,7 @@ RSpec.describe "Admin Console badges", type: :request do
       event = create_event
       Current.account = account
       badge = create(:badge, account: account, event: event, ticket_category: nil, content: "<div>$NAME$</div>")
-      sign_in_with_role(:checkin_staff)
+      sign_in_with_role(:admin_staff)
 
       get preview_admin_event_badge_path(event, badge)
 
@@ -291,7 +343,7 @@ RSpec.describe "Admin Console badges", type: :request do
       Current.account = account
       badge = create(:badge, account: account, event: event, ticket_category: nil,
         content: "<div>$TITLE$ $FIRST_NAME$ $LAST_NAME$</div>")
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       get preview_admin_event_badge_path(event, badge)
 
@@ -307,7 +359,7 @@ RSpec.describe "Admin Console badges", type: :request do
       Current.account = account
       badge = create(:badge, account: account, event: event, ticket_category: nil, content: "<div>$NAME$</div>")
       participant = create(:participant, account: account, event: event, first_name: "Alice", last_name: "Smith")
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       get preview_admin_event_badge_path(event, badge, participant_id: participant.id)
 
@@ -323,7 +375,7 @@ RSpec.describe "Admin Console badges", type: :request do
       Current.account = account
       badge = create(:badge, account: account, event: event, ticket_category: nil, content: "<div>$NAME$</div>")
       participant = create(:participant, account: account, event: event, first_name: "Bob")
-      sign_in_with_role(:checkin_staff)
+      sign_in_with_role(:admin_staff)
 
       get preview_admin_event_badge_path(event, badge, participant_id: participant.id)
 

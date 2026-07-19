@@ -35,8 +35,8 @@ RSpec.describe "Check-in kiosk", type: :request do
       expect(response).to redirect_to(new_user_session_path)
     end
 
-    it "checkin_staff can reach the kiosk (requirement.md §5.1)" do
-      sign_in_with_role(:checkin_staff)
+    it "admin_staff can reach the kiosk (requirement.md §5.1)" do
+      sign_in_with_role(:admin_staff)
       event = create_event
 
       get checkin_event_path(event)
@@ -45,7 +45,7 @@ RSpec.describe "Check-in kiosk", type: :request do
     end
 
     it "owner/event_manager can reach it too" do
-      sign_in_with_role(:event_manager)
+      sign_in_with_role(:event_admin)
       event = create_event
 
       get checkin_event_path(event)
@@ -53,17 +53,8 @@ RSpec.describe "Check-in kiosk", type: :request do
       expect(response).to have_http_status(:ok)
     end
 
-    it "finance_readonly is not authorized" do
-      sign_in_with_role(:finance_readonly)
-      event = create_event
-
-      get checkin_event_path(event)
-
-      expect(response).to redirect_to(user_root_path)
-    end
-
     it "renders its own standalone layout, not the admin console shell" do
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
       event = create_event(name: "Dubai Expo")
 
       get checkin_event_path(event)
@@ -79,7 +70,7 @@ RSpec.describe "Check-in kiosk", type: :request do
       Current.account = other_account
       other_event = create(:event, account: other_account)
 
-      sign_in_with_role(:owner)
+      sign_in_with_role(:event_admin)
 
       get checkin_event_path(other_event.slug)
 
@@ -88,7 +79,7 @@ RSpec.describe "Check-in kiosk", type: :request do
   end
 
   describe "POST /checkin/:event_id/scan" do
-    before { sign_in_with_role(:checkin_staff) }
+    before { sign_in_with_role(:admin_staff) }
 
     it "records a check-in scan and responds with a Turbo Stream update" do
       event = create_event
@@ -213,26 +204,11 @@ RSpec.describe "Check-in kiosk", type: :request do
 
       expect(response.body).to include("https://meet.example/abc")
     end
-
-    it "finance_readonly cannot scan" do
-      user = create(:user, email: "finance@acme.example", password: "password123!")
-      create(:account_membership, user: user, account: account, role: :finance_readonly)
-      sign_in user, scope: :user
-      event = create_event
-      Current.account = account
-      participant = create(:participant, account: account, event: event)
-
-      expect {
-        post checkin_scan_path(event), params: { identifier: participant.hex_id, scan_type: "check_in" }
-      }.not_to change { scan_event_count }
-
-      expect(response).to redirect_to(user_root_path)
-    end
   end
 
   # Phase 10 — Print Agent (Electron) Integration, revisited (requirement.md §5.5.1).
   describe "POST /checkin/:event_id/scan — printing" do
-    before { sign_in_with_role(:checkin_staff) }
+    before { sign_in_with_role(:admin_staff) }
 
     it "'Print only' prints without marking attendance" do
       event = create_event

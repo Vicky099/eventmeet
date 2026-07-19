@@ -7,24 +7,33 @@
 #   (paid) or `#reject_payment!`s it (clears the UTR/receipt "slot" for exactly one resubmission,
 #   with a reason the tenant sees).
 #
-# One Invoice per Event — enforced with a unique index, matching "one quotation -> one event"
-# already enforced on `events.quotation_id`; `has_one :invoice` on Event is the other half.
-# PaymentSubmission (a separate table in the original build) is folded directly onto these columns
-# — the simplified flow only ever needs one "current" payment attempt at a time, not a full
-# multi-attempt history table.
+# Fixed-hierarchy pivot (requirement.md revisit): reused, not duplicated, for the new agency-level
+# "one upfront annual contract payment" flow (Agency#billing_cycle: annual) —
+# Invoice.generate_for_agency_contract raises the same draft/awaiting_payment/under_review/paid +
+# UTR/receipt row, just with `agency:` set and `event:`/`account:` both nil instead. Exactly one of
+# `event` or `agency` is required (#exactly_one_of_event_or_agency below); the Quotation gate this
+# model's own comment used to reference is gone entirely (fixed-hierarchy pivot, no more per-event
+# pricing negotiation).
+#
+# No longer TenantScoped (fixed-hierarchy pivot): an agency-level contract invoice has no
+# Current.account to default-scope against at all. Every read site that used to lean on that
+# default_scope now filters explicitly — Admin::InvoicesController's own `Invoice.includes(...)`
+# gains a `.where(account: Current.account)` (see that controller's own comment).
 class Invoice < ApplicationRecord
-  include TenantScoped
   include TenantScopedAttachment
 
   enum :status, { draft: 0, awaiting_payment: 1, under_review: 2, paid: 3 }
 
-  belongs_to :event
+  belongs_to :account, optional: true
+  belongs_to :event, optional: true
+  belongs_to :agency, optional: true, inverse_of: :invoice
   belongs_to :submitted_by, class_name: "User", optional: true
   belongs_to :verified_by, class_name: "User", optional: true
   has_one_attached :receipt
 
   validates :amount, presence: true, numericality: { greater_than: 0 }
   validates :currency, inclusion: { in: Currency::CODES }
+  validate :exactly_one_of_event_or_agency
   # A light safety net matching the invariant #submit_payment! itself always maintains (utr set
   # together with the status change, same update! call) — not the actual enforcement point.
   # `rejection_reason` has no equivalent status-based check here (unlike Event's own
@@ -34,16 +43,42 @@ class Invoice < ApplicationRecord
   # model method is a raw mutation" split every other bang-method in this app already takes.
   validates :utr_reference, presence: true, if: :under_review?
 
-  # InvoiceGenerationJob's own entry point — one Invoice, straight from the approved Quotation's
-  # own amount and currency (no editable draft-amount step the way the original per-plan
-  # computation needed; there's only one number, so there's nothing to review before this besides
-  # "is it correct," which is what the Super Admin's own review-before-#send! step is for).
+  # InvoiceGenerationJob's own entry point — one Invoice, straight from the event's own Agency's
+  # current price_per_event/currency (no editable draft-amount step; there's only one number, so
+  # there's nothing to review before this besides "is it correct," which is what the Super Admin's
+  # own review-before-#send! step is for). Read fresh off `event.account.agency` rather than any
+  # value cached on the Event itself: the requirement is "the agency's *current* fixed price," not
+  # a snapshot from whenever the event was created, and nothing here needs one — an Invoice is only
+  # ever raised once, at completion, well after creation. Never called for an `annual`-billing_cycle
+  # agency's events (unlimited, no per-event charge) — InvoiceGenerationJob's own sweep already only
+  # targets events with no invoice yet, and an annual agency's events never need one.
   def self.generate_for(event)
-    event.create_invoice!(account: event.account, amount: event.quotation.current_amount, currency: event.quotation.currency)
+    agency = event.account.agency
+    event.create_invoice!(account: event.account, amount: agency.price_per_event, currency: agency.currency)
+  end
+
+  # Invoices moved to the Agency Console entirely (requirement.md revisit: "we will only charge
+  # agency based on contract per event / Per Year" — the agency is who actually pays, so the
+  # agency is who manages/pays every invoice, not each individual tenant). Covers both invoice
+  # shapes an agency ever has at once: its own single annual-contract Invoice (`agency:` set) and
+  # every per-event Invoice across its own tenants (`account:` set) — mutually exclusive in
+  # practice (an agency is either `annual`, only ever the former, or `per_event`, only ever the
+  # latter), so AgencyConsole::InvoicesController#index shows the right thing per agency with no
+  # billing_cycle branch of its own needed.
+  def self.for_agency(agency)
+    where(agency: agency).or(where(account: agency.accounts))
+  end
+
+  # The annual contract's own entry point (AgencyProvisioning, right after creating an
+  # `annual`-billing_cycle Agency) — the one upfront lump-sum Invoice gating #contract_active?
+  # (Agency's own comment). No `account:`/`event:` — this predates any tenant Account existing at
+  # all under the agency.
+  def self.generate_for_agency_contract(agency)
+    agency.create_invoice!(amount: agency.annual_price, currency: agency.currency)
   end
 
   def attach_receipt(uploaded_file)
-    attach_tenant_scoped(:receipt, uploaded_file, "invoices", event_id)
+    attach_tenant_scoped(:receipt, uploaded_file, "invoices", event_id || "agency-contract")
   end
 
   # Super Admin action — the only thing that actually notifies the tenant (BillingMailer, from the
@@ -70,5 +105,21 @@ class Invoice < ApplicationRecord
   # history), so there's no window where a stale value could be mistaken for a fresh submission.
   def reject_payment!(reason:, by:)
     update!(status: :awaiting_payment, rejection_reason: reason, verified_by: by, verified_at: Time.current)
+  end
+
+  private
+
+  def exactly_one_of_event_or_agency
+    return if event.present? ^ agency.present?
+
+    errors.add(:base, "must belong to exactly one of an event or an agency")
+  end
+
+  # TenantScopedAttachment#tenant_scoped_blob_key's own default reads `account` unconditionally —
+  # overridden here since an agency-contract Invoice has none; `account || agency` both respond to
+  # `#subdomain_slug`, which is all TenantScopedAttachment.blob_key actually needs (duck-typed, same
+  # as every other caller established this session).
+  def tenant_scoped_blob_key(*segments, filename:)
+    TenantScopedAttachment.blob_key(account || agency, *segments, filename: filename)
   end
 end

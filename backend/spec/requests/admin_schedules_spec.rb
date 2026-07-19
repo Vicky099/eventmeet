@@ -20,7 +20,7 @@ RSpec.describe "Admin Console schedules (talks)", type: :request do
   end
 
   describe "tenant scoping" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "never shows another tenant's talk" do
       other_account = create(:account)
@@ -39,7 +39,7 @@ RSpec.describe "Admin Console schedules (talks)", type: :request do
 
   describe "role permissions" do
     it "finance_readonly cannot create a talk" do
-      sign_in_with_role(:finance_readonly)
+      sign_in_with_role(:admin_staff)
       event = create_event
       Current.account = account
       speaker = create(:speaker, account: account, event: event)
@@ -53,7 +53,7 @@ RSpec.describe "Admin Console schedules (talks)", type: :request do
   end
 
   describe "POST /admin/events/:event_id/schedules (overlap warning, requirement.md Phase 11 checklist)" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "saves successfully even when the speaker is double-booked, with a warning in the flash, back on the wizard's Event Schedule step" do
       event = create_event
@@ -82,7 +82,7 @@ RSpec.describe "Admin Console schedules (talks)", type: :request do
   # here from admin_event_sessions_spec.rb once Sessions/Event Schedule became distinct steps —
   # the combined day/track/talks timetable is this step's content now, not the plain Sessions list.
   describe "GET /admin/events/:event_id/schedules (the time-grid)" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "groups a 2-day, 2-track agenda by day and by track" do
       event = create_event

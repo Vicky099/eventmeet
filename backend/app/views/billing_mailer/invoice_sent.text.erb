@@ -1,7 +1,8 @@
-Invoice for <%= @event.name %>
+<% subtitle = @invoice.event ? @invoice.event.name : "your annual contract" %>
+Invoice for <%= subtitle %>
 
-An invoice has been raised for <%= @event.name %>: <%= money(@invoice.amount, @invoice.currency) %>
+An invoice has been raised for <%= subtitle %>: <%= money(@invoice.amount, @invoice.currency) %>
 
 Please pay via bank transfer (NEFT/IMPS) and submit the UTR/receipt as proof of payment.
 
-Sign in to review the invoice and submit payment proof at <%= admin_invoice_url(@invoice) %>
+Sign in to review the invoice and submit payment proof at <%= agency_invoice_url(@invoice) %>

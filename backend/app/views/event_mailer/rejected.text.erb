@@ -1,7 +1,0 @@
-<%= @event.name %> was not approved
-
-A Super Admin reviewed <%= @event.name %> and rejected it with the following reason:
-
-<%= @event.rejection_reason %>
-
-You can make changes and resubmit it for review at <%= edit_admin_event_url(@event, step: "review") %>

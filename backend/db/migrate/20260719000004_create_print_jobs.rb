@@ -1,9 +1,8 @@
 # Phase 10 — Print Agent (Electron) Integration (requirement.md §5.5.1, §8). One row per print
 # actually dispatched to a paired station — PrintTriggerService's own queue/status-tracking unit,
-# "reuses the pattern from baseline's bulk-print failure tracking" per the checklist. Not
-# monthly-partitioned like ScanEvent — this is a bounded-per-event queue (thousands of rows at
-# the very most for a single large event), not an unbounded time-series log, so it follows the
-# same plain-table shape Badge/Participant already do.
+# "reuses the pattern from baseline's bulk-print failure tracking" per the checklist. A
+# bounded-per-event queue (thousands of rows at the very most for a single large event), not an
+# unbounded time-series log, so it follows the same plain-table shape Badge/Participant already do.
 #
 # bulk_print_run_id/sequence are both nullable — most PrintJobs come from a single manual/kiosk
 # print (no run at all); only rows created by BulkPrintRunJob set both, sequence giving the batch

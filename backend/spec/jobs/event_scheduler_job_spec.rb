@@ -46,7 +46,7 @@ RSpec.describe EventSchedulerJob, type: :job do
   # an event lands on `completed` — not the next day (see InvoiceGenerationJob's own comment for
   # the superseded original requirement). No `.day.ago` wait involved anymore.
   describe "invoice generation on completion (requirement.md §4.6)" do
-    it "raises a draft invoice the instant an event completes, straight from its own quotation" do
+    it "raises a draft invoice the instant an event completes, straight from its account's own Agency price" do
       event = create_event(starts_at: 2.days.ago, ends_at: 1.hour.ago)
 
       EventSchedulerJob.perform_now
@@ -55,7 +55,7 @@ RSpec.describe EventSchedulerJob, type: :job do
       invoice = event.reload.invoice
       expect(invoice).to be_present
       expect(invoice).to be_draft
-      expect(invoice.amount).to eq(event.quotation.current_amount)
+      expect(invoice.amount).to eq(event.account.agency.price_per_event)
     end
 
     it "still raises the invoice for an event that skips live entirely" do
@@ -78,6 +78,20 @@ RSpec.describe EventSchedulerJob, type: :job do
       Current.account = account
       expect(Event.unscoped_across_tenants { event.reload }.status).to eq("completed")
       expect(event.reload.invoice).to eq(existing_invoice)
+    end
+
+    # Fixed-hierarchy pivot (requirement.md revisit): unlimited/already-paid-for-up-front — never
+    # gets a per-event Invoice at all.
+    it "doesn't raise an invoice for an event whose agency is on an annual contract" do
+      annual_agency = create(:agency, :annual)
+      annual_account = create(:account, agency: annual_agency)
+      Current.account = annual_account
+      event = create(:event, :published, account: annual_account, starts_at: 2.days.ago, ends_at: 1.hour.ago)
+
+      EventSchedulerJob.perform_now
+
+      Current.account = annual_account
+      expect(event.reload.invoice).to be_nil
     end
   end
 
@@ -152,17 +166,6 @@ RSpec.describe EventSchedulerJob, type: :job do
   # Phase 9 checklist: "EventScheduler job extended: auto-checkout/mark-absent attendees when an
   # event's live -> completed transition fires."
   describe "live -> completed attendance finalization (requirement.md §3.7)", :aggregate_failures do
-    # The outer `around` block above freezes time to 2026-01-01 — outside the June-September 2026
-    # window the initial migration provisioned partitions for (lib/monthly_range_partitioning.rb
-    # creates partitions relative to whenever the migration actually ran, not relative to a test's
-    # frozen clock). PartitionMaintenanceJob is what keeps this window moving in a real deployment;
-    # here, just provision the one frozen month directly so ScanEvent/Attendance writes land
-    # somewhere.
-    before do
-      MonthlyRangePartitioning.ensure_partitions!(ActiveRecord::Base.connection, :scan_events, partition_column: :scanned_at, months_behind: 0, months_ahead: 0)
-      MonthlyRangePartitioning.ensure_partitions!(ActiveRecord::Base.connection, :attendances, partition_column: :occurred_at, months_behind: 0, months_ahead: 0)
-    end
-
     it "auto-checks-out a participant still checked in and marks a never-scanned one absent" do
       event = create_event(starts_at: 2.hours.ago, ends_at: 1.hour.from_now)
       Event.unscoped_across_tenants { event.update!(status: :live) }

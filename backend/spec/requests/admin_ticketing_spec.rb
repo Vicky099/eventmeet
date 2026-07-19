@@ -26,7 +26,7 @@ RSpec.describe "Admin Console ticketing", type: :request do
   # form (Event accepts_nested_attributes_for :ticket_categories), not a separate CRUD endpoint;
   # they only persist as part of this same PATCH, same as Basic Info's fields do.
   describe "PATCH /admin/events/:id (Tickets step)" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "sets the event's seat_limit and creates a ticket category in the same save" do
       event = create_event
@@ -190,7 +190,7 @@ RSpec.describe "Admin Console ticketing", type: :request do
   end
 
   describe "POST /admin/events/:event_id/ticket_categories/:ticket_category_id/ticket_reservations" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "reserves seats against the category" do
       event = create_event
@@ -224,7 +224,7 @@ RSpec.describe "Admin Console ticketing", type: :request do
   end
 
   describe "PATCH /admin/events/:event_id/ticket_reservations/:id/cancel" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "cancels the reservation and auto-promotes the next waitlisted one" do
       event = create_event

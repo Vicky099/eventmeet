@@ -1,18 +1,15 @@
 <%# Locals: event.
-    Final step — read-only summary, then the approval-status section, then Publish
-    (requirement.md §5.2 revisited). Publish is now gated on approval, not independent of it: the
-    tenant submits for review, a Super Admin approves, and only then does the Publish button
-    become available (Admin::EventsController#publish checks @event.approved?) — approving
-    doesn't publish it for them. Editing any earlier step's content after publishing reverts the
-    event to draft again (Event#revert_to_draft_if_published_content_changed), so the Publish
-    button reappears then; approval_status itself doesn't revert (re-approval-on-edit, §5.2 v8),
-    so re-publishing after such an edit needs no new approval.
+    Final step — read-only summary, then Publish. Fixed-hierarchy pivot (requirement.md revisit):
+    no more Super Admin approval gate — Publish only ever needed basic_info_complete? now
+    (Admin::EventsController#publish). Editing any earlier step's content after publishing reverts
+    the event to draft again (Event#revert_to_draft_if_published_content_changed), so the Publish
+    button reappears then.
 
     Every section below is its own card (user feedback — was one long card-body with <hr>
     separators between blocks) — Event Details/Ticket Categories/Badges/Speakers+Agenda (a row of
-    two side by side)/Approval Status/Publish, each read-only; editing happens back on the
-    step/page that owns that data, consistent with the rest of this page (there's no "edit Basic
-    Info from Review" either). %>
+    two side by side)/Publish, each read-only; editing happens back on the step/page that owns
+    that data, consistent with the rest of this page (there's no "edit Basic Info from Review"
+    either). %>
 <div class="card mb-3">
   <div class="card-header"><span class="fw-semibold">Event Details</span></div>
   <div class="card-body">
@@ -41,12 +38,7 @@
       </dd>
 
       <dt class="col-sm-3">Status</dt>
-      <dd class="col-sm-9"><span class="badge bg-info-subtle text-info"><%= event.status.humanize %></span></dd>
-
-      <dt class="col-sm-3">Approval</dt>
-      <dd class="col-sm-9 mb-0">
-        <span class="badge <%= approval_status_badge_class(event.approval_status) %>"><%= event.approval_status.humanize %></span>
-      </dd>
+      <dd class="col-sm-9 mb-0"><span class="badge bg-info-subtle text-info"><%= event.status.humanize %></span></dd>
     </dl>
   </div>
 </div>
@@ -207,35 +199,6 @@
     live, participant counts belong on its own dashboard/Participants page, not this setup-review
     step. %>
 
-<%# Phase 5 — Event Approval Workflow (requirement.md §4.7 item 2, §5.2). An event only ever
-    enters the Super Admin's review queue once explicitly submitted (unsubmitted -> pending via
-    Event#submit_for_review!). Re-approval-on-edit (§5.2 v8): once approved, further edits do NOT
-    revert approval_status, unlike Publish's status/draft cycle (which does revert on edit) — no
-    button to resubmit an approved event, because there's nothing to resubmit. The Submit/Resubmit
-    button itself lives in the bottom action row below, next to Previous, not inline here — this
-    card is status/explanation only, matching every other read-only section on this page. %>
-<div class="card mb-3">
-  <div class="card-header"><span class="fw-semibold">Approval Status</span></div>
-  <div class="card-body">
-    <% case event.approval_status %>
-    <% when "unsubmitted" %>
-      <p class="text-muted mb-0">Not yet submitted — a Super Admin only sees this event once you submit it for review.</p>
-    <% when "pending" %>
-      <p class="text-muted mb-0">
-        <i class="bx bx-time-five me-1"></i> Awaiting Super Admin review<% if event.submitted_at %> — submitted <%= time_ago_in_words(event.submitted_at) %> ago<% end %>. Typically reviewed within 24 hours.
-      </p>
-    <% when "approved" %>
-      <div class="alert alert-success mb-0">
-        <i class="bx bx-check-circle me-1"></i> Approved<% if event.approved_at %> <%= time_ago_in_words(event.approved_at) %> ago<% end %> — you can publish it below.
-      </div>
-    <% when "rejected" %>
-      <div class="alert alert-danger mb-0">
-        <i class="bx bx-error-circle me-1"></i> Rejected: <%= event.rejection_reason %>
-      </div>
-    <% end %>
-  </div>
-</div>
-
 <div class="card mb-3">
   <div class="card-header"><span class="fw-semibold">Publish</span></div>
   <div class="card-body">
@@ -243,13 +206,9 @@
       <div class="alert alert-success mb-0">
         <i class="bx bx-check-circle me-1"></i> Published — current status: <%= event.status.humanize %>. Editing an earlier step will move it back to Draft.
       </div>
-    <% elsif !event.approved? %>
-      <p class="text-muted mb-0">
-        <i class="bx bx-lock-alt me-1"></i> Publishing unlocks once a Super Admin approves this event.
-      </p>
     <% elsif event.basic_info_complete? %>
       <p class="text-muted">Publishing hands this event to the schedule — it moves out of Draft into Upcoming/Live/Completed automatically from here.</p>
-      <%= button_to "Publish", publish_admin_event_path(event), method: :post, class: "btn btn-sm btn-success" %>
+      <%= button_to "Publish", publish_admin_event_path(event), method: :post, class: "btn btn-m btn-success" %>
     <% else %>
       <div class="alert alert-warning mb-0">
         <i class="bx bx-error-circle me-1"></i> Finish the Basic Info step before this event can be published.
@@ -257,19 +216,11 @@
     <% end %>
 
     <p class="text-muted font-size-13 mt-3 mb-0">
-      <i class="bx bx-info-circle me-1"></i> The event isn't visible on the public site until it's published — and it can't be published until a Super Admin approves it.
+      <i class="bx bx-info-circle me-1"></i> The event isn't visible on the public site until it's published.
     </p>
   </div>
 </div>
 
 <div class="d-flex align-items-start gap-3 mt-4">
-  <%= link_to "Previous", edit_admin_event_path(event, step: "badge"), class: "btn btn-sm btn-outline-secondary" %>
-  <%# Same button, same submit_for_review_admin_event_path action, for both states — only the
-      label differs (a rejected event is resubmitted through the exact same path an unsubmitted
-      one is first submitted through). Not shown for "pending"/"approved": pending has nothing left
-      to do but wait, and an approved event has nothing to (re)submit (see the comment above). %>
-  <% if event.unsubmitted? || event.rejected? %>
-    <%= button_to event.rejected? ? "Resubmit for review" : "Submit for review",
-          submit_for_review_admin_event_path(event), method: :post, class: "btn btn-sm btn-primary ms-auto" %>
-  <% end %>
+  <%= link_to "Previous", edit_admin_event_path(event, step: "badge"), class: "btn btn-m btn-outline-secondary" %>
 </div>

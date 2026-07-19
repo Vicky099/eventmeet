@@ -21,7 +21,7 @@ RSpec.describe "Tenant timezone applies to rendered dates", type: :request do
     Current.account = account
     starts_at = Time.utc(2026, 6, 1, 10, 0, 0) # 10:00 UTC == 15:30 in Chennai (UTC+5:30)
     event = create(:event, account: account, starts_at: starts_at, ends_at: starts_at + 2.hours)
-    sign_in_with_role(:owner)
+    sign_in_with_role(:event_admin)
 
     get admin_event_path(event)
 
@@ -38,13 +38,13 @@ RSpec.describe "Tenant timezone applies to rendered dates", type: :request do
     Current.account = other_account
     other_event = create(:event, account: other_account, starts_at: starts_at, ends_at: starts_at + 2.hours)
 
-    sign_in_with_role(:owner)
+    sign_in_with_role(:event_admin)
     get admin_event_path(event)
     chennai_rendering = ActiveSupport::TimeZone["Chennai"].at(starts_at).to_fs(:long)
     expect(response.body).to include(chennai_rendering)
 
     other_user = create(:user, email: "owner@other.example", password: "password123!")
-    create(:account_membership, user: other_user, account: other_account, role: :owner)
+    create(:account_membership, user: other_user, account: other_account, role: :event_admin)
     sign_out :user
     sign_in other_user, scope: :user
     host! "other.example.com"
@@ -56,7 +56,7 @@ RSpec.describe "Tenant timezone applies to rendered dates", type: :request do
 
   it "resets to the default zone after the request (never leaks into the next one on a reused connection)" do
     Current.account = account
-    sign_in_with_role(:owner)
+    sign_in_with_role(:event_admin)
 
     get admin_events_path
 

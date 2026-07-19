@@ -32,7 +32,7 @@
             data-action — download_progress_controller.js (requirement.md revisit: "download will
             open modal and show the progress bar...") intercepts the click, same as the export
             page's own download link. %>
-        <%= link_to sample_admin_event_import_files_path(@event), class: "btn btn-sm btn-outline-secondary mb-3",
+        <%= link_to sample_admin_event_import_files_path(@event), class: "btn btn-m btn-outline-secondary mb-3",
               data: { action: "click->download-progress#start", download_progress_filename_param: "participant-import-template.xlsx" } do %>
           <i class="bx bx-spreadsheet"></i> Download sample template
         <% end %>
@@ -42,7 +42,7 @@
             <%= label_tag :file, "XLSX file", class: "form-label" %>
             <%= file_field_tag "import_file[file]", id: "file", class: "form-control", accept: ".xlsx", required: true %>
           </div>
-          <%= submit_tag "Start Import", class: "btn btn-sm btn-primary" %>
+          <%= submit_tag "Start Import", class: "btn btn-m btn-primary" %>
         <% end %>
       </div>
     </div>

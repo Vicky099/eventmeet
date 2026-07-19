@@ -1,5 +1,18 @@
 module ApplicationHelper
   include Pagy::Frontend
+
+  # Brand mark assets (logo-main: full wordmark, logo-circle: collapsed/square mark, favicon:
+  # browser tab icon) — uploaded once to this app's own Cloudinary account (branding/* public
+  # IDs) and referenced by their permanent secure_url here, not a runtime image_tag/cl_image_tag
+  # call: these are fixed brand assets, not user-generated content, so there's no per-request
+  # transform/upload to drive through the Cloudinary helper pipeline. Every call site uses
+  # `tag.img src: ...`, not `image_tag` — config/cloudinary.yml's `enhance_image_tag: true`
+  # globally monkey-patches `image_tag` to route every source through Cloudinary unconditionally
+  # (see app/views/checkin/_participant_avatar.html.erb's own comment on the same caveat), which
+  # 500s on an already-absolute URL like these.
+  BRAND_LOGO_MAIN_URL = "https://res.cloudinary.com/ddbkhb3vl/image/upload/v1784479925/branding/logo-main.png"
+  BRAND_LOGO_CIRCLE_URL = "https://res.cloudinary.com/ddbkhb3vl/image/upload/v1784479926/branding/logo-circle.png"
+  BRAND_FAVICON_URL = "https://res.cloudinary.com/ddbkhb3vl/image/upload/v1784479927/branding/favicon.png"
   # shared/_page_header's "Dashboard" breadcrumb crumb needs the right console's own root — this
   # is the one thing genuinely shared between Admin:: and SuperAdmin:: views (unlike home_path,
   # which layouts/admin.html.erb and layouts/super_admin.html.erb pass into console_shell as a
@@ -24,20 +37,6 @@ module ApplicationHelper
     end
   end
 
-  # Shared between the wizard's top badge strip (edit.html.erb) and the Review step's own detail
-  # row (_review_step.html.erb) — one mapping, not two copies to keep in sync as approval_status
-  # grows states.
-  APPROVAL_STATUS_BADGE_CLASSES = {
-    "unsubmitted" => "bg-secondary-subtle text-secondary",
-    "pending" => "bg-warning-subtle text-warning",
-    "approved" => "bg-success-subtle text-success",
-    "rejected" => "bg-danger-subtle text-danger"
-  }.freeze
-
-  def approval_status_badge_class(approval_status)
-    APPROVAL_STATUS_BADGE_CLASSES.fetch(approval_status)
-  end
-
   # Inline per-field validation errors (red text directly below the field, not just the form's
   # own top-of-page summary list) — Bootstrap's standard `is-invalid`/`invalid-feedback` pair:
   # `field_error_class` goes on the input itself, `field_error_feedback` renders the message
@@ -55,7 +54,7 @@ module ApplicationHelper
     content_tag(:div, record.errors[field].join(", "), class: "invalid-feedback d-block")
   end
 
-  # Quotation/Invoice amounts (requirement.md §4.6) are no longer implicitly USD — every call site
+  # Agency/Invoice amounts (requirement.md §4.6) are no longer implicitly USD — every call site
   # that used to reach for the bare `number_to_currency` on one of those records goes through here
   # instead, so the record's own stored `currency` (Currency::SYMBOLS) always drives the symbol.
   def money(amount, currency)

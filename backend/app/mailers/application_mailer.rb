@@ -10,7 +10,7 @@ class ApplicationMailer < ActionMailer::Base
   # `ENV.fetch`'s default-only-if-*absent* semantics) — Figaro's config/application.yml always
   # sets the key, just to an empty string until a real value is filled in, so `ENV.fetch` would
   # never actually reach its own fallback.
-  default from: -> { ENV["MAILER_FROM"].presence || "EventMeet <no-reply@eventmeet.example>" }
+  default from: -> { ENV["MAILER_FROM"].presence || "xEvent <no-reply@eventmeet.example>" }
   layout "mailer"
 
   # requirement.md §4.3: mail generated during a tenant request (e.g. Devise's reset-password
@@ -33,10 +33,17 @@ class ApplicationMailer < ActionMailer::Base
 
     if @tenant_account
       base.merge(host: "#{@tenant_account.subdomain_slug}.#{Rails.application.config.x.platform_domain}")
+    # Fixed-hierarchy pivot (requirement.md revisit): the Agency Console's own subdomain — same
+    # shape as @tenant_account above, one tier up (AgencyMailer's own welcome/resend-invite emails
+    # set this the same way every tenant-scoped mailer already sets @tenant_account).
+    elsif @tenant_agency
+      base.merge(host: "#{@tenant_agency.subdomain_slug}.#{Rails.application.config.x.platform_domain}")
     elsif @tenant_platform_request
       base.merge(host: Rails.application.config.x.platform_domain)
     elsif Current.account
       base.merge(host: "#{Current.account.subdomain_slug}.#{Rails.application.config.x.platform_domain}")
+    elsif Current.agency
+      base.merge(host: "#{Current.agency.subdomain_slug}.#{Rails.application.config.x.platform_domain}")
     elsif Current.platform_request
       base.merge(host: Rails.application.config.x.platform_domain)
     else

@@ -1,0 +1,55 @@
+<% content_for :page_title, "Agencies" %>
+
+<%= render layout: "shared/page_header", locals: { icon: "bx-briefcase", crumbs: [ { label: "Agencies" } ] } do %>
+  <%= link_to "New Agency", new_platform_agency_path, class: "btn btn-m btn-primary" %>
+<% end %>
+
+<div class="mb-3">
+  <%= form_with url: platform_agencies_path, method: :get, local: true, class: "d-flex gap-2" do %>
+    <%= text_field_tag :q, @query, class: "form-control", placeholder: "Search name" %>
+    <%= select_tag :status,
+          options_for_select([ [ "All statuses", "" ] ] + Agency.statuses.keys.map { |s| [ s.humanize, s ] }, @status_filter),
+          id: "status_filter", class: "form-select" %>
+    <%= submit_tag "Search", class: "btn btn-m btn-outline-secondary" %>
+  <% end %>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Price / Event</th>
+            <th>Events</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @agencies.each do |agency| %>
+            <tr>
+              <td><%= link_to agency.name, platform_agency_path(agency) %></td>
+              <td><%= money(agency.price_per_event, agency.currency) %></td>
+              <td><%= agency.events_used %> / <%= agency.events_granted %> used</td>
+              <td>
+                <span class="badge <%= agency.active? ? "bg-success" : "bg-secondary" %>"><%= agency.status.humanize %></span>
+              </td>
+              <td><%= agency.created_at.to_date.iso8601 %></td>
+              <td class="text-end">
+                <%= link_to platform_agency_path(agency), class: "btn btn-m btn-outline-primary", title: "View" do %>
+                  <i class="bx bx-show"></i>
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+          <% if @agencies.none? %>
+            <tr><td colspan="6" class="text-center text-muted py-4">No agencies match.</td></tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

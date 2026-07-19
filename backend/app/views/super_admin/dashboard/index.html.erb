@@ -1,12 +1,125 @@
 <% content_for :page_title, "Dashboard" %>
 
-<%# No shared/page_header here — same reasoning as admin/dashboard/index.html.erb. %>
+<%# No shared/page_header here — same reasoning as admin/dashboard/index.html.erb.
+
+    At a Glance (requirement.md revisit: "generate the proper analytics for super admin ... also
+    include one glance overview") — Tenants/Agencies/Events counts plus Revenue Collected, the
+    one number every other section below (Revenue by Agency, Live Pulse, invoices needing action)
+    then breaks down further. Revenue Collected renders one line per currency present
+    (@revenue_by_currency, SuperAdmin::DashboardController#index's own comment on why this is
+    never blended into a single blended total) — almost always just one line (₹, the platform's
+    default), but never silently wrong if an agency is billed in USD/EUR/GBP instead. %>
 <div class="row g-3 mb-4">
   <div class="col-md-6 col-xl-3">
     <%= render "shared/stat_widget", label: "Tenants", value: @tenant_count, icon: "bx-buildings", color: "primary" %>
   </div>
   <div class="col-md-6 col-xl-3">
-    <%= render "shared/stat_widget", label: "Pending Approvals", value: @pending_approval_count, icon: "bx-check-shield", color: "warning" %>
+    <%= render "shared/stat_widget", label: "Agencies", value: @agency_count, icon: "bx-briefcase", color: "warning" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Events", value: @event_count, icon: "bx-calendar-event", color: "info" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <% revenue_value = @revenue_by_currency.any? ? safe_join(@revenue_by_currency.map { |currency, amount| money(amount, currency) }, tag.br) : money(0, "INR") %>
+    <%= render "shared/stat_widget", label: "Revenue Collected", value: revenue_value, icon: "bx-wallet", color: "success" %>
+  </div>
+</div>
+
+<%# requirement.md revisit: "as whatsApp is paid i want to track the usage and the approx
+    amount ... all the whatsApp messages count and approx spend on whatsApp messages" — platform-
+    wide, every agency's own usage combined (SuperAdmin::AgenciesController#show has the identical
+    pair scoped to just one agency, on its own show page). Approx. Spend is an estimate against a
+    stakeholder-set placeholder per-message rate (config/initializers/multi_tenancy.rb's own
+    comment), not a real Gupshup invoice reconciliation. %>
+<div class="row g-3 mb-4">
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "WhatsApp Messages Sent", value: @whatsapp_message_count, icon: "bxl-whatsapp", color: "success" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Approx. WhatsApp Spend", value: money(@whatsapp_approx_spend, "INR"), icon: "bx-wallet", color: "warning" %>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-5">
+    <%= render layout: "shared/card", locals: { title: "Revenue by Agency", icon: "bx-line-chart" } do %>
+      <% if @revenue_by_agency.none? %>
+        <%= render "shared/empty_state", icon: "bx-line-chart", message: "No revenue collected yet." %>
+      <% else %>
+        <table class="table table-borderless align-middle mb-0">
+          <tbody>
+            <% @revenue_by_agency.each do |agency, total| %>
+              <tr>
+                <td><%= link_to agency.name, platform_agency_path(agency), class: "text-body fw-medium" %></td>
+                <td class="text-end fw-semibold"><%= money(total, agency.currency) %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      <% end %>
+    <% end %>
+  </div>
+
+  <div class="col-lg-7">
+    <%# requirement.md revisit: "due invoices need actions" — this is the Super Admin's own
+        action queue, not a bare count: every row here is something they can act on directly,
+        one click, without leaving the dashboard (Send a draft, Verify a submitted payment).
+        Rejecting still routes to the full invoice page — that needs a written reason, not a
+        one-click confirm, so it doesn't belong crammed into a table row. %>
+    <%= render layout: "shared/card", locals: { title: "Invoices Needing Action", icon: "bx-error-circle",
+      actions: (link_to "View all", platform_invoices_path, class: "btn btn-m btn-outline-secondary") } do %>
+      <% if @invoices_needing_action.none? %>
+        <%= render "shared/empty_state", icon: "bx-check-shield", message: "Nothing needs your attention right now." %>
+      <% else %>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Agency</th>
+                <th>Event</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th class="text-end">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @invoices_needing_action.each do |invoice| %>
+                <tr>
+                  <td><%= (invoice.agency || invoice.account&.agency)&.name || "—" %></td>
+                  <td><%= invoice.event ? invoice.event.name : "Annual Contract" %></td>
+                  <td><%= money(invoice.amount, invoice.currency) %></td>
+                  <td>
+                    <% if invoice.draft? %>
+                      <span class="badge bg-secondary-subtle text-secondary">Draft — not sent</span>
+                    <% else %>
+                      <span class="badge bg-info-subtle text-info">Needs Verification</span>
+                    <% end %>
+                  </td>
+                  <td class="text-end">
+                    <div class="d-flex justify-content-end gap-2">
+                      <% if invoice.draft? %>
+                        <%= button_to "Send", deliver_platform_invoice_path(invoice), method: :post,
+                              class: "btn btn-m btn-primary",
+                              data: { action: "click->confirm-dialog#show", title: "Send Invoice",
+                                      message: "Send this #{money(invoice.amount, invoice.currency)} invoice to #{invoice_recipient_label(invoice)}? They'll be notified by email#{" and WhatsApp" if invoice.account.present?}." } %>
+                      <% else %>
+                        <%= button_to "Verify", verify_platform_invoice_path(invoice), method: :post,
+                              class: "btn btn-m btn-success",
+                              data: { action: "click->confirm-dialog#show", title: "Verify Payment",
+                                      message: "Confirm the #{money(invoice.amount, invoice.currency)} transfer (UTR: #{invoice.utr_reference}) has been received? This marks the invoice paid." } %>
+                      <% end %>
+                      <%= link_to platform_invoice_path(invoice), class: "btn btn-m btn-outline-primary", title: "View" do %>
+                        <i class="bx bx-show"></i>
+                      <% end %>
+                    </div>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% end %>
+    <% end %>
   </div>
 </div>
 

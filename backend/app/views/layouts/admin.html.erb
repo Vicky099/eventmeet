@@ -17,7 +17,7 @@
         label: "Back to Events", path: admin_events_path,
         context: @event.name, context_subtitle: @event.status.humanize
       } : nil,
-      footer_text: "EventMeet",
+      footer_text: "xEvent",
       user_dropdown: user_signed_in? ? {
         email: current_user.email,
         subtitle: Current.account&.name,

@@ -17,11 +17,6 @@ RSpec.describe ScanEvent, type: :model do
     expect(scan).to be_kiosk
   end
 
-  it "persists into the correct monthly partition transparently" do
-    scan = create(:scan_event, event: event, scanned_at: Time.current)
-    expect(ScanEvent.find_by(id: scan.id)).to eq(scan)
-  end
-
   it "never leaks another tenant's scan events (requirement.md §4.2)" do
     other_account = create(:account)
     Current.account = other_account

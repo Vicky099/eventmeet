@@ -1,0 +1,93 @@
+<%# Locals: agency (Agency, new or persisted) — shared by new.html.erb and edit.html.erb, mirrors
+    super_admin/accounts/_form.html.erb's own shape. billing_cycle gates which of the per_event/
+    annual field sets below is shown (agency_billing_cycle_controller.js), same shape as
+    admin/events/new.html.erb's own event-mode Stimulus controller — only the fields matching the
+    selected billing_cycle are actually validated (Agency's own model comment) anyway, so this is
+    purely a display convenience, not a substitute for that server-side validation. %>
+<%= form_with model: [ :platform, agency ], local: true,
+      html: { data: { controller: "agency-billing-cycle" } } do |f| %>
+  <div class="mb-3">
+    <%= f.label :name, class: "form-label" %>
+    <%= f.text_field :name, class: field_error_class(agency, :name), autofocus: true %>
+    <%= field_error_feedback(agency, :name) %>
+  </div>
+
+  <div class="mb-3">
+    <%= f.label :subdomain_slug, "Subdomain", class: "form-label" %>
+    <div class="input-group">
+      <%= f.text_field :subdomain_slug, class: field_error_class(agency, :subdomain_slug) %>
+      <span class="input-group-text">.<%= Rails.application.config.x.platform_domain %></span>
+    </div>
+    <small class="text-muted">Where the agency signs in and manages its own tenants.</small>
+    <%= field_error_feedback(agency, :subdomain_slug) %>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-6">
+      <%= f.label :contact_email, class: "form-label" %>
+      <%= f.email_field :contact_email, class: field_error_class(agency, :contact_email) %>
+      <%= field_error_feedback(agency, :contact_email) %>
+    </div>
+
+    <div class="col-md-6">
+      <%= f.label :contact_num, "Contact Number", class: "form-label" %>
+      <%= f.text_field :contact_num, class: field_error_class(agency, :contact_num) %>
+      <%= field_error_feedback(agency, :contact_num) %>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-6">
+      <%= f.label :billing_cycle, class: "form-label" %>
+      <%= f.select :billing_cycle, Agency.billing_cycles.keys.map { |bc| [ bc.humanize, bc ] },
+            {}, class: field_error_class(agency, :billing_cycle, base: "form-select"),
+            data: { agency_billing_cycle_target: "cycle", action: "change->agency-billing-cycle#toggle" } %>
+      <%= field_error_feedback(agency, :billing_cycle) %>
+    </div>
+
+    <div class="col-md-6">
+      <%= f.label :currency, class: "form-label" %>
+      <%= f.select :currency, Currency::CODES.map { |code| [ "#{code} (#{Currency.symbol_for(code)})", code ] },
+            {}, class: field_error_class(agency, :currency, base: "form-select") %>
+      <%= field_error_feedback(agency, :currency) %>
+    </div>
+  </div>
+
+  <%# per_event fields — the fixed per-event price + a granted pool, set once here, topped up
+      later from the agency's own page instead of editing this directly. %>
+  <div class="row g-3 mb-3" data-agency-billing-cycle-target="perEventField">
+    <div class="col-md-6">
+      <%= f.label :price_per_event, "Price per Event", class: "form-label" %>
+      <%= f.number_field :price_per_event, step: "0.01", min: 0.01, class: field_error_class(agency, :price_per_event) %>
+      <%= field_error_feedback(agency, :price_per_event) %>
+    </div>
+
+    <div class="col-md-6">
+      <%= f.label :events_granted, "Events Granted", class: "form-label" %>
+      <%= f.number_field :events_granted, step: 1, min: agency.events_used, class: field_error_class(agency, :events_granted) %>
+      <%= field_error_feedback(agency, :events_granted) %>
+    </div>
+  </div>
+
+  <%# annual fields — one fixed price for unlimited events; Invoice.generate_for_agency_contract
+      raises the one upfront contract Invoice for this amount at creation time
+      (AgencyProvisioning), so this can only ever be set once, on create. %>
+  <div class="mb-3" data-agency-billing-cycle-target="annualField">
+    <%= f.label :annual_price, "Annual Price", class: "form-label" %>
+    <%= f.number_field :annual_price, step: "0.01", min: 0.01, class: field_error_class(agency, :annual_price), disabled: agency.persisted? %>
+    <% if agency.persisted? %>
+      <small class="text-muted">Set once, at creation — the contract Invoice already raised for it is what's tracked/paid from here on.</small>
+    <% end %>
+    <%= field_error_feedback(agency, :annual_price) %>
+  </div>
+
+  <% unless agency.persisted? %>
+    <div class="mb-3">
+      <%= label_tag "agency_admin_email", "Initial agency admin email", class: "form-label" %>
+      <%= text_field_tag "agency[admin_email]", @admin_email, class: "form-control" %>
+      <small class="text-muted">They'll receive a temporary password, and get access to each tenant provisioned under this agency automatically.</small>
+    </div>
+  <% end %>
+
+  <%= f.submit agency.persisted? ? "Save Changes" : "Provision Agency", class: "btn btn-m btn-primary" %>
+<% end %>

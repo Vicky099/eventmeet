@@ -1,8 +1,8 @@
 module AdminHelper
   # Account-level sidebar (requirement.md §5.14 v12) — shown whenever the admin isn't inside a
   # specific event's own workspace (layouts/admin.html.erb switches to #event_nav_items instead
-  # once @event is a real, persisted record — see that file's own comment). Exactly the five items
-  # specified: Dashboard/Events/Reports/Settings/Profile — Participants/Check-in moved entirely
+  # once @event is a real, persisted record — see that file's own comment). Exactly the four items
+  # left — Dashboard/Events/Reports/Settings/Profile — Participants/Check-in moved entirely
   # onto the event-scoped nav below (they were only ever reachable here via a "jump to the
   # most-recently-created event" guess anyway); Badges (the account-wide Badge Template library,
   # distinct from any one event's own badge design), Sponsors, and Email Templates (Phase 13
@@ -11,15 +11,14 @@ module AdminHelper
   # library still exists and works, just isn't linked from any sidebar for now (reachable by
   # direct URL) until it gets a real home, e.g. under Settings once that's built. Reports/Settings/
   # Profile stay "#" stubs, same convention Sponsors used before it was dropped.
+  #
+  # Invoices moved off this nav entirely (requirement.md revisit) — the agency, not the tenant, is
+  # who's actually billed for events now, so invoice management moved to AgencyHelper's own
+  # agency_nav_items instead (Admin::InvoicesController itself was deleted, not just unlinked).
   def admin_nav_items
     [
       { path: user_root_path, icon: "bx-home-alt", label: "Dashboard" },
       { path: admin_events_path, icon: "bx-calendar-event", label: "Events" },
-      # Phase 15 — Platform Billing & Invoicing, revisited (requirement.md §4.6, confirmed with the
-      # user): "for Admin lets have below Sidebar - Quotations - Invoices" — two plain top-level
-      # items, laid out for layman understanding rather than folded under one "Billing" entry.
-      { path: admin_quotations_path, icon: "bx-receipt", label: "Quotations" },
-      { path: admin_invoices_path, icon: "bx-credit-card", label: "Invoices" },
       { path: "#", icon: "bx-bar-chart-alt-2", label: "Reports" },
       { path: "#", icon: "bx-cog", label: "Settings" },
       { path: "#", icon: "bx-user-circle", label: "Profile" }

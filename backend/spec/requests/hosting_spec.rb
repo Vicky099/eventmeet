@@ -9,7 +9,7 @@ RSpec.describe "Host-based tenant resolution", type: :request do
   let!(:user) { create(:user) }
   let!(:staff) { create(:user, :platform_staff) }
 
-  before { create(:account_membership, user: user, account: account, role: :owner) }
+  before { create(:account_membership, user: user, account: account, role: :event_admin) }
 
   it "serves the SuperAdmin Console on the bare apex domain" do
     host! "example.com"
@@ -81,6 +81,72 @@ RSpec.describe "Host-based tenant resolution", type: :request do
     host! "acme.example.com"
     get "/up"
     expect(response).to have_http_status(:ok)
+  end
+
+  # Fixed-hierarchy pivot (requirement.md revisit): the Agency Console shares this exact same
+  # subdomain routing constraint and the exact same :user Devise login — TenantResolvable's own
+  # lenient resolution (Account first, then Agency) is what actually tells the two consoles apart,
+  # not a separate constraint/scope (see that concern's own comment).
+  describe "Agency Console" do
+    let!(:agency) { create(:agency, subdomain_slug: "acme-agency") }
+    let!(:agency_user) { create(:user) }
+
+    before { create(:agency_membership, user: agency_user, agency: agency) }
+
+    it "resolves Current.agency (not Current.account) and serves the Agency Console on a real agency's subdomain" do
+      host! "acme-agency.example.com"
+      sign_in agency_user, scope: :user
+
+      get agency_root_path
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "requires authentication to reach the Agency Console" do
+      host! "acme-agency.example.com"
+      get agency_root_path
+
+      expect(response).to redirect_to(new_user_session_path)
+    end
+
+    it "rejects a correct password for a user with no AgencyMembership on this agency, with the same generic message" do
+      host! "acme-agency.example.com"
+      outsider = create(:user, email: "outsider@example.com", password: "password123!")
+
+      post user_session_path, params: { user: { email: outsider.email, password: "password123!" } }
+      follow_redirect!
+
+      expect(response.body).to include("Invalid email or password")
+    end
+
+    it "redirects a tenant-only route to the Agency Console when resolved against an agency subdomain" do
+      host! "acme-agency.example.com"
+      sign_in agency_user, scope: :user
+
+      get "/admin/__smoke"
+
+      expect(response).to redirect_to(agency_root_path)
+    end
+
+    it "redirects the Agency Console's own root to the tenant Admin Console when resolved against a real tenant subdomain" do
+      host! "acme.example.com"
+      sign_in user, scope: :user
+
+      get agency_root_path
+
+      expect(response).to redirect_to(user_root_path)
+    end
+
+    # Regression (found live): the shared admin/sessions login view only ever interpolated
+    # Current.account&.name — on an agency subdomain that's always nil (only Current.agency is
+    # set), so the page silently rendered "Sign in to continue to ." instead of the agency's name.
+    it "shows the agency's own name (not a blank) on its login page" do
+      host! "acme-agency.example.com"
+
+      get new_user_session_path
+
+      expect(response.body).to include("Sign in to continue to #{agency.name}.")
+    end
   end
 
   it "sets the Postgres RLS session GUC to the resolved account for the duration of the request" do

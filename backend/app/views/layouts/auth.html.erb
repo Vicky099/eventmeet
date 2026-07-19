@@ -15,7 +15,10 @@
           <div class="row justify-content-center my-auto">
             <div class="col-md-8 col-lg-6 col-xl-5">
               <div class="mb-4 pb-2 text-center">
-                <span class="brand-text fs-2"><%= content_for(:auth_brand) || "EventMeet" %></span>
+                <%= tag.img src: ApplicationHelper::BRAND_LOGO_MAIN_URL, alt: "xEvent", height: 40, class: "mb-2" %>
+                <% if content_for?(:auth_brand) %>
+                  <div class="brand-text fs-5 text-muted"><%= content_for(:auth_brand) %></div>
+                <% end %>
               </div>
 
               <div class="card">
@@ -32,7 +35,7 @@
           <div class="row">
             <div class="col-lg-12">
               <div class="text-center p-4">
-                <p>&copy; <%= Date.current.year %> EventMeet.</p>
+                <p>&copy; <%= Date.current.year %> xEvent.</p>
               </div>
             </div>
           </div>

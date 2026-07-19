@@ -2,7 +2,7 @@
 
 <%= render layout: "shared/page_header",
   locals: { icon: "bx-printer", crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) }, { label: "Print Stations" } ] } do %>
-  <%= link_to "New Station", new_admin_event_print_station_path(@event), class: "btn btn-sm btn-primary" %>
+  <%= link_to "New Station", new_admin_event_print_station_path(@event), class: "btn btn-m btn-primary" %>
 <% end %>
 
 <%# requirement.md §5.5.1: "auto-print on/off toggle per event," plus which station a manual
@@ -24,7 +24,7 @@
                 { include_blank: "None — fall back to PDF download" }, class: "form-select" %>
         </div>
         <div class="col-auto">
-          <%= f.submit "Save", class: "btn btn-sm btn-primary" %>
+          <%= f.submit "Save", class: "btn btn-m btn-primary" %>
         </div>
       </div>
     <% end %>
@@ -75,18 +75,18 @@
                 <td class="text-end">
                   <div class="d-flex justify-content-end gap-2">
                     <%= button_to "Generate code", generate_pairing_code_admin_event_print_station_path(@event, station),
-                          method: :post, class: "btn btn-sm btn-outline-secondary" %>
+                          method: :post, class: "btn btn-m btn-outline-secondary" %>
                     <% if station.current_agent %>
                       <%= button_to "Revoke", revoke_admin_event_print_station_path(@event, station), method: :post,
-                            class: "btn btn-sm btn-outline-warning",
+                            class: "btn btn-m btn-outline-warning",
                             data: { action: "click->confirm-dialog#show", title: "Revoke Pairing",
                                     message: "Revoke #{station.name}'s pairing? The Electron agent will need a new code to reconnect.", danger: "true" } %>
                     <% end %>
-                    <%= link_to edit_admin_event_print_station_path(@event, station), class: "btn btn-sm btn-outline-primary", title: "Edit" do %>
+                    <%= link_to edit_admin_event_print_station_path(@event, station), class: "btn btn-m btn-outline-primary", title: "Edit" do %>
                       <i class="bx bx-edit"></i>
                     <% end %>
                     <%= button_to admin_event_print_station_path(@event, station), method: :delete,
-                          class: "btn btn-sm btn-outline-danger", title: "Remove",
+                          class: "btn btn-m btn-outline-danger", title: "Remove",
                           data: { action: "click->confirm-dialog#show", title: "Remove Print Station",
                                   message: "Remove #{station.name}?", danger: "true" } do %>
                       <i class="bx bx-trash"></i>

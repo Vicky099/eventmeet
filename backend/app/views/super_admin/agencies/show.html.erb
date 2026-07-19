@@ -1,0 +1,304 @@
+<% content_for :page_title, @agency.name %>
+
+<%= render "shared/page_header",
+  icon: "bx-briefcase",
+  crumbs: [ { label: "Agencies", path: platform_agencies_path }, { label: @agency.name } ] %>
+
+<%# At a Glance (requirement.md revisit: "design this in proper way ... agency level performance
+    analytics ... so that super admin will get to know what is happening in the platform") —
+    mirrors the same stat-row shape the Platform/Agency Console dashboards already established
+    this session, one tier down: everything scoped to just this one agency's own tenants. Total
+    Paid is always a single number in @agency.currency (Invoice.for_agency's own comment on why
+    that's safe), never the per-currency breakdown the Platform dashboard needs across agencies. %>
+<div class="row g-3 mb-4">
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Tenants", value: @accounts.size, icon: "bx-buildings", color: "primary" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Events", value: @events.size, icon: "bx-calendar-event", color: "info" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Participants", value: @participant_counts_by_event.values.sum, icon: "bx-group", color: "warning" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Total Paid", value: money(@total_paid, @agency.currency), icon: "bx-wallet", color: "success" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <%# requirement.md revisit: "overall how much messages used by agency" — the sum of every
+        event's own WhatsApp count below (SuperAdmin::AgenciesController#show's own comment has
+        the full "what counts as this event's own usage" reasoning). %>
+    <%= render "shared/stat_widget", label: "WhatsApp Messages", value: @whatsapp_message_count, icon: "bxl-whatsapp", color: "success" %>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header bg-white d-flex align-items-center justify-content-between">
+        <h5 class="card-title mb-0">Agency Details</h5>
+        <div class="d-flex gap-2">
+          <%= link_to edit_platform_agency_path(@agency), class: "btn btn-m btn-outline-secondary", title: "Edit" do %>
+            <i class="bx bx-edit"></i>
+          <% end %>
+          <% if @agency.active? %>
+            <%= button_to suspend_platform_agency_path(@agency), method: :patch,
+                  class: "btn btn-m btn-outline-danger", title: "Suspend",
+                  data: {
+                    action: "click->confirm-dialog#show",
+                    title: "Suspend Agency",
+                    message: "Suspend #{@agency.name}? This does not suspend its tenants.",
+                    danger: "true"
+                  } do %>
+              <i class="bx bx-pause-circle"></i>
+            <% end %>
+          <% else %>
+            <%= button_to reinstate_platform_agency_path(@agency), method: :patch,
+                  class: "btn btn-m btn-outline-success", title: "Reinstate" do %>
+              <i class="bx bx-play-circle"></i>
+            <% end %>
+          <% end %>
+        </div>
+      </div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-sm-4">Name</dt>
+          <dd class="col-sm-8"><%= @agency.name %></dd>
+
+          <dt class="col-sm-4">Subdomain</dt>
+          <dd class="col-sm-8"><%= @agency.subdomain_slug %>.<%= Rails.application.config.x.platform_domain %></dd>
+
+          <dt class="col-sm-4">Contact Email</dt>
+          <dd class="col-sm-8"><%= @agency.contact_email.presence || "—" %></dd>
+
+          <dt class="col-sm-4">Contact Number</dt>
+          <dd class="col-sm-8"><%= @agency.contact_num.presence || "—" %></dd>
+
+          <dt class="col-sm-4">Billing</dt>
+          <dd class="col-sm-8"><%= @agency.billing_cycle.humanize %></dd>
+
+          <% if @agency.per_event? %>
+            <dt class="col-sm-4">Price / Event</dt>
+            <dd class="col-sm-8"><%= money(@agency.price_per_event, @agency.currency) %></dd>
+
+            <dt class="col-sm-4">Event Pool</dt>
+            <dd class="col-sm-8">
+              <%= @agency.events_used %> used / <%= @agency.events_granted %> granted (<%= @agency.events_remaining %> remaining)
+              <% if @agency.events_granted.positive? %>
+                <div class="progress mt-1" style="height: 6px;">
+                  <div class="progress-bar" role="progressbar"
+                       style="width: <%= [ 100.0 * @agency.events_used / @agency.events_granted, 100 ].min %>%"></div>
+                </div>
+              <% end %>
+            </dd>
+          <% else %>
+            <dt class="col-sm-4">Annual Price</dt>
+            <dd class="col-sm-8"><%= money(@agency.annual_price, @agency.currency) %></dd>
+
+            <dt class="col-sm-4">Contract</dt>
+            <dd class="col-sm-8">
+              <% if @agency.contract_active? %>
+                <span class="badge bg-success-subtle text-success">Paid — unlimited events</span>
+              <% else %>
+                <span class="badge bg-warning-subtle text-warning"><%= @agency.invoice&.status&.humanize || "Awaiting invoice" %></span>
+              <% end %>
+              <% if @agency.invoice.present? %>
+                <%= link_to "View Invoice", platform_invoice_path(@agency.invoice), class: "ms-2" %>
+              <% end %>
+            </dd>
+          <% end %>
+
+          <dt class="col-sm-4">Status</dt>
+          <dd class="col-sm-8">
+            <span class="badge <%= @agency.active? ? "bg-success" : "bg-secondary" %>"><%= @agency.status.humanize %></span>
+          </dd>
+
+          <% if @outstanding.positive? %>
+            <dt class="col-sm-4">Outstanding</dt>
+            <dd class="col-sm-8 text-warning fw-semibold"><%= money(@outstanding, @agency.currency) %></dd>
+          <% end %>
+        </dl>
+      </div>
+    </div>
+
+    <% if @agency.per_event? %>
+      <div class="card">
+        <div class="card-header bg-white">
+          <h5 class="card-title mb-0">Grant More Events</h5>
+        </div>
+        <div class="card-body">
+          <%= form_with url: grant_events_platform_agency_path(@agency), method: :post, local: true, class: "d-flex gap-2" do %>
+            <%= number_field_tag :count, nil, min: 1, step: 1, class: "form-control", placeholder: "Number of events" %>
+            <%= submit_tag "Grant", class: "btn btn-m btn-primary text-nowrap" %>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+
+    <div class="card">
+      <div class="card-header bg-white">
+        <h5 class="card-title mb-0">Agency Admins</h5>
+      </div>
+      <div class="card-body">
+        <ul class="list-group list-group-flush mb-3">
+          <% @agency_memberships.each do |membership| %>
+            <li class="list-group-item d-flex align-items-center justify-content-between px-0">
+              <div>
+                <%= membership.user.email %>
+                <% if membership.user.must_reset_password? %>
+                  <span class="badge bg-warning-subtle text-warning ms-1">Invite pending</span>
+                <% end %>
+              </div>
+              <div class="d-flex gap-2">
+                <%# Only offered pre-onboarding — see the controller action's own comment for why
+                    an already-active admin has no "resend" path at all. %>
+                <% if membership.user.must_reset_password? %>
+                  <%= button_to resend_invite_platform_agency_agency_membership_path(@agency, membership), method: :post,
+                        class: "btn btn-m btn-outline-secondary", title: "Resend Invite" do %>
+                    <i class="bx bx-envelope"></i>
+                  <% end %>
+                <% end %>
+                <%= button_to platform_agency_agency_membership_path(@agency, membership), method: :delete,
+                      class: "btn btn-m btn-outline-danger", title: "Remove",
+                      data: {
+                        action: "click->confirm-dialog#show",
+                        title: "Remove Agency Admin",
+                        message: "Remove #{membership.user.email} from #{@agency.name}'s agency admins? Their existing tenant access isn't revoked.",
+                        danger: "true"
+                      } do %>
+                  <i class="bx bx-x"></i>
+                <% end %>
+              </div>
+            </li>
+          <% end %>
+          <% if @agency_memberships.none? %>
+            <li class="list-group-item px-0 text-muted">No agency admins yet.</li>
+          <% end %>
+        </ul>
+        <%= form_with url: platform_agency_agency_memberships_path(@agency), method: :post, local: true, class: "d-flex gap-2" do %>
+          <%= email_field_tag :email, nil, class: "form-control", placeholder: "Add by email" %>
+          <%= submit_tag "Add", class: "btn btn-m btn-outline-primary text-nowrap" %>
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <%# Fixed-hierarchy pivot (requirement.md revisit): no "Add Tenant" button here anymore —
+        tenants are created from the agency's own console (agency_admin signs in at
+        #{@agency.subdomain_slug}.#{Rails.application.config.x.platform_domain}), not from the
+        Platform Console. Table, not a nested list (requirement.md revisit: "design this in
+        proper way") — Events/Participants are aggregate counts per tenant; the full per-event
+        breakdown lives in its own Events table below instead of nested three levels deep here. %>
+    <div class="card">
+      <div class="card-header bg-white">
+        <h5 class="card-title mb-0">Tenants</h5>
+      </div>
+      <div class="card-body">
+        <% if @accounts.none? %>
+          <%= render "shared/empty_state", icon: "bx-buildings", message: "No tenants yet — agency admins create these from their own console." %>
+        <% else %>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Tenant</th>
+                  <th>Status</th>
+                  <th>Events</th>
+                  <th>Participants</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% @accounts.each do |account| %>
+                  <% account_events = @events_by_account.fetch(account.id, []) %>
+                  <tr>
+                    <%# requirement.md revisit: "when click on tenant name then open the modal and
+                        show tenant details" — a Bootstrap modal (per-row, already rendered below
+                        with data this page already loaded), not a separate page navigation. %>
+                    <td>
+                      <button type="button" class="btn btn-link p-0 fw-semibold text-decoration-none"
+                              data-bs-toggle="modal" data-bs-target="#tenant-modal-<%= account.id %>">
+                        <%= account.name %>
+                      </button>
+                    </td>
+                    <td><span class="badge <%= account.active? ? "bg-success" : "bg-secondary" %>"><%= account.status.humanize %></span></td>
+                    <td><%= account_events.size %></td>
+                    <td><%= account_events.sum { |event| @participant_counts_by_event.fetch(event.id, 0) } %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        <% end %>
+      </div>
+    </div>
+
+    <%# requirement.md revisit: "his events and how much participants was there in the event" —
+        the one piece of visibility that didn't exist anywhere on the Platform Console before:
+        every event across every one of this agency's own tenants, in one place, with a real
+        participant count and invoice status per row — not a guess from the Tenants rollup above. %>
+    <div class="card">
+      <div class="card-header bg-white">
+        <h5 class="card-title mb-0">Events</h5>
+      </div>
+      <div class="card-body">
+        <% if @events.none? %>
+          <%= render "shared/empty_state", icon: "bx-calendar-event", message: "No events yet." %>
+        <% else %>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>Tenant</th>
+                  <th>Status</th>
+                  <th>Starts</th>
+                  <th>Participants</th>
+                  <th>Invoice</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% @events.each do |event| %>
+                  <tr>
+                    <%# requirement.md revisit: "when click on event name then show the event
+                        details on modal." %>
+                    <td>
+                      <button type="button" class="btn btn-link p-0 text-decoration-none"
+                              data-bs-toggle="modal" data-bs-target="#event-modal-<%= event.id %>">
+                        <%= event.name %>
+                      </button>
+                    </td>
+                    <td><%= event.account.name %></td>
+                    <td><span class="badge bg-info-subtle text-info"><%= event.status.humanize %></span></td>
+                    <td><%= event.starts_at&.to_fs(:short) || "—" %></td>
+                    <td><%= @participant_counts_by_event.fetch(event.id, 0) %></td>
+                    <td>
+                      <% if event.invoice.nil? %>
+                        <span class="text-muted">—</span>
+                      <% else %>
+                        <%= link_to money(event.invoice.amount, event.invoice.currency), platform_invoice_path(event.invoice) %>
+                        <span class="text-muted">(<%= event.invoice.status.humanize %>)</span>
+                      <% end %>
+                    </td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%# requirement.md revisit: "when click on tenant name then open the modal and show tenant
+    details. also when click on event name then show the event details on modal." One modal per
+    row, rendered inline here — no separate request, same "Mark as Paid" pattern already used
+    throughout this app (e.g. agency_console/invoices/index.html.erb) for a per-row detail/action
+    modal, not a Turbo Frame lazy-load. %>
+<% @accounts.each do |account| %>
+  <%= render "tenant_modal", account: account, account_events: @events_by_account.fetch(account.id, []), participant_counts_by_event: @participant_counts_by_event %>
+<% end %>
+
+<% @events.each do |event| %>
+  <%= render "event_modal", event: event, participant_counts_by_event: @participant_counts_by_event, whatsapp_counts_by_event: @whatsapp_counts_by_event %>
+<% end %>

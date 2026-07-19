@@ -11,26 +11,14 @@ FactoryBot.define do
     # specs that pass seat_limit directly (create(:event, seat_limit: 50)) mean to set a real cap,
     # so infer the flag from it rather than making every such call also pass has_seat_limit: true.
     has_seat_limit { seat_limit.present? }
-    # Phase 15, revisited (requirement.md §4.6, confirmed with the user): every Event now
-    # `belongs_to :quotation` (required, and must belong to the same account) — auto-build an
-    # approved one on the same account so the hundreds of specs that just need *an* event don't
-    # each have to wire this up themselves. Specs that care about the quotation gate itself pass
-    # `quotation:` explicitly to override.
-    quotation { association :quotation, :approved, account: account }
+    # Fixed-hierarchy pivot (requirement.md revisit): no more Quotation — every Event's account
+    # already has an Agency by default (spec/factories/accounts.rb's own comment), which is all
+    # Event#agency_contract_must_be_active/#consume_agency_slot_if_metered need.
 
     # EventSchedulerJob only manages events that have been published at least once
     # (Event#published?) — most job/status specs want that gate already open.
     trait :published do
       published_at { Time.current }
-    end
-
-    # SuperAdmin::EventReviewsController's queue only shows approval_status: pending events — the
-    # default is unsubmitted (Event#submit_for_review! is what makes the transition for real).
-    # Specs that need an event already sitting in the queue use this instead of going through the
-    # controller action, same shortcut :published already is for status.
-    trait :pending_review do
-      approval_status { :pending }
-      submitted_at { Time.current }
     end
   end
 end

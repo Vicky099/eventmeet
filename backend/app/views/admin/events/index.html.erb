@@ -1,20 +1,32 @@
 <% content_for :page_title, "Events" %>
 
+<%# Fixed-hierarchy pivot (requirement.md revisit): every tenant's Account belongs to an Agency now
+    — no more quotation-picker modal, no per-event Super Admin approval round trip. "New Event"
+    links straight to #new, gated only on the agency's own contract actually being active
+    (Event#agency_contract_must_be_active is the real, model-level gate; this is just keeping the
+    button from inviting a doomed submit). %>
 <%= render layout: "shared/page_header", locals: { icon: "bx-calendar-event", crumbs: [ { label: "Events" } ] } do %>
-  <%# Phase 15, revisited (requirement.md §4.6, confirmed with the user): "when tenant click on
-      create event ... open a modal and ask tenant to select approved quotation and then continue
-      will allow tenant to create the event." One quotation -> one event, so the picker only ever
-      lists approved-and-not-yet-consumed quotations. %>
-  <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#new-event-modal">
-    <i class="bx bx-plus"></i> New Event
-  </button>
+  <% if @agency&.contract_active? %>
+    <%= link_to new_admin_event_path, class: "btn btn-m btn-primary" do %>
+      <i class="bx bx-plus"></i> New Event
+    <% end %>
+  <% else %>
+    <button type="button" class="btn btn-m btn-primary" disabled title="<%= @agency.nil? ? "This tenant has no agency" : (@agency.annual? ? "Your agency's annual contract hasn't been paid yet" : "No event slots remaining — ask the Super Admin to grant more") %>">
+      <i class="bx bx-plus"></i> New Event
+    </button>
+  <% end %>
+<% end %>
+
+<% if @agency&.per_event? %>
+  <p class="text-muted mb-3"><%= @agency.name %>'s event pool: <%= @agency.events_used %> used / <%= @agency.events_granted %> granted (<%= @agency.events_remaining %> remaining).</p>
+<% elsif @agency&.annual? %>
+  <p class="text-muted mb-3"><%= @agency.name %>'s annual contract — unlimited events.</p>
 <% end %>
 
 <div class="mb-3">
   <%= form_with url: admin_events_path, method: :get, local: true, class: "d-flex gap-2" do %>
-    <%# id: "event_status_filter", not the Rails-default id="status" — see
-        super_admin/accounts/index.html.erb's comment on the vendored template's bare #status
-        CSS rule. %>
+    <%# id: "event_status_filter", not the Rails-default id="status" — the vendored admin
+        template's own CSS has a bare #status selector rule that collides with it otherwise. %>
     <%= select_tag :status,
           options_for_select([ [ "All statuses", "" ] ] + Event.statuses.keys.map { |s| [ s.humanize, s ] }, @status_filter),
           id: "event_status_filter", class: "form-select", onchange: "this.form.requestSubmit()" %>
@@ -31,7 +43,6 @@
             <th>Mode</th>
             <th>Starts</th>
             <th>Status</th>
-            <th>Approval</th>
             <th class="text-end">Actions</th>
           </tr>
         </thead>
@@ -42,94 +53,39 @@
               <td><%= event.mode.humanize %></td>
               <td><%= event.starts_at.to_fs(:short) %></td>
               <td><span class="badge bg-info-subtle text-info"><%= event.status.humanize %></span></td>
-              <td><span class="badge bg-warning-subtle text-warning"><%= event.approval_status.humanize %></span></td>
               <td class="text-end">
                 <div class="d-flex justify-content-end gap-2">
-                  <%= link_to edit_admin_event_path(event), class: "btn btn-sm btn-outline-primary", title: "Edit" do %>
-                    <i class="bx bx-edit"></i>
-                  <% end %>
-                  <%# Event duplication/template action (requirement.md Phase 4) — full clone
-                      logic lives in Admin::EventsController#duplicate. Phase 15, revisited: the
-                      original's own Quotation is already consumed by it, so duplicating needs its
-                      own approved quotation too, picked via this row's own modal. %>
-                  <% if @approved_quotations.any? %>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" title="Duplicate"
-                          data-bs-toggle="modal" data-bs-target="#duplicate-event-<%= event.id %>">
-                      <i class="bx bx-copy"></i>
-                    </button>
+                  <%# requirement.md revisit: "once event complete the tenant can not able to edit
+                      the event" — EventPolicy#update? is the real, server-side gate (also covers
+                      every wizard step and Sessions/Speaker/Schedule/Badge sub-resource, all of
+                      which authorize through this same Event); this just keeps a completed row
+                      from showing a link that would only ever redirect back with "not authorized." %>
+                  <% if policy(event).update? %>
+                    <%= link_to edit_admin_event_path(event), class: "btn btn-m btn-outline-primary", title: "Edit" do %>
+                      <i class="bx bx-edit"></i>
+                    <% end %>
                   <% else %>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Requires an approved quotation">
-                      <i class="bx bx-copy"></i>
+                    <button type="button" class="btn btn-m btn-outline-primary" disabled title="Completed events can no longer be edited">
+                      <i class="bx bx-edit"></i>
                     </button>
+                  <% end %>
+                  <%# Event duplication/template action (requirement.md Phase 4) — full clone logic
+                      lives in Admin::EventsController#duplicate; consumes another slot from the
+                      account's own Agency, same gate as "New Event" above. %>
+                  <%= button_to duplicate_admin_event_path(event), method: :post,
+                        class: "btn btn-m btn-outline-secondary", title: "Duplicate",
+                        disabled: !@agency&.contract_active? do %>
+                    <i class="bx bx-copy"></i>
                   <% end %>
                 </div>
               </td>
             </tr>
           <% end %>
           <% if @events.none? %>
-            <tr><td colspan="6" class="text-center text-muted py-4">No events yet.</td></tr>
+            <tr><td colspan="5" class="text-center text-muted py-4">No events yet.</td></tr>
           <% end %>
         </tbody>
       </table>
     </div>
   </div>
 </div>
-
-<div class="modal fade" id="new-event-modal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content border-0 shadow">
-      <div class="modal-header border-0 pb-0">
-        <h5 class="modal-title fw-semibold">New Event</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <% if @approved_quotations.any? %>
-          <%= form_with url: new_admin_event_path, method: :get, local: true do %>
-            <%= label_tag :quotation_id, "Approved quotation", class: "form-label" %>
-            <%= select_tag :quotation_id,
-                  options_for_select(@approved_quotations.map { |q| [ "#{q.event_name} — #{money(q.current_amount, q.currency)}", q.id ] }),
-                  class: "form-select mb-3" %>
-            <div class="text-end">
-              <button type="submit" class="btn btn-primary btn-sm">Continue</button>
-            </div>
-          <% end %>
-        <% else %>
-          <p class="text-muted mb-3">
-            You don't have any approved quotations yet. Every event needs one — request a quotation
-            first and a Super Admin will price it for you.
-          </p>
-          <div class="text-end">
-            <%= link_to "Request a Quotation", new_admin_quotation_path, class: "btn btn-primary btn-sm" %>
-          </div>
-        <% end %>
-      </div>
-    </div>
-  </div>
-</div>
-
-<% if @approved_quotations.any? %>
-  <% @events.each do |event| %>
-    <div class="modal fade" id="duplicate-event-<%= event.id %>" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-          <%= form_with url: duplicate_admin_event_path(event), method: :post, local: true do %>
-            <div class="modal-header border-0 pb-0">
-              <h5 class="modal-title fw-semibold">Duplicate "<%= event.name %>"</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-              <%= label_tag :quotation_id, "Approved quotation for the copy", class: "form-label" %>
-              <%= select_tag :quotation_id,
-                    options_for_select(@approved_quotations.map { |q| [ "#{q.event_name} — #{money(q.current_amount, q.currency)}", q.id ] }),
-                    class: "form-select" %>
-            </div>
-            <div class="modal-footer border-0 pt-3">
-              <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-              <button type="submit" class="btn btn-primary btn-sm">Duplicate</button>
-            </div>
-          <% end %>
-        </div>
-      </div>
-    </div>
-  <% end %>
-<% end %>

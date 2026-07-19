@@ -18,13 +18,13 @@
 #
 # Revisited again (confirmed with the user): the draft Invoice is now raised synchronously,
 # right here, the moment an event lands on `completed` — not "the next day" (InvoiceGenerationJob's
-# own comment has the superseded original requirement). Every event now goes through the
-# quotation flow (`belongs_to :quotation`, requirement.md §4.6), so there's no plan-tier reason
-# left to wait — the tenant's already-approved quotation amount is all `Invoice.generate_for`
-# needs. Fires for any transition landing on `completed`, not just from `live` (an event
-# published straight past its own end date still needs an invoice, even though it has no
-# in-progress attendance for EventCompletionService to finalize). InvoiceGenerationJob itself
-# stays as an hourly safety-net sweep for whatever this misses.
+# own comment has the superseded original requirement). Fixed-hierarchy pivot (requirement.md
+# revisit): every event's account belongs to an Agency, whose own fixed price_per_event is all
+# `Invoice.generate_for` needs (no more per-tenant quotation negotiation). Fires for any transition
+# landing on `completed`, not just from `live` (an event published straight past its own end date
+# still needs an invoice, even though it has no in-progress attendance for EventCompletionService
+# to finalize). InvoiceGenerationJob itself stays as an hourly safety-net sweep for whatever this
+# misses.
 class EventSchedulerJob < ApplicationJob
   queue_as :default
 
@@ -47,7 +47,10 @@ class EventSchedulerJob < ApplicationJob
           # entirely, has no in-progress attendance to finalize).
           EventCompletionService.finalize_attendance!(event) if was_live
           Current.account = event.account
-          Invoice.generate_for(event) if event.invoice.nil?
+          # Fixed-hierarchy pivot (requirement.md revisit): an `annual` agency's events are
+          # unlimited/already paid for up front — no per-event Invoice at all (InvoiceGenerationJob's
+          # own comment has the matching query-level filter for its own sweep).
+          Invoice.generate_for(event) if event.invoice.nil? && event.account.agency&.per_event?
         rescue StandardError => e
           # One bad row shouldn't take down the whole tick — sidekiq-cron's own schedule is what
           # guarantees the next tick, not a `rescue`-defeating raise here.

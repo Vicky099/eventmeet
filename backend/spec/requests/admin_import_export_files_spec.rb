@@ -23,7 +23,7 @@ RSpec.describe "Admin Console participant import/export", type: :request do
   end
 
   describe "POST /admin/events/:event_id/import_files" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "attaches the upload, enqueues ParticipantImportJob, and redirects to the progress page" do
       event = create_event
@@ -62,7 +62,7 @@ RSpec.describe "Admin Console participant import/export", type: :request do
   # requirement.md revisit: "Import will provide the sample CSV import download option and then
   # in that format admin will enter the user data."
   describe "GET /admin/events/:event_id/import_files/new" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "links to the sample template download, wired to the progress-modal controller" do
       event = create_event
@@ -76,7 +76,7 @@ RSpec.describe "Admin Console participant import/export", type: :request do
   end
 
   describe "GET /admin/events/:event_id/import_files/sample" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "downloads a real workbook with the header row plus one filled-in example row" do
       event = create_event
@@ -128,7 +128,7 @@ RSpec.describe "Admin Console participant import/export", type: :request do
   # requirement.md revisit: "Export sidebar button will provide a UI where admin can select the
   # fields which he wants to export."
   describe "GET /admin/events/:event_id/export_files/new" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "shows the field picker, grouped, with sessions/custom fields listed as their own checkboxes" do
       event = create_event
@@ -147,7 +147,7 @@ RSpec.describe "Admin Console participant import/export", type: :request do
   end
 
   describe "POST /admin/events/:event_id/export_files" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "creates an ExportFile with the chosen fields, enqueues ParticipantExportJob, and redirects to the progress page" do
       event = create_event
@@ -208,7 +208,7 @@ RSpec.describe "Admin Console participant import/export", type: :request do
   # entirely (fetch + a synthetic <a download> of the resulting blob), so this never actually
   # navigates anywhere — target="_blank" is no longer meaningful and was removed.
   describe "GET /admin/events/:event_id/export_files/:id (download link)" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "wires the download link to the progress-modal controller" do
       event = create_event
@@ -234,7 +234,7 @@ RSpec.describe "Admin Console participant import/export", type: :request do
   # *correct* public_id itself and fetches it through Cloudinary's authenticated download
   # endpoint instead of the gem's own broken URL builder.
   describe "GET /admin/events/:event_id/export_files/:id/download" do
-    before { sign_in_with_role(:owner) }
+    before { sign_in_with_role(:event_admin) }
 
     it "streams the workbook's real bytes through this app (the :test service — no Cloudinary involved)" do
       event = create_event
@@ -259,7 +259,7 @@ RSpec.describe "Admin Console participant import/export", type: :request do
   describe "access control" do
     it "blocks checkin_staff from starting an import" do
       event = create_event
-      sign_in_with_role(:checkin_staff)
+      sign_in_with_role(:admin_staff)
 
       post admin_event_import_files_path(event), params: { import_file: {} }
 

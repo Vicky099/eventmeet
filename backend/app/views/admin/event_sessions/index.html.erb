@@ -2,7 +2,7 @@
 
 <%= render layout: "shared/page_header",
   locals: { icon: "bx-grid-alt", crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: edit_admin_event_path(@event) }, { label: "Sessions" } ] } do %>
-  <%= link_to "New Session", new_admin_event_session_path(@event), class: "btn btn-sm btn-primary" %>
+  <%= link_to "New Session", new_admin_event_session_path(@event), class: "btn btn-m btn-primary" %>
 <% end %>
 
 <div class="card">
@@ -34,11 +34,11 @@
                 <td><%= render "admin/scan_events/session_live_stats", session: session, stats: session.live_stats! %></td>
                 <td class="text-end">
                   <div class="d-flex justify-content-end gap-2">
-                    <%= link_to edit_admin_event_session_path(@event, session), class: "btn btn-sm btn-outline-primary", title: "Edit" do %>
+                    <%= link_to edit_admin_event_session_path(@event, session), class: "btn btn-m btn-outline-primary", title: "Edit" do %>
                       <i class="bx bx-edit"></i>
                     <% end %>
                     <%= button_to admin_event_session_path(@event, session), method: :delete,
-                          class: "btn btn-sm btn-outline-danger", title: "Remove",
+                          class: "btn btn-m btn-outline-danger", title: "Remove",
                           data: { action: "click->confirm-dialog#show", title: "Remove Session",
                                   message: "Remove #{session.name}?", danger: "true" } do %>
                       <i class="bx bx-trash"></i>

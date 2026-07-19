@@ -14,8 +14,10 @@ RSpec.describe NotificationDeliveryJob, type: :job do
     it "delivers the mailer and marks the notification sent" do
       notification = create(:notification, account: account, notifiable: event, channel: :email, to: "owner@example.com")
 
+      invoice = create(:invoice, event: event, account: account)
+
       expect {
-        described_class.perform_now(notification.id, mailer_class: "EventMailer", mailer_method: "rejected", mailer_args: [ event, "owner@example.com" ])
+        described_class.perform_now(notification.id, mailer_class: "BillingMailer", mailer_method: "invoice_sent", mailer_args: [ invoice, "owner@example.com" ])
       }.to change { ActionMailer::Base.deliveries.size }.by(1)
 
       expect(notification.reload.status).to eq("sent")
@@ -26,7 +28,7 @@ RSpec.describe NotificationDeliveryJob, type: :job do
       notification = create(:notification, account: account, notifiable: event, channel: :email, to: "owner@example.com")
 
       expect {
-        described_class.perform_now(notification.id, mailer_class: "EventMailer", mailer_method: "not_a_real_method", mailer_args: [ event, "owner@example.com" ])
+        described_class.perform_now(notification.id, mailer_class: "BillingMailer", mailer_method: "not_a_real_method", mailer_args: [ event, "owner@example.com" ])
       }.not_to raise_error
 
       expect(notification.reload.status).to eq("failed")
@@ -60,9 +62,10 @@ RSpec.describe NotificationDeliveryJob, type: :job do
 
   it "sets Current.account from the notification's own account (jobs don't inherit request state)" do
     notification = create(:notification, account: account, notifiable: event, channel: :email, to: "owner@example.com")
+    invoice = create(:invoice, event: event, account: account)
     Current.account = nil
 
-    described_class.perform_now(notification.id, mailer_class: "EventMailer", mailer_method: "rejected", mailer_args: [ event, "owner@example.com" ])
+    described_class.perform_now(notification.id, mailer_class: "BillingMailer", mailer_method: "invoice_sent", mailer_args: [ invoice, "owner@example.com" ])
 
     expect(notification.reload.status).to eq("sent")
   end

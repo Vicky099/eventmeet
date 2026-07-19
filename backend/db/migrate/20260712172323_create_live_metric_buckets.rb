@@ -1,7 +1,7 @@
 # Phase 9 (requirement.md §5.15: "keep a lightweight time-series — a rolling per-minute bucket —
-# to drive a live sparkline of registration/check-in velocity"). Plain (non-partitioned) table —
-# unlike ScanEvent/Attendance this isn't an unbounded event log, it's one row per event per metric
-# per minute, small and cheap to retain.
+# to drive a live sparkline of registration/check-in velocity"). Unlike ScanEvent/Attendance this
+# isn't an unbounded event log, it's one row per event per metric per minute, small and cheap to
+# retain.
 class CreateLiveMetricBuckets < ActiveRecord::Migration[8.0]
   def change
     create_table :live_metric_buckets, id: :uuid, default: nil do |t|

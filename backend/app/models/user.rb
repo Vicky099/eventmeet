@@ -7,6 +7,13 @@ class User < ApplicationRecord
 
   has_many :account_memberships, dependent: :destroy
   has_many :accounts, through: :account_memberships
+  # Agency layer (requirement.md revisit) — was missing entirely until the fixed-hierarchy pivot
+  # needed a real `user.agency_memberships.exists?(agency: ...)` check in
+  # #authorized_for_current_host? below; ApplicationPolicy#agency_admin? had already been calling
+  # this same association name with nothing backing it, a latent bug never exercised because
+  # nothing else in the app called that method yet.
+  has_many :agency_memberships, dependent: :destroy
+  has_many :agencies, through: :agency_memberships
 
   validate :platform_staff_has_no_account_memberships
 
@@ -45,21 +52,33 @@ class User < ApplicationRecord
   def send_devise_notification(notification, *args)
     args << {} unless args.last.is_a?(Hash)
     args.last[:tenant_account] = Current.account
+    args.last[:tenant_agency] = Current.agency
     args.last[:tenant_platform_request] = Current.platform_request
     devise_mailer.send(notification, self, *args).deliver_later
   end
 
-  private
-
+  # Public (not private) — the single source of truth for "is this user allowed on
+  # Current.account/Current.agency," used both internally (active_for_authentication?/
+  # inactive_message above) and externally: Admin::AccountSwitchesController#redeem re-checks this
+  # explicitly before completing an Agency → Tenant account switch (requirement.md revisit),
+  # covering an AccountMembership/suspension change in the short window between minting and
+  # redeeming the switch token.
   def authorized_for_current_host?
     if Current.platform_request
       platform_staff?
     elsif Current.account
       Current.account.active? && account_memberships.exists?(account: Current.account)
+    # Fixed-hierarchy pivot (requirement.md revisit): the Agency Console's own subdomain — same
+    # enforcement point and same shape as the Current.account branch above, just checking
+    # AgencyMembership/Agency#active? instead of AccountMembership/Account#active?.
+    elsif Current.agency
+      Current.agency.active? && agency_memberships.exists?(agency: Current.agency)
     else
       true
     end
   end
+
+  private
 
   def platform_staff_has_no_account_memberships
     return unless platform_staff? && account_memberships.any?

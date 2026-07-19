@@ -19,7 +19,7 @@ RSpec.describe "Platform Console invoices", type: :request do
   describe "GET /platform/invoices" do
     before { sign_in staff, scope: :platform_staff }
 
-    it "lists every tenant's invoices" do
+    it "lists every tenant's invoices, with separate Agency/Tenant/Event columns" do
       event = create_event(name: "Cross-Tenant Check")
       Current.account = account
       create(:invoice, event: event, account: account, amount: 5_000)
@@ -28,6 +28,16 @@ RSpec.describe "Platform Console invoices", type: :request do
 
       expect(response.body).to include("Cross-Tenant Check")
       expect(response.body).to include(account.name)
+      expect(response.body).to include(account.agency.name)
+    end
+
+    it "shows the agency itself (no tenant) for an agency-contract invoice" do
+      annual_agency = create(:agency, :annual, subdomain_slug: "yearly")
+
+      get platform_invoices_path
+
+      expect(response.body).to include(annual_agency.name)
+      expect(response.body).to include("Annual Contract")
     end
   end
 
@@ -50,11 +60,13 @@ RSpec.describe "Platform Console invoices", type: :request do
   describe "POST /platform/invoices/:id/deliver" do
     before { sign_in staff, scope: :platform_staff }
 
-    it "sends the invoice, notifying every owner by email and WhatsApp" do
+    # Invoices moved to the Agency Console entirely (requirement.md revisit) — the agency's own
+    # staff are notified now, not the tenant's admins; the tenant has no invoice UI left to act on.
+    it "sends the invoice, notifying the agency's own staff by email and WhatsApp" do
       event = create_event(name: "Deliver Check")
-      owner = create(:user, email: "owner@acme.example", contact_num: "+15550100")
+      agency_admin = create(:user, email: "agency-admin@sparkle.example", contact_num: "+15550100")
+      create(:agency_membership, user: agency_admin, agency: account.agency)
       Current.account = account
-      create(:account_membership, user: owner, account: account, role: :owner)
       invoice = create(:invoice, event: event, account: account)
 
       perform_enqueued_jobs do
@@ -63,7 +75,7 @@ RSpec.describe "Platform Console invoices", type: :request do
 
       Current.account = account
       expect(invoice.reload).to be_awaiting_payment
-      expect(ActionMailer::Base.deliveries.last.to).to eq([ "owner@acme.example" ])
+      expect(ActionMailer::Base.deliveries.last.to).to eq([ "agency-admin@sparkle.example" ])
     end
   end
 
@@ -86,11 +98,11 @@ RSpec.describe "Platform Console invoices", type: :request do
   describe "POST /platform/invoices/:id/reject" do
     before { sign_in staff, scope: :platform_staff }
 
-    it "sends the payment back to awaiting_payment with a reason and notifies the tenant" do
+    it "sends the payment back to awaiting_payment with a reason and notifies the agency" do
       event = create_event
-      owner = create(:user, email: "owner@acme.example", contact_num: "+15550100")
+      agency_admin = create(:user, email: "agency-admin@sparkle.example", contact_num: "+15550100")
+      create(:agency_membership, user: agency_admin, agency: account.agency)
       Current.account = account
-      create(:account_membership, user: owner, account: account, role: :owner)
       invoice = create(:invoice, :under_review, event: event, account: account)
 
       perform_enqueued_jobs do
@@ -101,7 +113,7 @@ RSpec.describe "Platform Console invoices", type: :request do
       invoice.reload
       expect(invoice).to be_awaiting_payment
       expect(invoice.rejection_reason).to eq("UTR doesn't match")
-      expect(ActionMailer::Base.deliveries.last.to).to eq([ "owner@acme.example" ])
+      expect(ActionMailer::Base.deliveries.last.to).to eq([ "agency-admin@sparkle.example" ])
     end
 
     it "requires a reason" do
