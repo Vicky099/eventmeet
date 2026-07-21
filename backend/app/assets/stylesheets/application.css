@@ -534,7 +534,7 @@ body[data-sidebar-size="sm"] {
 .checkin-scan-input {
   width: 100%;
   min-height: 56px;
-  padding: 14px 16px 14px 48px;
+  padding: 14px 56px 14px 48px;
   border-radius: 14px;
   border: 1.5px solid var(--bs-border-color, #eff0f2);
   font-size: 17px;
@@ -546,6 +546,28 @@ body[data-sidebar-size="sm"] {
   border-color: var(--bs-primary);
   background: #fff;
   box-shadow: 0 0 0 3px var(--bs-primary-bg-subtle);
+}
+
+.checkin-camera-icon-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 10px;
+  background: var(--bs-gray-200, #e9ecef);
+  color: var(--bs-gray-700, #495057);
+  font-size: 20px;
+}
+
+.checkin-camera-icon-btn.is-active {
+  background: var(--bs-primary);
+  color: #fff;
 }
 
 .checkin-scan-submit {
@@ -562,6 +584,75 @@ body[data-sidebar-size="sm"] {
 
 .checkin-scan-submit:active {
   opacity: 0.9;
+}
+
+.checkin-camera-panel {
+  margin-bottom: 14px;
+}
+
+.checkin-camera-video-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #000;
+}
+
+.checkin-camera-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.checkin-camera-frame {
+  position: absolute;
+  inset: 14%;
+  border: 3px solid rgba(255, 255, 255, 0.85);
+  border-radius: 16px;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+
+.checkin-camera-status {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--bs-gray-500);
+  text-align: center;
+}
+
+.checkin-toast {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 22px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 15px;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+}
+
+.checkin-toast.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.checkin-toast.is-success {
+  background: var(--bs-success, #2fbf71);
+}
+
+.checkin-toast.is-warning {
+  background: var(--bs-warning, #f2a93b);
+  color: #1a1a1a;
 }
 
 .checkin-result-slot {

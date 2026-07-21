@@ -31,6 +31,21 @@
       <span><%= result.participant.name %> was just scanned — ignoring this repeat within 30 seconds.</span>
     </div>
   </div>
+<%# requirement.md revisit: "if user has checked-in already and tried to check-in again then show
+    the warning ... so that we can avoid the duplicate entries." Distinct from the debounce banner
+    above — that one's a 30-second hardware/UI double-tap guard; this is "you're already sitting in
+    that exact state," with no time limit, scoped to this same event entrance or session
+    (ScanService::ALREADY_STATUSES' own comment). %>
+<% elsif result.already_checked_in? || result.already_checked_out? %>
+  <div class="checkin-result is-warning">
+    <i class="bx bx-error checkin-result-icon"></i>
+    <div class="checkin-result-body">
+      <strong>Already <%= result.already_checked_in? ? "checked in" : "checked out" %></strong>
+      <span>
+        <%= result.participant.name %> has already been <%= result.already_checked_in? ? "checked in" : "checked out" %><%= " for #{result.session.name}" if result.session %> — not recorded again.
+      </span>
+    </div>
+  </div>
 <% elsif result.print_only? %>
   <%# Phase 10 revisit (requirement.md §5.5.1): "an option to only print badge and not mark the
       attendance check-in" — its own branch since there's no scan_event/session/redirect_url to
@@ -64,6 +79,10 @@
   <%# Check in stays the "good" green; check out is a distinct "leaving" state, not an error —
       the warning amber (already used for the debounce banner above) reads as "notable, not bad,"
       the right register for "this person just left." %>
+  <div class="checkin-toast <%= result.scan_event.check_out? ? "is-warning" : "is-success" %>" data-controller="checkin-toast">
+    <i class="bx <%= result.scan_event.check_out? ? "bx-log-out-circle" : "bx-check-circle" %>"></i>
+    <%= result.participant.name %> <%= result.scan_event.check_out? ? "checked out" : "checked in" %> successfully
+  </div>
   <div class="checkin-result <%= result.scan_event.check_out? ? "is-warning" : "is-success" %>">
     <%= render "participant_avatar", participant: result.participant %>
     <div class="checkin-result-body">

@@ -18,3 +18,4 @@ pin "grapesjs" # @0.23.2
 pin "grapesjs-preset-webpage" # @1.0.3
 pin "grapesjs-blocks-basic" # @1.0.2
 pin "@rails/activestorage", to: "@rails--activestorage.js" # @8.1.300
+pin "jsqr" # @1.4.0

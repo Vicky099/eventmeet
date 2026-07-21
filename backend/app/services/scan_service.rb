@@ -10,6 +10,12 @@ class ScanService
     def not_found? = status == :not_found
     def debounced? = status == :debounced
     def session_full? = status == :session_full
+    # requirement.md revisit: "if user has checked-in already and tried to check-in again then
+    # show the warning ... so that we can avoid the duplicate entries." Distinct from debounced?
+    # above — debounce is a short (30s) hardware/UI double-tap guard; this instead reflects real
+    # business state ("you're already checked in from earlier today"), with no time limit.
+    def already_checked_in? = status == :already_checked_in
+    def already_checked_out? = status == :already_checked_out
     # Phase 10 revisit — Print Agent (Electron) Integration (requirement.md §5.5.1): CheckinController
     # builds this status directly (not via ScanService.call — see that controller's own comment on
     # why "Print only" bypasses this service entirely) purely so checkin/_result.html.erb has one
@@ -20,6 +26,13 @@ class ScanService
   # requirement.md §3.7: "Toggle check-in/check-out with a 30-second anti-double-scan debounce."
   DEBOUNCE_WINDOW = 30.seconds
 
+  # requirement.md revisit: "check should [be] unique based on the event entry or session" — a
+  # scan_type this participant is already sitting in, scoped exactly the same way debounced?
+  # already scopes duplicates below: session_id: nil is the event-entrance gate, a real session_id
+  # is that specific session's own gate, and the two never interfere with each other (checking
+  # into the event doesn't count as checking into any one session, or vice versa).
+  ALREADY_STATUSES = { "check_in" => :already_checked_in, "check_out" => :already_checked_out }.freeze
+
   def self.call(...) = new.call(...)
 
   def call(event:, identifier:, scan_type:, source: :manual, session: nil)
@@ -29,6 +42,10 @@ class ScanService
 
     if debounced?(participant, scan_type, session)
       return Result.new(status: :debounced, participant: participant, session: session)
+    end
+
+    if scan_type.in?(ALREADY_STATUSES.keys) && current_scan_type(participant, session) == scan_type
+      return Result.new(status: ALREADY_STATUSES.fetch(scan_type), participant: participant, session: session)
     end
 
     # requirement.md §3.7: "per-session seat-limit enforcement" — checked before creating
@@ -69,6 +86,13 @@ class ScanService
     ScanEvent.where(participant: participant, scan_type: scan_type, session_id: session&.id)
       .where(scanned_at: DEBOUNCE_WINDOW.ago..)
       .exists?
+  end
+
+  # Latest check_in/check_out for this participant in this same scope (event entrance, or this
+  # one session) — nil the first time either direction has ever been scanned there.
+  def current_scan_type(participant, session)
+    ScanEvent.where(participant: participant, session_id: session&.id, scan_type: ALREADY_STATUSES.keys)
+      .order(scanned_at: :desc).limit(1).pick(:scan_type)
   end
 
   def session_full?(session)

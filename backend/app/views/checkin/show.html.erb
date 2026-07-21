@@ -15,7 +15,7 @@
   <h1 class="checkin-title">Scan a badge</h1>
   <p class="checkin-subtitle">Point the scanner at the participant's badge, or type their ID below.</p>
 
-  <%= form_with url: checkin_scan_path(@event), method: :post, data: { controller: "scan-input", turbo_stream: true } do %>
+  <%= form_with url: checkin_scan_path(@event), method: :post, data: { controller: "scan-input camera-scan", turbo_stream: true } do %>
     <div class="checkin-field-group">
       <span class="checkin-field-label">Direction</span>
       <div class="checkin-pill-group" data-checkin-controls-target="pillGroup" data-field="scan_type">
@@ -74,7 +74,21 @@
       <i class="bx bx-barcode-reader checkin-scan-icon"></i>
       <%# requirement.md revisit: "Hex ID will be ID in all places on UI." %>
       <%= text_field_tag :identifier, nil, placeholder: "Scan or type ID / govt ID / RFID / client ID",
-            class: "checkin-scan-input", autocomplete: "off", data: { scan_input_target: "input" } %>
+            class: "checkin-scan-input", autocomplete: "off",
+            data: { scan_input_target: "input", camera_scan_target: "identifierInput" } %>
+      <button type="button" class="checkin-camera-icon-btn" data-camera-scan-target="toggleButton"
+            data-action="click->camera-scan#toggle" aria-label="Scan with camera">
+        <i class="bx bx-camera"></i>
+      </button>
+    </div>
+
+    <div class="checkin-camera-panel" data-camera-scan-target="panel" hidden>
+      <div class="checkin-camera-video-wrap">
+        <video class="checkin-camera-video" data-camera-scan-target="video" playsinline muted autoplay></video>
+        <div class="checkin-camera-frame"></div>
+      </div>
+      <canvas data-camera-scan-target="canvas" hidden></canvas>
+      <p class="checkin-camera-status" data-camera-scan-target="status"></p>
     </div>
 
     <%= submit_tag "Scan", class: "checkin-scan-submit" %>

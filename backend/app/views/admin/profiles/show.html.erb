@@ -1,0 +1,89 @@
+<%# requirement.md revisit: sidebar's own "Profile" — current_user's own account details plus a
+    password-change form, replacing the old "#" stub (AdminHelper#admin_nav_items). No :id in the
+    URL (Admin::ProfilesController is a singular resource) — this is always current_user, never
+    another user's record. %>
+<% content_for :page_title, "Profile" %>
+
+<%= render "shared/page_header", icon: "bx-user-circle", crumbs: [ { label: "Profile" } ] %>
+
+<% account_membership = current_user.account_memberships.find_by(account: Current.account) %>
+<%# #update and #password (Admin::ProfilesController) both re-render this same template on
+    failure — split current_user's errors by which card's form they belong to so a failed
+    password change doesn't show its "current password is invalid" message under Account
+    Details, or vice versa. %>
+<% password_attributes = [ :current_password, :password, :password_confirmation ] %>
+<% profile_errors = current_user.errors.reject { |e| password_attributes.include?(e.attribute) } %>
+<% password_errors = current_user.errors.select { |e| password_attributes.include?(e.attribute) } %>
+
+<div class="row g-3">
+  <div class="col-xl-6">
+    <div class="card mb-0">
+      <div class="card-header"><span class="fw-semibold">Account Details</span></div>
+      <div class="card-body">
+        <% if profile_errors.any? %>
+          <div class="alert alert-danger">
+            <ul class="mb-0">
+              <% profile_errors.each do |error| %>
+                <li><%= error.full_message %></li>
+              <% end %>
+            </ul>
+          </div>
+        <% end %>
+
+        <dl class="row mb-4">
+          <dt class="col-sm-4">Email</dt>
+          <dd class="col-sm-8"><%= current_user.email %></dd>
+
+          <dt class="col-sm-4">Account</dt>
+          <dd class="col-sm-8"><%= Current.account&.name %></dd>
+
+          <% if account_membership %>
+            <dt class="col-sm-4">Role</dt>
+            <dd class="col-sm-8"><span class="badge bg-info-subtle text-info"><%= account_membership.role.humanize %></span></dd>
+          <% end %>
+        </dl>
+
+        <%= form_with model: current_user, url: admin_profile_path, method: :patch, local: true do |f| %>
+          <div class="mb-3">
+            <%= f.label :contact_num, "Contact Number", class: "form-label" %>
+            <%= f.text_field :contact_num, class: "form-control" %>
+          </div>
+          <%= f.submit "Save", class: "btn btn-m btn-primary" %>
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-6">
+    <div class="card mb-0">
+      <div class="card-header"><span class="fw-semibold">Change Password</span></div>
+      <div class="card-body">
+        <% if password_errors.any? %>
+          <div class="alert alert-danger">
+            <ul class="mb-0">
+              <% password_errors.each do |error| %>
+                <li><%= error.full_message %></li>
+              <% end %>
+            </ul>
+          </div>
+        <% end %>
+
+        <%= form_with model: current_user, url: password_admin_profile_path, method: :patch, local: true do |f| %>
+          <div class="mb-3">
+            <%= f.label :current_password, "Current Password", class: "form-label" %>
+            <%= f.password_field :current_password, class: "form-control", autocomplete: "current-password" %>
+          </div>
+          <div class="mb-3">
+            <%= f.label :password, "New Password", class: "form-label" %>
+            <%= f.password_field :password, class: "form-control", autocomplete: "new-password" %>
+          </div>
+          <div class="mb-3">
+            <%= f.label :password_confirmation, "Confirm New Password", class: "form-label" %>
+            <%= f.password_field :password_confirmation, class: "form-control", autocomplete: "new-password" %>
+          </div>
+          <%= f.submit "Update Password", class: "btn btn-m btn-primary" %>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

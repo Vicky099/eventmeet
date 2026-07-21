@@ -1,171 +1,261 @@
 <%# requirement.md revisit: "a participant show page where we can show the profile of
-    participant, his in and out activity and his badge with all filled data." Three cards: Profile
-    (every fixed/custom field this participant actually has, not just whatever their ticket
-    category's own form currently requires — a show page is a record of what's on file, not a
-    live validation surface), In/Out Activity (check-in/check-out ScanEvent history), and Badge
-    (the same iframe-onto-Admin::BadgesController#preview pattern the badge design workflow's own
-    table already uses, admin/badges/_badges_table.html.erb, repointed at this real participant's
-    own data instead of a sample one). %>
+    participant, his in and out activity and his badge with all filled data." Redesigned after
+    workspace/webadmin/contacts-profile.html (same webadmin template family every other admin
+    console page already draws on) — a profile card (banner + avatar + contact snapshot + at-a-
+    glance check-in/out counts) alongside a tabbed Overview / In-Out Activity / Badge panel,
+    instead of the previous plain three-stacked-cards layout. No pattern-bg.jpg (never vendored
+    for real photos, only this reference template's own stock banner) — the banner is a plain
+    primary-tinted div; .overlay-content (already in the vendored webadmin CSS) supplies the
+    color, so no missing-asset image request either. %>
 <% content_for :page_title, @participant.name %>
 
-<%= render "shared/page_header",
-  icon: "bx-user",
-  crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) },
-            { label: "Participants", path: admin_event_participants_path(@event) }, { label: @participant.name } ] %>
-
-<div class="mb-3 d-flex align-items-center gap-2">
-  <span class="badge <%= @participant.confirmed? ? "bg-success-subtle text-success" : "bg-warning-subtle text-warning" %>"><%= @participant.status.humanize %></span>
-  <span class="badge bg-secondary-subtle text-secondary"><%= @participant.source.humanize %></span>
-  <% if @participant.ticket_category %>
-    <span class="badge bg-info-subtle text-info"><%= @participant.ticket_category.name %></span>
+<%= render layout: "shared/page_header",
+  locals: { icon: "bx-user", crumbs: [ { label: "Events", path: admin_events_path }, { label: @event.name, path: admin_event_path(@event) },
+            { label: "Participants", path: admin_event_participants_path(@event) }, { label: @participant.name } ] } do %>
+  <%= link_to edit_admin_event_participant_path(@event, @participant), class: "btn btn-m btn-primary" do %>
+    <i class="bx bx-edit"></i> Edit
   <% end %>
+<% end %>
 
-  <div class="ms-auto d-flex gap-2">
-    <% if @participant.email.present? %>
-      <%= button_to "Resend invitation", resend_admin_event_participant_path(@event, @participant), method: :post, class: "btn btn-m btn-outline-secondary" %>
-    <% end %>
-    <%# Phase 10 — Print Agent (Electron) Integration, revisited (requirement.md §5.5.1). %>
-    <%= link_to print_admin_event_participant_path(@event, @participant), class: "btn btn-m btn-outline-secondary", target: "_blank", rel: "noopener" do %>
-      <i class="bx bx-printer"></i> Print
-    <% end %>
-    <%= link_to badge_admin_event_participant_path(@event, @participant), class: "btn btn-m btn-outline-secondary", target: "_blank", rel: "noopener" do %>
-      <i class="bx bx-id-card"></i> Download badge
-    <% end %>
-    <%= link_to "Edit", edit_admin_event_participant_path(@event, @participant), class: "btn btn-m btn-primary" %>
-  </div>
-</div>
+<% custom_fields = @participant.ticket_category&.registration_form&.custom_fields %>
+<% scan_events = @scan_events.to_a %>
 
 <div class="row g-3">
-  <div class="col-xl-7">
-    <div class="card mb-3">
-      <div class="card-header d-flex align-items-center gap-3">
-        <% if @participant.photo.attached? %>
-          <%# Not image_tag(attachment) — that generates Rails' own /rails/active_storage/...
-              redirect URL by default, an unnecessary extra hop through this server; calling
-              .url explicitly resolves straight through the Cloudinary service's own #url method
-              to a real, already-public CDN URL instead. %>
-          <%= tag.img src: @participant.photo.url, class: "rounded-circle", style: "width: 48px; height: 48px; object-fit: cover;" %>
-        <% else %>
-          <i class="bx bx-user-circle font-size-24 text-muted"></i>
-        <% end %>
-        <span class="fw-semibold"><%= @participant.name %></span>
-      </div>
-      <div class="card-body">
-        <dl class="row mb-0">
-          <% [
-               [ "Title", @participant.title ], [ "First Name", @participant.first_name ], [ "Last Name", @participant.last_name ],
-               [ "Email", @participant.email ], [ "Contact Number", @participant.contact_num ],
-               [ "Company", @participant.company ], [ "Department", @participant.department ], [ "Position", @participant.position ],
-               [ "Nationality", @participant.nationality ], [ "Country", @participant.country ]
-             ].each do |label, value| %>
-            <% next if value.blank? %>
-            <dt class="col-sm-4"><%= label %></dt>
-            <dd class="col-sm-8"><%= value %></dd>
-          <% end %>
-
-          <%# requirement.md revisit: "Hex ID will be ID in all places on UI" — matches
-              admin/participants/index.html.erb's own "ID" column header for the same value. %>
-          <dt class="col-sm-4">ID</dt>
-          <dd class="col-sm-8"><code><%= @participant.hex_id %></code></dd>
-
-          <dt class="col-sm-4">Client Participant ID</dt>
-          <dd class="col-sm-8"><code><%= @participant.client_participant_id %></code></dd>
-
-          <% if @participant.govt_id.present? %>
-            <dt class="col-sm-4">Govt ID</dt>
-            <dd class="col-sm-8"><%= @participant.govt_id %></dd>
-          <% end %>
-
-          <% if @participant.rf_id.present? %>
-            <dt class="col-sm-4">RF ID</dt>
-            <dd class="col-sm-8"><%= @participant.rf_id %></dd>
-          <% end %>
-
-          <dt class="col-sm-4">Document</dt>
-          <dd class="col-sm-8 mb-0">
-            <% if @participant.document.attached? %>
-              <%= link_to @participant.document.filename.to_s, document_admin_event_participant_path(@event, @participant) %>
-            <% else %>
-              <span class="text-muted">Not attached</span>
-            <% end %>
-          </dd>
-        </dl>
-
-        <%# Phase 7.5 — custom fields come from the participant's own ticket_category (via its
-            resolved RegistrationForm), same source admin/participants/_dynamic_fields.html.erb
-            reads from — a participant with no ticket_category, or one whose category has no
-            custom fields configured, simply has none to show. %>
-        <% custom_fields = @participant.ticket_category&.registration_form&.custom_fields %>
-        <% if custom_fields.present? %>
-          <hr>
-          <dl class="row mb-0">
-            <% custom_fields.each do |field| %>
-              <% value = @participant.custom_field_values[field.id.to_s] %>
-              <% next if value.blank? %>
-              <dt class="col-sm-4"><%= field.label %></dt>
-              <dd class="col-sm-8"><%= field.field_type == "checkbox" ? (ActiveModel::Type::Boolean.new.cast(value) ? "Yes" : "No") : value %></dd>
-            <% end %>
-          </dl>
-        <% end %>
-      </div>
-    </div>
-
-    <%# requirement.md revisit: "his in and out activity." check_in/check_out ScanEvents only
-        (Admin::ParticipantsController#show's own comment) — Event-level rows show "Event", a
-        session-level row shows that session's own name, so a participant checked into several
-        sessions shows each distinctly rather than collapsing them into one ambiguous "Checked
-        In." %>
+  <div class="col-xxl-4">
     <div class="card mb-0">
-      <div class="card-header"><span class="fw-semibold">In / Out Activity</span></div>
-      <div class="card-body">
-        <% if @scan_events.none? %>
-          <p class="text-muted mb-0">No check-in activity recorded yet.</p>
-        <% else %>
-          <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle mb-0">
-              <thead>
-                <tr>
-                  <th>When</th>
-                  <th>Activity</th>
-                  <th>Where</th>
-                  <th>Source</th>
-                </tr>
-              </thead>
+      <div class="card-body p-0">
+        <div class="user-profile-img">
+          <div class="rounded-top" style="height: 90px; background: linear-gradient(135deg, var(--bs-primary), var(--bs-info));"></div>
+          <div class="overlay-content rounded-top">
+            <div class="p-3">
+              <div class="d-flex justify-content-end">
+                <div class="dropdown">
+                  <a class="text-white dropdown-toggle font-size-16" href="#" role="button" data-bs-toggle="dropdown" aria-haspopup="true">
+                    <i class="bx bx-dots-vertical-rounded font-size-20"></i>
+                  </a>
+                  <div class="dropdown-menu dropdown-menu-end">
+                    <%= link_to edit_admin_event_participant_path(@event, @participant), class: "dropdown-item" do %>
+                      <i class="bx bx-edit-alt me-1"></i> Edit
+                    <% end %>
+                    <% if @participant.email.present? %>
+                      <%= button_to resend_admin_event_participant_path(@event, @participant), method: :post, class: "dropdown-item" do %>
+                        <i class="bx bx-envelope me-1"></i> Resend invitation
+                      <% end %>
+                    <% end %>
+                    <div class="dropdown-divider"></div>
+                    <%= button_to admin_event_participant_path(@event, @participant), method: :delete, class: "dropdown-item text-danger",
+                          data: { action: "click->confirm-dialog#show", title: "Remove Participant",
+                                  message: "Remove #{@participant.name}? This can't be undone.", danger: "true" } do %>
+                      <i class="bx bx-trash me-1"></i> Remove
+                    <% end %>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- end user-profile-img -->
+
+        <div class="p-4 pt-0">
+          <div class="mt-n5 position-relative text-center border-bottom pb-3">
+            <% if @participant.photo.attached? %>
+              <%= tag.img src: @participant.photo.url, class: "avatar-xl rounded-circle img-thumbnail", style: "object-fit: cover;" %>
+            <% else %>
+              <span class="avatar-xl rounded-circle img-thumbnail d-inline-flex align-items-center justify-content-center bg-light mx-auto">
+                <i class="bx bx-user font-size-24 text-muted"></i>
+              </span>
+            <% end %>
+
+            <div class="mt-3">
+              <h5 class="mb-1"><%= @participant.name %></h5>
+              <div class="d-flex justify-content-center gap-1 flex-wrap">
+                <span class="badge <%= @participant.confirmed? ? "bg-success-subtle text-success" : "bg-warning-subtle text-warning" %>"><%= @participant.status.humanize %></span>
+                <span class="badge bg-secondary-subtle text-secondary"><%= @participant.source.humanize %></span>
+                <% if @participant.ticket_category %>
+                  <span class="badge bg-info-subtle text-info"><%= @participant.ticket_category.name %></span>
+                <% end %>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-3 border-bottom pb-3">
+            <table class="table align-middle table-sm table-borderless mb-0" style="table-layout: fixed;">
               <tbody>
-                <% @scan_events.each do |scan_event| %>
+                <% [
+                     [ "Email", @participant.email ], [ "Govt ID", @participant.govt_id ], [ "RF ID", @participant.rf_id ]
+                   ].each do |label, value| %>
+                  <% next if value.blank? %>
                   <tr>
-                    <td><%= scan_event.scanned_at.to_fs(:long) %></td>
-                    <td>
-                      <span class="badge <%= scan_event.check_in? ? "bg-success-subtle text-success" : "bg-secondary-subtle text-secondary" %>">
-                        <i class="bx <%= scan_event.check_in? ? "bx-log-in" : "bx-log-out" %>"></i> <%= scan_event.check_in? ? "Checked In" : "Checked Out" %>
-                      </span>
-                    </td>
-                    <td><%= scan_event.session&.name || "Event" %></td>
-                    <td><%= scan_event.source.humanize %></td>
+                    <th class="fw-bold" style="width: 40%;"><%= label %> :</th>
+                    <td class="text-muted text-break"><%= value %></td>
                   </tr>
                 <% end %>
+                <tr>
+                  <%# requirement.md revisit: "Hex ID will be ID in all places on UI." %>
+                  <th class="fw-bold" style="width: 40%;">ID :</th>
+                  <td class="text-muted text-break"><code><%= @participant.hex_id %></code></td>
+                </tr>
+                <tr>
+                  <th class="fw-bold" style="width: 40%;">Client ID :</th>
+                  <td class="text-muted text-break"><code><%= @participant.client_participant_id %></code></td>
+                </tr>
               </tbody>
             </table>
           </div>
-        <% end %>
+
+          <%# "his in and out activity" at a glance — the full timeline is one tab away. %>
+          <div class="p-3 mt-3">
+            <div class="row text-center">
+              <div class="col-6 border-end">
+                <div class="p-1">
+                  <h5 class="mb-1"><%= scan_events.count(&:check_in?) %></h5>
+                  <p class="text-muted mb-0">Check-ins</p>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="p-1">
+                  <h5 class="mb-1"><%= scan_events.count(&:check_out?) %></h5>
+                  <p class="text-muted mb-0">Check-outs</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pt-2 text-center d-flex justify-content-center gap-2">
+            <%= link_to print_admin_event_participant_path(@event, @participant), class: "btn btn-outline-secondary btn-sm", target: "_blank", rel: "noopener", title: "Print" do %>
+              <i class="bx bx-printer"></i> Print
+            <% end %>
+            <%= link_to badge_admin_event_participant_path(@event, @participant), class: "btn btn-outline-secondary btn-sm", target: "_blank", rel: "noopener", title: "Download badge" do %>
+              <i class="bx bx-id-card"></i> Badge
+            <% end %>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="col-xl-5">
-    <div class="card mb-0">
-      <div class="card-header"><span class="fw-semibold">Badge</span></div>
-      <div class="card-body d-flex flex-column align-items-center">
-        <% if @badge.nil? %>
-          <p class="text-muted mb-0">No badge has been designed for this event yet.</p>
-        <% else %>
-          <%# Same real px sizing formula (96px/2.54cm) admin/badges/_badges_table.html.erb's own
-              preview modal already uses — participant_id repoints Admin::BadgesController#preview
-              at this real participant's own data instead of the sample one it defaults to. %>
-          <iframe src="<%= preview_admin_event_badge_path(@event, @badge, participant_id: @participant.id) %>"
-                  style="width: <%= (@badge.width_cm * 96 / 2.54).round %>px; height: <%= (@badge.height_cm * 96 / 2.54).round %>px; max-width: 100%; border: 1px solid var(--bs-border-color);"
-                  title="<%= @participant.name %>'s badge"></iframe>
-        <% end %>
+  <div class="col-xxl-8">
+    <div class="card mb-3">
+      <div class="card-body">
+        <!-- Nav tabs -->
+        <ul class="nav nav-pills nav-justified" role="tablist" data-controller="hash-tabs">
+          <li class="nav-item">
+            <a class="nav-link active" data-bs-toggle="tab" href="#overview" role="tab" data-hash-tabs-target="link"><span>Overview</span></a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#activity" role="tab" data-hash-tabs-target="link"><span>In / Out Activity</span></a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#badge" role="tab" data-hash-tabs-target="link"><span>Badge</span></a>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Tab content -->
+    <div class="tab-content">
+      <div class="tab-pane active" id="overview" role="tabpanel">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="font-size-16 mb-3">Profile Details</h5>
+            <dl class="row mb-0">
+              <% [
+                   [ "Title", @participant.title ], [ "First Name", @participant.first_name ], [ "Last Name", @participant.last_name ],
+                   [ "Phone", @participant.contact_num ], [ "Company", @participant.company ], [ "Department", @participant.department ],
+                   [ "Position", @participant.position ], [ "Nationality", @participant.nationality ], [ "Country", @participant.country ]
+                 ].each do |label, value| %>
+                <% next if value.blank? %>
+                <dt class="col-sm-3"><%= label %></dt>
+                <dd class="col-sm-9"><%= value %></dd>
+              <% end %>
+
+              <% if @participant.document.attached? %>
+                <dt class="col-sm-3">Document</dt>
+                <dd class="col-sm-9"><%= link_to @participant.document.filename.to_s, document_admin_event_participant_path(@event, @participant) %></dd>
+              <% end %>
+            </dl>
+
+            <%# Phase 7.5 — custom fields come from the participant's own ticket_category (via its
+                resolved RegistrationForm), same source admin/participants/_dynamic_fields.html.erb
+                reads from — a participant with no ticket_category, or one whose category has no
+                custom fields configured, simply has none to show. %>
+            <% if custom_fields.present? %>
+              <hr>
+              <h5 class="font-size-16 mb-3">Registration Details</h5>
+              <dl class="row mb-0">
+                <% custom_fields.each do |field| %>
+                  <% value = @participant.custom_field_values[field.id.to_s] %>
+                  <% next if value.blank? %>
+                  <dt class="col-sm-3"><%= field.label %></dt>
+                  <dd class="col-sm-9"><%= field.field_type == "checkbox" ? (ActiveModel::Type::Boolean.new.cast(value) ? "Yes" : "No") : value %></dd>
+                <% end %>
+              </dl>
+            <% end %>
+
+            <% if @participant.title.blank? && @participant.contact_num.blank? && @participant.company.blank? && @participant.department.blank? &&
+                  @participant.position.blank? && @participant.nationality.blank? && @participant.country.blank? && !@participant.document.attached? && custom_fields.blank? %>
+              <p class="text-muted mb-0">No additional profile details on file.</p>
+            <% end %>
+          </div>
+        </div>
+      </div>
+
+      <%# requirement.md revisit: "his in and out activity." check_in/check_out ScanEvents only
+          (Admin::ParticipantsController#show's own comment) — Event-level rows show "Event," a
+          session-level row shows that session's own name. %>
+      <div class="tab-pane" id="activity" role="tabpanel">
+        <div class="card">
+          <div class="card-body">
+            <% if scan_events.none? %>
+              <p class="text-muted mb-0">No check-in activity recorded yet.</p>
+            <% else %>
+              <div class="table-responsive">
+                <table class="table table-nowrap table-hover align-middle mb-0">
+                  <thead class="bg-light">
+                    <tr>
+                      <th>When</th>
+                      <th>Activity</th>
+                      <th>Where</th>
+                      <th>Source</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% scan_events.each do |scan_event| %>
+                      <tr>
+                        <td><%= scan_event.scanned_at.to_fs(:long) %></td>
+                        <td>
+                          <span class="badge <%= scan_event.check_in? ? "bg-success-subtle text-success" : "bg-secondary-subtle text-secondary" %>">
+                            <i class="bx <%= scan_event.check_in? ? "bx-log-in" : "bx-log-out" %>"></i> <%= scan_event.check_in? ? "Checked In" : "Checked Out" %>
+                          </span>
+                        </td>
+                        <td><%= scan_event.session&.name || "Event" %></td>
+                        <td><%= scan_event.source.humanize %></td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane" id="badge" role="tabpanel">
+        <div class="card">
+          <div class="card-body d-flex flex-column align-items-center">
+            <% if @badge.nil? %>
+              <p class="text-muted mb-0">No badge has been designed for this event yet.</p>
+            <% else %>
+              <%# Same real px sizing formula (96px/2.54cm) admin/badges/_badges_table.html.erb's
+                  own preview modal already uses — participant_id repoints
+                  Admin::BadgesController#preview at this real participant's own data instead of
+                  the sample one it defaults to. %>
+              <iframe src="<%= preview_admin_event_badge_path(@event, @badge, participant_id: @participant.id) %>"
+                      style="width: <%= (@badge.width_cm * 96 / 2.54).round %>px; height: <%= (@badge.height_cm * 96 / 2.54).round %>px; max-width: 100%; border: 1px solid var(--bs-border-color);"
+                      title="<%= @participant.name %>'s badge"></iframe>
+            <% end %>
+          </div>
+        </div>
       </div>
     </div>
   </div>

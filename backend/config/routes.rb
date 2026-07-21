@@ -282,6 +282,16 @@ Rails.application.routes.draw do
       # stock one can't be used as-is (it has no way to compute this app's tenant-namespaced blob
       # key). Singular resource, :create only, same shape the framework route itself uses.
       resource :direct_uploads, only: [ :create ], controller: "admin/direct_uploads"
+
+      # requirement.md revisit: the sidebar's own "Profile" entry (AdminHelper#admin_nav_items)
+      # used to be a "#" stub — this is current_user's own account, not a per-:id resource, so a
+      # singular resource with no :id segment. #password is its own member route (not folded into
+      # #update) since it carries different semantics — Devise's own update_with_password requires
+      # current_password on every field, which the plain contact-details form has no reason to ask
+      # for.
+      resource :profile, only: [ :show, :update ], controller: "admin/profiles" do
+        patch :password, on: :member
+      end
     end
 
     # Fixed-hierarchy pivot (requirement.md revisit, confirmed with the user): the Agency

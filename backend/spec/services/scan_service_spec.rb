@@ -19,23 +19,70 @@ RSpec.describe ScanService, type: :model do
       expect(ScanEvent.count).to eq(1)
     end
 
-    it "accepts a repeat scan once the debounce window has passed" do
-      ScanService.call(event: event, identifier: participant.hex_id, scan_type: :check_in)
-
-      travel(ScanService::DEBOUNCE_WINDOW + 1.second) do
-        result = ScanService.call(event: event, identifier: participant.hex_id, scan_type: :check_in)
-        expect(result).to be_ok
-      end
-
-      expect(ScanEvent.count).to eq(2)
-    end
-
     it "doesn't debounce a different scan_type for the same participant" do
       ScanService.call(event: event, identifier: participant.hex_id, scan_type: :check_in)
 
       result = ScanService.call(event: event, identifier: participant.hex_id, scan_type: :check_out)
 
       expect(result).to be_ok
+    end
+  end
+
+  # requirement.md revisit: "if user has checked-in already and tried to check-in again then show
+  # the warning ... so that we can avoid the duplicate entries. check should [be] unique based on
+  # the event entry or session." No time limit, unlike debounce above — this rejects a repeat
+  # scan in the same direction any time later, as long as nothing (check-out) has happened since.
+  describe "already checked in/out (requirement.md revisit)" do
+    it "rejects a repeat check-in once the debounce window has passed, with no new ScanEvent" do
+      ScanService.call(event: event, identifier: participant.hex_id, scan_type: :check_in)
+
+      travel(ScanService::DEBOUNCE_WINDOW + 1.second) do
+        result = ScanService.call(event: event, identifier: participant.hex_id, scan_type: :check_in)
+        expect(result).to be_already_checked_in
+      end
+
+      expect(ScanEvent.count).to eq(1)
+    end
+
+    it "rejects a repeat check-out the same way" do
+      ScanService.call(event: event, identifier: participant.hex_id, scan_type: :check_in)
+      ScanService.call(event: event, identifier: participant.hex_id, scan_type: :check_out)
+
+      travel(ScanService::DEBOUNCE_WINDOW + 1.second) do
+        result = ScanService.call(event: event, identifier: participant.hex_id, scan_type: :check_out)
+        expect(result).to be_already_checked_out
+      end
+    end
+
+    it "allows toggling check-in then check-out then check-in again" do
+      ScanService.call(event: event, identifier: participant.hex_id, scan_type: :check_in)
+      ScanService.call(event: event, identifier: participant.hex_id, scan_type: :check_out)
+
+      travel(ScanService::DEBOUNCE_WINDOW + 1.second) do
+        result = ScanService.call(event: event, identifier: participant.hex_id, scan_type: :check_in)
+        expect(result).to be_ok
+      end
+    end
+
+    it "scopes uniqueness to event entrance vs. a specific session independently" do
+      session = create(:session, account: account, event: event)
+      ScanService.call(event: event, identifier: participant.hex_id, scan_type: :check_in)
+
+      travel(ScanService::DEBOUNCE_WINDOW + 1.second) do
+        result = ScanService.call(event: event, identifier: participant.hex_id, scan_type: :check_in, session: session)
+        expect(result).to be_ok
+      end
+    end
+
+    it "scopes uniqueness per session — checking into one session doesn't block another" do
+      session_a = create(:session, account: account, event: event)
+      session_b = create(:session, account: account, event: event)
+      ScanService.call(event: event, identifier: participant.hex_id, scan_type: :check_in, session: session_a)
+
+      travel(ScanService::DEBOUNCE_WINDOW + 1.second) do
+        result = ScanService.call(event: event, identifier: participant.hex_id, scan_type: :check_in, session: session_b)
+        expect(result).to be_ok
+      end
     end
   end
 
