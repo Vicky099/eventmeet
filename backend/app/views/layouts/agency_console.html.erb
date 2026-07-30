@@ -4,11 +4,15 @@
     <%= render "shared/head" %>
   </head>
 
-  <body>
+  <%# requirement.md revisit ("super admin should have option to impersonate agency and login to
+      agency portal") — same "impersonating" body class layouts/admin.html.erb's own comment
+      explains (reserves space above the fixed topbar/sidebar for shared/_impersonation_banner). %>
+  <body class="<%= "impersonating" if current_impersonator %>">
     <%= render layout: "shared/console_shell", locals: {
       home_path: agency_root_path,
       nav_items: agency_nav_items,
       footer_text: "xEvent",
+      impersonator: current_impersonator,
       user_dropdown: user_signed_in? ? {
         email: current_user.email,
         subtitle: Current.agency&.name,

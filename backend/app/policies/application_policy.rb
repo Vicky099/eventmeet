@@ -40,6 +40,23 @@ class ApplicationPolicy
     false
   end
 
+  # PunditAuthorizable#user_not_authorized's hook: an optional, more specific flash message for
+  # why a given query failed, beyond the generic "You are not authorized to do that." A subclass
+  # opts in by defining `#{query}_reason` (e.g. `update_reason`, returning a String or nil — see
+  # EventPolicy#update_reason); nil here (the default, and any query with no such method defined)
+  # falls through to the generic message. `edit?`/`new?` mirror this class's own aliasing above
+  # (edit? = update?, new? = create?) — a subclass only ever needs to define update_reason/
+  # create_reason once, not a second copy for the edit/new query name.
+  def reason_for(query)
+    method = case query.to_s
+    when "edit?" then "update_reason"
+    when "new?" then "create_reason"
+    else "#{query.to_s.delete_suffix("?")}_reason"
+    end
+
+    respond_to?(method) ? public_send(method) : nil
+  end
+
   private
 
   # requirement.md §4.3: SuperAdmin:: controllers explicitly operate across tenants — the Super

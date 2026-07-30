@@ -139,3 +139,80 @@ RSpec.describe "Super Admin impersonation", type: :request do
     expect(response.body).not_to include("Impersonating")
   end
 end
+
+# requirement.md revisit: "super admin should have option to impersonate agency and should login
+# to agency portal" — same mint-then-redeem mechanics as the tenant flow above, just targeting an
+# agency_admin off the Agency's own roster and landing on the Agency Console instead.
+RSpec.describe "Super Admin agency impersonation", type: :request do
+  let!(:staff) { create(:user, :platform_staff) }
+  let!(:agency) { create(:agency, subdomain_slug: "acme-agency") }
+  let!(:agency_admin) { create(:user, email: "admin@acme-agency.example", password: "password123!") }
+
+  before do
+    create(:agency_membership, user: agency_admin, agency: agency)
+  end
+
+  def initiate_impersonation
+    host! "example.com"
+    sign_in staff, scope: :platform_staff
+    post platform_agency_impersonations_path(agency), params: { user_id: agency_admin.id }
+  end
+
+  it "mints a fresh ImpersonationToken against the agency, redirects to its own subdomain, and logs the start against the real Super Admin" do
+    expect { initiate_impersonation }.to change(ImpersonationToken, :count).by(1).and change(AuditLogEntry, :count).by(1)
+
+    token = ImpersonationToken.last
+    expect(token.platform_staff).to eq(staff)
+    expect(token.user).to eq(agency_admin)
+    expect(token.agency).to eq(agency)
+    expect(token.account).to be_nil
+    expect(response).to redirect_to("http://acme-agency.example.com/admin/impersonate?token=#{token.token}")
+
+    entry = AuditLogEntry.last
+    expect(entry.actor).to eq(staff)
+    expect(entry.action).to eq("impersonation.start")
+    expect(entry.target).to eq(agency)
+    expect(entry.metadata).to eq("impersonated_user_email" => agency_admin.email)
+  end
+
+  it "redeeming signs the Super Admin in as the agency admin and lands on the Agency Console, with the banner shown" do
+    initiate_impersonation
+    token = ImpersonationToken.last
+
+    host! "acme-agency.example.com"
+    get redeem_impersonation_path(token: token.token)
+    follow_redirect! # user_root_path (/admin) ...
+    follow_redirect! # ... bounces to agency_root_path (/agency) for an agency-context session
+
+    expect(response).to have_http_status(:ok)
+    expect(response.body).to include("Impersonating #{agency_admin.email}")
+    expect(response.body).to include(staff.email)
+  end
+
+  it "rejects redemption if the AgencyMembership was removed after the token was minted" do
+    initiate_impersonation
+    token = ImpersonationToken.last
+    AgencyMembership.find_by!(user: agency_admin, agency: agency).destroy!
+
+    host! "acme-agency.example.com"
+    get redeem_impersonation_path(token: token.token)
+
+    expect(response).to redirect_to(new_user_session_path)
+    follow_redirect!
+    expect(response.body).to include("no longer has access")
+  end
+
+  it "stopping impersonation clears the session and returns to the Platform Console with no re-login" do
+    initiate_impersonation
+    token = ImpersonationToken.last
+    host! "acme-agency.example.com"
+    get redeem_impersonation_path(token: token.token)
+
+    delete stop_impersonation_path
+
+    expect(response).to redirect_to("http://example.com/platform")
+    follow_redirect!
+    expect(response).to have_http_status(:ok)
+    expect(response.body).not_to include("Impersonating")
+  end
+end

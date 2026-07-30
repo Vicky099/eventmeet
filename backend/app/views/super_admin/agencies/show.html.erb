@@ -149,6 +149,19 @@
                 <% end %>
               </div>
               <div class="d-flex gap-2">
+                <%# requirement.md revisit: "super admin should have option to impersonate agency
+                    and should login to agency portal" — same mint/redeem mechanics as the tenant
+                    roster's own "Impersonate" button (super_admin/agencies/_tenant_modal.html.erb's
+                    own comment has the full "why a real form POST, not Turbo" story), just landing
+                    on this agency's own subdomain instead of one of its tenants'. Not offered
+                    pre-onboarding (must_reset_password?) — there's no real password set yet for
+                    that account to sign into, only a temp one waiting on the invite email. %>
+                <% unless membership.user.must_reset_password? %>
+                  <%= button_to platform_agency_impersonations_path(@agency), method: :post, params: { user_id: membership.user.id },
+                        class: "btn btn-m btn-outline-warning", title: "Impersonate", form: { data: { turbo: false } } do %>
+                    <i class="bx bx-shield-quarter"></i>
+                  <% end %>
+                <% end %>
                 <%# Only offered pre-onboarding — see the controller action's own comment for why
                     an already-active admin has no "resend" path at all. %>
                 <% if membership.user.must_reset_password? %>

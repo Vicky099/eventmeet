@@ -33,6 +33,32 @@ RSpec.describe ImpersonationToken do
 
       expect(token.token).to eq("a-fresh-token")
     end
+
+    # Agency Console impersonation (requirement.md revisit): the same mint mechanics, targeting an
+    # Agency's own subdomain instead of a tenant Account.
+    it "also mints against an agency, with no account" do
+      platform_staff = create(:user, :platform_staff)
+      agency = create(:agency)
+      user = create(:user)
+
+      token = ImpersonationToken.generate_for(platform_staff: platform_staff, user: user, agency: agency)
+
+      expect(token).to be_persisted
+      expect(token.agency).to eq(agency)
+      expect(token.account).to be_nil
+    end
+  end
+
+  describe "validations" do
+    it "is invalid with neither an account nor an agency" do
+      token = build(:impersonation_token, account: nil)
+      expect(token).not_to be_valid
+    end
+
+    it "is invalid with both an account and an agency" do
+      token = build(:impersonation_token, agency: create(:agency))
+      expect(token).not_to be_valid
+    end
   end
 
   describe "#redeemable?" do

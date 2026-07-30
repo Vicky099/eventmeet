@@ -16,4 +16,14 @@ class EventPolicy < ApplicationPolicy
   # completed one anyway, but keeps the one true "can this event still be changed" check in one place.
   def update? = event_admin? && !record.completed?
   def destroy? = event_admin?
+
+  # PunditAuthorizable#user_not_authorized's optional per-query hook — nil (its own generic
+  # "not authorized" message) when this event_admin was never allowed to edit events in the first
+  # place; a specific message only for the one case worth distinguishing, the completed-event gate
+  # above blocking someone who otherwise could.
+  def update_reason
+    return nil unless event_admin?
+
+    "#{record.name} is completed and can no longer be edited." if record.completed?
+  end
 end

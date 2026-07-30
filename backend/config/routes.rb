@@ -434,6 +434,13 @@ Rails.application.routes.draw do
             post :resend_invite
           end
         end
+        # requirement.md revisit: "super admin should have option to impersonate agency and login
+        # to agency portal" — the same mint half as the tenant :accounts impersonation nested
+        # resource above, just targeting an agency_admin off this agency's own roster
+        # (super_admin/agencies/show.html.erb's own Agency Admins card) instead of one tenant
+        # Account's user. Same controller (SuperAdmin::ImpersonationsController branches on
+        # params[:agency_id] vs params[:account_id]), only :create, same "pure action" shape.
+        resources :impersonations, controller: "super_admin/impersonations", only: [ :create ]
       end
 
       # Phase 15 — Platform Billing & Invoicing, revisited (requirement.md §4.6, confirmed with the

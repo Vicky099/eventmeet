@@ -11,9 +11,15 @@ module Admin
     skip_before_action :redirect_agency_context_to_agency_console
 
     def redeem
-      # Scoped to `account: Current.account`, same belt-and-suspenders host check
-      # Admin::AccountSwitchesController#redeem already applies.
-      impersonation_token = ImpersonationToken.find_by(token: params[:token], account: Current.account)
+      # Scoped to `account: Current.account` (or `agency: Current.agency` — Agency Console
+      # impersonation, requirement.md revisit), same belt-and-suspenders host check
+      # Admin::AccountSwitchesController#redeem already applies. Exactly one of Current.account/
+      # Current.agency is ever set (TenantResolvable#resolve_tenant!), so this is never ambiguous.
+      impersonation_token = if Current.account
+        ImpersonationToken.find_by(token: params[:token], account: Current.account)
+      else
+        ImpersonationToken.find_by(token: params[:token], agency: Current.agency)
+      end
 
       if impersonation_token.nil? || !impersonation_token.redeemable?
         redirect_to new_user_session_path, alert: "This impersonation link has expired or already been used." and return

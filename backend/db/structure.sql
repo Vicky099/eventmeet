@@ -420,12 +420,13 @@ CREATE TABLE public.impersonation_tokens (
     id uuid NOT NULL,
     platform_staff_id uuid NOT NULL,
     user_id uuid NOT NULL,
-    account_id uuid NOT NULL,
+    account_id uuid,
     token character varying NOT NULL,
     expires_at timestamp(6) without time zone NOT NULL,
     redeemed_at timestamp(6) without time zone,
     created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
+    updated_at timestamp(6) without time zone NOT NULL,
+    agency_id uuid
 );
 
 
@@ -1742,6 +1743,13 @@ CREATE INDEX index_impersonation_tokens_on_account_id ON public.impersonation_to
 
 
 --
+-- Name: index_impersonation_tokens_on_agency_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_impersonation_tokens_on_agency_id ON public.impersonation_tokens USING btree (agency_id);
+
+
+--
 -- Name: index_impersonation_tokens_on_platform_staff_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2414,6 +2422,14 @@ ALTER TABLE ONLY public.attendances
 
 ALTER TABLE ONLY public.session_live_stats
     ADD CONSTRAINT fk_rails_2da9181c6a FOREIGN KEY (event_id) REFERENCES public.events(id);
+
+
+--
+-- Name: impersonation_tokens fk_rails_300aa1dc4b; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.impersonation_tokens
+    ADD CONSTRAINT fk_rails_300aa1dc4b FOREIGN KEY (agency_id) REFERENCES public.agencies(id);
 
 
 --
@@ -3438,6 +3454,7 @@ ALTER TABLE public.ticket_reservations ENABLE ROW LEVEL SECURITY;
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260730150000'),
 ('20260719080100'),
 ('20260719080000'),
 ('20260719070000'),

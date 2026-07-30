@@ -19,7 +19,14 @@ module PunditAuthorizable
     raise NotImplementedError, "#{self.class} must implement #authorization_fallback_path"
   end
 
-  def user_not_authorized
-    redirect_back fallback_location: authorization_fallback_path, alert: "You are not authorized to do that."
+  # requirement.md revisit: "instead show the real reason in flash" — a bare "not authorized" is
+  # right for an actual role/permission gap, but misleading for a business-rule gate like
+  # EventPolicy#update?'s "completed events can't be edited" (real report: an event_admin, who
+  # unambiguously *is* allowed to edit events in general, hit this on a completed one and had no
+  # way to tell the two apart). ApplicationPolicy#reason_for is the optional per-policy hook —
+  # policies that don't define one (the common case) fall through to the generic message here.
+  def user_not_authorized(exception)
+    message = exception.policy.reason_for(exception.query)
+    redirect_back fallback_location: authorization_fallback_path, alert: message || "You are not authorized to do that."
   end
 end

@@ -62,7 +62,15 @@ export default class extends Controller {
     }
 
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } })
+      // Code128 barcodes need far more pixel density than QR to resolve their thin bars — QR's
+      // large, blocky modules and error correction tolerate a low-res feed fine, but without an
+      // explicit resolution constraint the browser defaults to a low res (observed: 640x480) even
+      // on cameras capable of 1080p+, which makes barcodes effectively undecodable from a live
+      // handheld shot while QR keeps working. `ideal` (not `min`) so devices capped below 1080p
+      // still connect at their own max instead of failing the getUserMedia call.
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      })
     } catch {
       this.setStatus("Camera unavailable — check permission and try again.")
       this.panelTarget.hidden = true

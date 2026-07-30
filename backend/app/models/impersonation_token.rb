@@ -7,21 +7,29 @@
 # visit, not just the one redirect AccountSwitch's own handoff needs.
 #
 # Not TenantScoped, no RLS — platform-level, like AccountSwitch/Agency/Account themselves.
+#
+# Agency Console impersonation (requirement.md revisit): an agency_admin has no AccountMembership
+# to redeem against on a tenant subdomain — the target is the Agency's own subdomain instead, so
+# account and agency are mutually exclusive, exactly-one-present (account_or_agency_present below),
+# same shape TenantResolvable/Current already give every other "Account OR Agency" request.
 class ImpersonationToken < ApplicationRecord
   TTL = 60.seconds
 
   belongs_to :platform_staff, class_name: "User"
   belongs_to :user
-  belongs_to :account
+  belongs_to :account, optional: true
+  belongs_to :agency, optional: true
 
-  def self.generate_for(platform_staff:, user:, account:)
+  validate :account_or_agency_present
+
+  def self.generate_for(platform_staff:, user:, account: nil, agency: nil)
     token = nil
     loop do
       token = SecureRandom.urlsafe_base64(32)
       break unless ImpersonationToken.exists?(token: token)
     end
 
-    create!(platform_staff: platform_staff, user: user, account: account, token: token, expires_at: TTL.from_now)
+    create!(platform_staff: platform_staff, user: user, account: account, agency: agency, token: token, expires_at: TTL.from_now)
   end
 
   def redeemable?
@@ -30,5 +38,11 @@ class ImpersonationToken < ApplicationRecord
 
   def redeem!
     update!(redeemed_at: Time.current)
+  end
+
+  private
+
+  def account_or_agency_present
+    errors.add(:base, "must have exactly one of account or agency") if account.present? == agency.present?
   end
 end

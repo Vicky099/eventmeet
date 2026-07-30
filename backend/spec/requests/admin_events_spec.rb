@@ -85,10 +85,24 @@ RSpec.describe "Admin Console events", type: :request do
 
       get edit_admin_event_path(event)
       expect(response).to redirect_to(user_root_path)
+      # requirement.md revisit: "instead show the real reason in flash" — an event_admin hitting
+      # this gate is a business-rule block, not a role/permission gap, so the flash says why
+      # rather than PunditAuthorizable's generic "You are not authorized to do that."
+      expect(flash[:alert]).to eq("#{event.name} is completed and can no longer be edited.")
 
       patch admin_event_path(event), params: { event: { name: "Renamed" } }
       expect(response).to redirect_to(user_root_path)
       expect(event.reload.name).not_to eq("Renamed")
+    end
+
+    it "shows the generic message for a role that was never allowed to edit events at all" do
+      sign_in_with_role(:admin_staff)
+      Current.account = account
+      event = create(:event, account: account)
+
+      get edit_admin_event_path(event)
+      expect(response).to redirect_to(user_root_path)
+      expect(flash[:alert]).to eq("You are not authorized to do that.")
     end
   end
 
