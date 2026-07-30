@@ -64,6 +64,18 @@ Rails.application.routes.draw do
       skip_controllers :authorizations, :applications, :authorized_applications
     end
 
+    # Phase 25 — Public Event Site API (doc/public_event_site_options.md, requirement.md §4.9
+    # item 2). The one public read endpoint — OAuth-protected (Api::V1::Public::BaseController),
+    # tenant-resolved the same way as everything else on this host. Not nested under `scope path:
+    # "admin"` above (this isn't the Admin Console) — its own `/api/v1/public/...` namespace,
+    # same "every route carries its own console's URL namespace" convention the rest of this file
+    # already follows.
+    get "api/v1/public/events/:slug", to: "api/v1/public/events#show", as: :public_event
+    # The write half of requirement.md §4.9 item 2's "exactly two endpoints" — register
+    # participant. Flat `:slug` segment (not a nested `resources :events`), same shape the
+    # checkin scope above already takes for an analogous event-scoped-by-slug public action.
+    post "api/v1/public/events/:slug/participants", to: "api/v1/public/participants#create", as: :public_event_participants
+
     # Named user_root (not admin_root) deliberately: Devise's signed_in_root_path/
     # after_sign_in_path_for looks for "#{scope}_root_path" — for the :user scope that's
     # user_root_path — before ever falling back to the plain root_path (which doesn't exist at
@@ -252,6 +264,13 @@ Rails.application.routes.draw do
         # the Admin::EventsController wizard/STEPS — reached from the event workspace's own
         # "Design Registration Form" nav entry instead (§5.14), never from event creation/editing.
         resources :registration_forms, controller: "admin/registration_forms", except: [ :show ]
+        # Phase 25.5 — Public Event Site (doc/public_event_site_options.md, Confirmed decisions
+        # #2-#4). Singular resource — one EventPage per Event (has_one), find-or-initialize on
+        # #edit so the form works identically whether a row exists yet or not, same "edit is the
+        # workspace, no separate create step" shape :email_templates/:badges already take. No
+        # :show, no preview route — the live preview pane is plain client-side JS (nothing to
+        # substitute server-side, unlike email_templates' own token-substituted #preview).
+        resource :event_page, controller: "admin/event_pages", only: [ :edit, :update ]
         # Phase 10 — Print Agent (Electron) Integration (requirement.md §5.5.1, §8). The
         # admin-facing management surface: create a station, generate/regenerate its pairing
         # code, revoke a paired agent, plus the event-wide auto-print/default-station settings
@@ -374,6 +393,13 @@ Rails.application.routes.draw do
   end
 
   constraints(Hosting::ApexConstraint.new) do
+    # Phase 25 — Public Event Site API (doc/public_event_site_options.md, requirement.md §4.3).
+    # Called by the Next.js server itself at this fixed, host-independent apex address — the one
+    # lookup that has to happen *before* any tenant subdomain/OAuth token is known, so it can't
+    # live inside the tenant-subdomain-constrained block above. Deliberately unauthenticated —
+    # see Api::V1::Public::DomainResolutionsController's own comment for why.
+    get "api/v1/public/domain_resolution", to: "api/v1/public/domain_resolutions#show"
+
     # Super Admin login (requirement.md §4.9 item 1). A distinct Warden scope (:platform_staff)
     # from the tenant :user scope above — same User model (class_name:), but this keeps
     # current_platform_staff/platform_staff_signed_in? cleanly separate from current_user/

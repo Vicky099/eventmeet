@@ -278,181 +278,284 @@ built once at the Rails layer regardless of which frontend ends up calling it.
 
 # Implementation Plan
 
-Concrete, ordered, in the same Goal/Implements/Depends-on/checklist shape `doc/implementation_3.md`
-already uses for every other phase — this refines and extends that file's existing **Phase 25**
-(OAuth API) and **Phase 26** (Next.js Public Event Site) with everything settled in this doc
-(`EventHtmlParser` + template library instead of a generic content model, the sentinel-split
-registration technique, real `TenantDomain` wiring including subdomain-shaped custom domains). It
-does not replace those phases' own checklists — treat this as the detailed version of Phase 26
-plus one new phase (25.5) that has to land first.
+**Status: reviewed — every open question below is now resolved.** This is the final shape to build
+against, pending your go-ahead to start.
 
-## Phase 25.5 — Event page template library + `EventHtmlParser`
+**Decision (this revision): Option B confirmed** — separate Next.js app, BFF pattern, per the
+"Option B" section above. `frontend/` has already been restored (confirmed present in the repo,
+still the untouched `create-next-app` scaffold — Next.js 16, React 19, `@reduxjs/toolkit`/
+`react-redux` already in `package.json`, nothing else built yet). This section supersedes the first
+draft of the plan that used to live here, written before Option B was picked and before the exact
+UX below was described. The Goal/Depends-on/checklist shape still follows
+`doc/implementation_3.md`'s own convention for every phase, still refines/extends that file's
+existing **Phase 25** (OAuth API) and **Phase 26** (Next.js Public Event Site).
 
-**Goal:** give Phase 25's event-show endpoint something real to return — a fully-substituted HTML
-string, not just raw JSON fields — before Phase 26 has anything to render.
-**Depends on:** `implementation.md` Phase 8 (`BadgeTemplate`/`Badge`'s library → per-record shape,
-reused structurally here), Phase 7.5 (`RegistrationForm`/`CustomField`, for the registration
-schema half of the payload).
+**The actual requirement, as given:** an event-wise public details + registration page. In the
+Admin Console, each event's own workspace (the existing per-event sidebar — Analytics, Design
+Registration Form, Email Templates, ... — `AdminHelper#event_nav_items`) gains a place to store
+that event's own public-page HTML. The public page itself shows that HTML plus a "Register" button;
+the button opens a modal containing the registration form — the same form component on every event,
+populated with whichever fields that event's own `RegistrationForm`/`CustomField` setup defines.
 
-- [ ] `EventPageTemplate` model — account-scoped (`TenantScoped`, like `BadgeTemplate`), holds the
-  hand-authored HTML/CSS your team writes (a `content` text column is enough; a file-upload path
-  is an alternative if your team prefers editing `.html` files locally and pushing them in over a
-  form field — either way, plain storage, no GrapesJS/canvas JSON to parse back out).
-- [ ] `Event#event_page_template` — `belongs_to :event_page_template, optional: true`, a **live
-  reference** (not a copy — see this doc's own reasoning above: nothing diverges per-event, so a
-  library fix should apply everywhere immediately without hunting down per-event drift).
-- [ ] `EventHtmlParser` service (`app/services/event_html_parser.rb`, sibling to
-  `BadgeReformService`) — `#call(template:, event:)` substituting the token vocabulary from this
-  doc's "Tenant-customizable show/registration HTML" section (`{{event_name}}`,
-  `{{event_description}}`, `{{speaker_list}}`, `{{agenda}}`, `{{event_banner}}`,
-  `{{ticket_categories}}`, `{{seats_remaining}}`, ...) and leaving `{{register_form}}` as a literal,
-  unambiguous sentinel constant (export it — Next.js needs the exact same string to split on).
-- [ ] Sanitize only the *substituted values* that trace back to organizer-entered rich text (event
-  description, speaker bios) at substitution time, via Rails' built-in Loofah-based sanitizer — not
-  the template itself (trusted, hand-authored by your team).
-- [ ] No template selected → fall back to one shipped default `EventPageTemplate` (seeded, not
-  tenant-owned) — same "sane default, optional override" shape as `Event#badge_for_category`.
-- [ ] Admin console: a plain read-only (for now — no self-service authoring) picker on the event's
-  Basic Info or Review step to select which library template the event uses.
+## What changed vs. the first draft (read this before the phases below)
+
+- **Public page HTML is a per-event, tenant-authored field now, not a shared team-curated
+  library.** The first draft's `EventPageTemplate` (an account-level library your own team
+  hand-authors, mirroring `BadgeTemplate`) is dropped — replaced by a single `Event#public_page_html`
+  field the event's own admin fills in directly, inside that event's own workspace. This is a real
+  security-posture shift: the doc's earlier "hand-authored by your team, trusted" framing (the
+  "Tenant-customizable show/registration HTML" section above) no longer holds once each tenant can
+  paste their own markup — confirmed as a deliberate, no-sanitization trust decision (Confirmed
+  decision #2 below), not an oversight.
+- **Registration is a modal opened by a button, not inline-embedded via a `{{register_form}}`
+  sentinel.** The first draft's entire "one real technical wrinkle" discussion (DOM portals vs.
+  string-split-and-interleave) is now moot — the stored HTML renders as-is, nothing is substituted
+  or split inside it. A fixed "Register" button, part of the platform's own page chrome (not the
+  tenant's stored HTML), opens the modal. This removes the sentinel constant, the token-substitution
+  vocabulary (`{{event_name}}`, `{{speaker_list}}`, etc.), and `EventHtmlParser` entirely — the
+  stored HTML has no placeholders to fill in at all, it's just rendered.
+- **The registration form itself is unchanged** from the first draft: one shared React component,
+  fields driven by `registration_schema` (already-built `RegistrationForm`/`CustomField` data, keyed
+  by ticket category), RTK Query mutation through a Next.js-hosted `/api/register` route handler.
+  Only its container changed (modal instead of inline-interleaved block).
+- Custom-domain/`TenantDomain` handling (the "Custom domain handling" section above) is **unchanged**
+  by any of this and still applies as written.
+
+## Confirmed decisions (review round complete)
+
+Answers to the six open questions from the previous revision, folded into the phases below:
+
+1. **`frontend/` restoration** — done, already restored in the repo (confirmed above).
+2. **Trust extends to the whole document, no sanitization** — any event admin can paste arbitrary
+   HTML/CSS/JS for their own event's page, stored and rendered exactly as submitted. Same trust
+   model as a website builder's "custom code" feature (Webflow/Squarespace-style): the tenant owns
+   the risk for their own page and their own visitors, not a cross-tenant concern. This **removes**
+   the first draft's Loofah-sanitization step entirely — `EventHtmlParser`/allowlist/`<script>`
+   stripping is dropped from Phase 25.5 below, not just narrowed.
+3. **Nav label: "Event Page"** — a new event-scoped sidebar item, alongside "Design Registration
+   Form"/"Email Templates" (`AdminHelper#event_nav_items`). Chosen over the literal "Event &
+   Registration" phrase since "Design Registration Form" already owns the registration-fields
+   concept next to it; "Event Page" names specifically what this new item edits. Flag if you'd
+   rather use different wording — trivial to rename before or after building.
+4. **No draft/publish workflow for the page content itself** — saving `public_page_html` takes
+   effect immediately, live, with no separate publish step and no reverting the *event's* own
+   status to draft (does **not** get added to `Event::CONTENT_ATTRIBUTES`). Separately, the
+   *event's own* existing draft/published state still gates whether the custom page is shown at
+   all: while the event itself is still in draft (`published_at.nil?`, unrelated to page-content
+   editing), the public page always shows Next.js's own default page, regardless of what's stored in
+   `public_page_html` — see #5, same mechanism handles both "nothing stored" and "event still
+   draft."
+5. **Fallback page lives in Next.js, not Rails** — no seeded default `EventPageTemplate`/HTML on
+   the Rails side. The public API just reports whether an event is published and what
+   `content_html` (if any) it has; Next.js owns one built-in default-page component, shown whenever
+   either is missing:
+   - Event published, `content_html` blank → Next.js default page, **with a working Register
+     button** (registration is open, just using the platform's own default look instead of the
+     tenant's custom one).
+   - Event still draft (not yet published) → Next.js default page, **no Register button** — an
+     unpublished event isn't open for registration yet, same as the admin console's own gate
+     everywhere else. *(This is a synthesis of your two answers — flag if registration should
+     actually stay closed on the default page in the first case too, not just the second.)*
+6. **Kept, not deleted** — the "Tenant-customizable show/registration HTML" and "Feasibility check"
+   sections above stay in the doc as the reasoning trail for the shared-library/sentinel design that
+   got superseded, per your confirmation.
+
+## Phase 25.5 (revision 2) — Per-event public page HTML — **Shipped 2026-07-30**
+
+**Goal:** give an event admin a place, inside that event's own workspace, to store the raw
+HTML/CSS for that event's public page.
+**Depends on:** nothing new — reuses `Event`, `EventScoped`, `AdminHelper#event_nav_items`,
+`EventPolicy#update?`/`#update_reason`.
+
+- [x] `EventPage` model — **not** `Event#public_page_html` as originally planned here; built as a
+  dedicated table (`has_one :event_page` on `Event`) instead, per direct correction during
+  implementation ("create the separate table for html pages, don't include it in event table") —
+  see the memory note this decision is recorded under. `html` column, `TenantScoped` +
+  `TenantRowLevelSecurity.enable!` like every other tenant table. Stored and returned exactly as
+  submitted — **no sanitization step** (Confirmed decision #2 above).
+- [x] New event-scoped admin nav item, **"Event Page"**, in `AdminHelper#event_nav_items`.
+- [x] `Admin::EventPagesController` — singular resource (`resource :event_page`, find-or-initialize
+  on `#edit`), raw-HTML textarea plus a live preview pane. The preview turned out not to need any
+  server round-trip at all (no token substitution to run) — a plain client-side Stimulus controller
+  (`event_page_preview_controller.js`) writes the textarea straight into an iframe's `srcdoc`.
+- [x] Authorization: `authorize @event, :update?` — the completed-event lock applies for free.
+- [x] Saving takes effect immediately — not added to `Event::CONTENT_ATTRIBUTES`.
+- [x] No fallback page logic on the Rails side — Next.js owns it (see Phase 26).
 
 ### Definition of Done
-- [ ] Model spec: `EventHtmlParser` substitutes every token correctly; a missing/blank value
-  degrades gracefully (blank string, not a raw `nil`/token literal leaking into output).
-- [ ] Model spec: an organizer-entered `<script>` in the event description never survives into the
-  parsed output.
-- [ ] Model spec: changing a shared `EventPageTemplate`'s content is immediately reflected for
-  every `Event` referencing it (confirms the live-reference, not copy, decision).
-- [ ] Request/integration spec: the fallback default template renders correctly for an event with
-  no `event_page_template` set.
+- [x] Request spec: saves `public_page_html`/`EventPage#html` verbatim, no filtering.
+- [x] Request spec: blocked on a completed event, real reason in the flash.
+- [x] Request spec: editing on an already-published event leaves `status`/`published_at` untouched.
 
-## Phase 25 (revision) — Public API surface
+## Phase 25 (revision 2) — Public API surface — **Shipped 2026-07-30**
 
-Builds on the existing Phase 25 checklist in `implementation_3.md` — same OAuth
-client-credentials/`rack-attack`/`Current.account` guard work, unchanged. What this doc adds:
+- [x] `GET /api/v1/public/events/:slug` (`Api::V1::Public::EventsController#show`) returns
+  `content_html`, `published`, `registration_schema`, and structured fields (`name`, `description`,
+  `starts_at`/`ends_at`, `address`, `meeting_link`, `seats_remaining`). A draft event still resolves
+  (200, `published: false`) rather than 404ing.
+- [x] `domain_resolution` endpoint (`Api::V1::Public::DomainResolutionsController#show`) — resolves
+  both the shared subdomain shape and a verified `TenantDomain`.
+  - **One real gap this doc never spelled out, found and closed during implementation:** Next.js is
+    a single shared deployment across every tenant, so it has no per-tenant OAuth `client_id`/
+    `client_secret` hardcoded anywhere — it has to look one up per request. Rather than a second
+    endpoint, `domain_resolution`'s own response now *also* includes `client_id`/`client_secret`
+    when the caller presents a second, distinct shared secret (`PUBLIC_SITE_SHARED_SECRET`, header
+    `X-Public-Site-Secret`) proving it's the real Next.js BFF — not the revalidation webhook's own
+    secret, a different trust direction.
+- [x] **Register-participant endpoint** (`Api::V1::Public::ParticipantsController#create`, `POST
+  /api/v1/public/events/:slug/participants`) — not in this doc's original Phase 25 scope at all
+  (only sketched as "the other of exactly two endpoints" in the requirement.md quote above) but
+  built this session since the registration modal needs somewhere to submit to. Reuses
+  `Admin::ParticipantsController`'s own Participant validations unchanged (dedupe, required
+  fields, approval-gated status). Adds one new rule neither admin entry nor this doc anticipated: a
+  hard per-category capacity check. **Real finding:** `TicketCategory#remain_count`/`sold_count`
+  track `TicketReservation` bulk/group holds only (a separate, largely-unused mechanism) — there
+  was no existing "how many people already registered" concept for individual participants at all.
+  Implemented as a straight count against `total_count`, rejecting with `sold_out` once full — no
+  waitlist (`Participant` has no such status; a real FIFO waitlist would need new modeling this
+  session didn't do). `source: :client_api` — reused an existing enum value, not a new one.
+- [x] Revalidation webhook contract — `PublicSiteRevalidator`/`PublicSiteRevalidationJob`,
+  `POST {PUBLIC_SITE_REVALIDATE_URL}` with header `X-Revalidate-Secret`. Fires on `Event`
+  (CONTENT_ATTRIBUTES/`published_at` changes) and `EventPage` (any save) via `after_commit` —
+  deliberately **not** wired to `RegistrationForm`/`CustomField` changes in this pass (scoped down;
+  the 5-minute time-based `revalidate: 300` fallback covers those). No-ops silently when
+  `PUBLIC_SITE_REVALIDATE_URL` isn't set — that's the expected default, not a failure.
 
-- [ ] **One single public read endpoint, not two** (confirmed): earlier drafts of this doc talked
-  about "the event-show endpoint" and "the HTML" as if separate concerns — they're the same call.
-  `GET /api/v1/public/events/:slug` returns `content_html` (Phase 25.5's `EventHtmlParser` output,
-  sentinel intact), `registration_schema` (catalog + custom fields from the event's applicable
-  `RegistrationForm`(s), keyed by ticket category), and the handful of plain structured fields
-  (name, dates, `seats_remaining`) `generateMetadata` needs for OG/social tags — all in one
-  response. There is no second, JSON-only "event show" endpoint behind this one; the requirement.md
-  §4.9 "two endpoints" MVP surface stays exactly two (this one, read; register-participant, write)
-  — it was never meant to imply a *third* concept sitting between them.
-- [ ] **Revalidation webhook contract**: `POST /api/revalidate` on the Next.js side (built in Phase
-  26 below), called by Rails — a small shared-secret header (or reuse a signed request, HMAC over
-  the body) — every time an `Event`, its `EventPageTemplate`, or its `RegistrationForm` changes in
-  a way that affects the public page. Wire this as an `after_commit` on the relevant models (or a
-  single service both the wizard's `update`/`publish!` actions and the template picker call into),
-  not scattered ad hoc calls.
-- [ ] **`domain_resolution` endpoint** (§4.3, referenced but not yet built): `GET
-  /api/v1/public/domain_resolution?host=...&path=...` — looks up `TenantDomain.find_by(domain:
-  host, verified_at: not nil)` first (this covers an apex *and* a subdomain-shaped custom domain
-  identically, since it's a plain exact-string match — no special-casing needed for
-  `events.tenant.com` vs `tenant.com`), falling back to `Hosting::Resolver`'s existing
-  subdomain-label parsing + a `tenant_slug` path segment on the shared default domain otherwise.
-  Response: `{ account_slug, kind }` or 404. Short-TTL-cacheable by the caller (no per-request
-  Rails round-trip needed on every Next.js request).
+### Definition of Done (additive)
+- [x] Request spec: `content_html` matches `EventPage#html` exactly, verbatim.
+- [x] Request spec: `published` reflects `Event#published?` correctly; draft → 200, not 404.
+- [x] Request spec: `domain_resolution` resolves a verified custom domain and the shared-subdomain
+  case; unverified/unknown hosts resolve to neither (404); credentials only included with the right
+  shared secret.
+- [x] Request spec: the revalidation webhook rejects a request without the correct shared secret.
+- [x] Request spec: register-participant enforces dedupe, capacity, and approval-gated status;
+  404s for an unknown ticket category.
 
-### Definition of Done (additive to existing Phase 25 DoD)
-- [ ] Request spec: event-show response includes `content_html` with the sentinel still present,
-  unsubstituted.
-- [ ] Request spec: `domain_resolution` resolves a verified apex custom domain, a verified
-  subdomain-shaped custom domain, and the shared-domain-plus-path-segment case, each to the correct
-  `Account`; an unverified or unknown host resolves to neither (404).
-- [ ] Request spec: the revalidation webhook rejects a request without the correct shared secret.
+## Phase 26 (revision 2) — Next.js Public Event Site — **Shipped 2026-07-30**
 
-## Phase 26 (revision) — Next.js Public Event Site
+> **URL structure, corrected twice, same general area (2026-07-30 then 2026-07-31 — both direct
+> user corrections):** three public URL shapes are supported, not one:
+> 1. Shared default domain + path (added 2026-07-30): `{platform-public-domain}/events/{tenantSlug}/{eventSlug}`
+>    — e.g. `localhost:5173/events/xaniel/aws-summit-2027` locally. Tenant identified by **URL
+>    path**, not Host, since every visitor on the shared domain has the same Host.
+> 2. Tenant's own subdomain (kept 2026-07-31, after briefly being dropped in favor of (1) — see
+>    below): `{tenantSlug}.{platform_domain}/events/{eventSlug}`. Host-based.
+> 3. Tenant's own verified custom domain: `{tenant-domain}/events/{eventSlug}` — e.g.
+>    `https://xaniel.com/events/aws-summit-2027`. Also Host-based.
+>
+> (2) and (3) turned out to need **zero code differences between them** — `lib/server/rails.ts#
+> resolveDomain` was already generic, it just asks Rails' `domain_resolution`, which tries a
+> verified `TenantDomain` first then falls back to `Hosting::Resolver`'s own subdomain-label
+> parsing; the route serving both never cared which branch answered. Only the route's own comments
+> (previously describing it as custom-domain-only, from the 2026-07-30 pass before (2) was asked
+> to come back) needed correcting, not new logic — worth checking whether an existing generic
+> resolver already covers a "bring feature X back" ask before adding new routing for it.
+>
+> Routes ended up as `app/events/[slug]/page.tsx` (shapes (2) and (3), both Host-based) and
+> `app/events/[slug]/[eventSlug]/page.tsx` (shape (1) — same outer folder name is a Next.js
+> constraint, not a choice: sibling routes at one tree position must share one dynamic-segment
+> name; that outer `slug` means the *tenant's* slug on this route, the *event's* slug on the
+> other). `lib/server/rails.ts#resolveDomainForAccountSlug` is shape (1)'s own resolver — builds a
+> synthetic `{tenantSlug}.{platform_domain}` host and feeds it through the exact same
+> `domain_resolution` call shapes (2)/(3) use, zero Rails-side changes needed. `/api/register` and
+> the RTK Query mutation both gained an optional `accountSlug` field for the same reason (Host
+> alone can't disambiguate a tenant on the shared domain, shape (1) only). One more real bug found
+> and fixed during this pass: the revalidation cache tag was just `event:{slug}`, but `Event`'s own
+> `friendly_id` is scoped per-account (`use: :scoped, scope: :account_id`), so two tenants sharing
+> an event slug could cross-invalidate
+> each other's cached page — fixed to `event:{accountSlug}:{eventSlug}` on both sides. Every
+> checklist item below still describes what was actually built; only the URL shape it mentions
+> (`[slug]`) predates the three-shape structure this note now describes.
 
-Builds on the existing Phase 26 checklist in `implementation_3.md`. What this doc adds/changes:
+- [x] `frontend/` restored (Confirmed decision #1).
+- [x] Domain resolution happens inline, server-side, inside the event page's own Server Component
+  (`lib/server/rails.ts#resolveDomain`, called from `app/events/[slug]/page.tsx`) — **no
+  `proxy.ts`/middleware needed** for this. (Next.js 16 renamed Middleware to Proxy — confirmed
+  against `node_modules/next/dist/docs` before writing any of this, per `frontend/AGENTS.md`'s own
+  warning that this version has real breaking changes vs. training data. Worth re-reading those
+  docs fresh for any *future* Next.js work here too, not just this session's.)
+- [x] Client-credentials token fetch — server-only (`lib/server/rails.ts#getAccessToken`), in-memory
+  cached per account with a 30s expiry safety margin. **No refresh-token rotation** — this app's
+  Doorkeeper config has `refresh_token_enabled? == false`, so a expired token is simply
+  re-requested with the same client_id/secret; there's no interactive-consent step client_credentials
+  needs a refresh token to avoid repeating.
+- [x] Event page (Server Component) — uses the **"Previous Model"** `fetch(url, { next: { tags,
+  revalidate: 300 } })` caching API, not the newer Cache Components (`use cache`/`cacheTag`) one —
+  confirmed `next.config.ts` doesn't set `cacheComponents: true`, so the installed docs' "Previous
+  Model" guide is the one that actually applies here. Branches on `published`/`content_html` exactly
+  per Confirmed decision #5. Renders `content_html` via `dangerouslySetInnerHTML` directly, no
+  split/sentinel handling — that entire category of complexity the first draft worked through above
+  never had to be built.
+- [x] Fixed **"Register" button** → `<RegistrationModal />` (Client Component) → `<RegistrationForm
+  />`, entirely data-driven from `registration_schema`, RTK Query (`registrationApi.ts`) mutation
+  through `/api/register`. Redux store is created per-mount (`store/provider.tsx`, scoped to just
+  this component tree), not app-wide.
+- [x] `<DefaultEventPage />` — withholds real event details entirely (no `event` prop) when
+  unpublished; shows the structured fields when published-but-no-`content_html`.
+- [x] `generateMetadata` — sourced from structured fields; also gated on `published` (an
+  unpublished event's real name/description don't leak via the browser tab/social preview either —
+  a gap the first pass of this build initially missed, caught before shipping).
+- [x] `POST /api/register` route handler — thin proxy.
+- [x] `POST /api/revalidate` route handler — verifies `PUBLIC_SITE_REVALIDATE_SECRET`, calls
+  `revalidateTag(tag, "max")`. **Second argument is required** by this installed Next.js version's
+  own type signature even on the "Previous Model" path (the docs' one-arg examples don't type-check
+  against this runtime) — `"max"` per the documented stale-while-revalidate profile.
+- [ ] **Not built this session:** public live "seats remaining" ticker (Action Cable) — no
+  real-time piece was wired up; **not built:** `TenantDomain` custom-domain flow end-to-end (admin
+  UI to add a domain, DNS-verification job, Caddy on-demand TLS wiring) — this remains genuinely
+  infra-level work, same "can run in parallel, not blocking" scoping this doc always gave it.
+- [ ] **Known, flagged gap:** photo/document/file-type custom fields aren't wired for public
+  registration — `attach_tenant_scoped`/`attach_custom_field_file` on the Rails side both already
+  accept a real multipart file with zero changes needed, so this becomes free once `/api/register`
+  relays multipart instead of JSON; not done this session. A required file field today surfaces
+  Rails' ordinary "can't be blank" validation error, not a broken endpoint.
 
-- [ ] Restore or recreate `frontend/` — confirm with the user first whether `20c675c`'s deletion
-  was intentional (this doc's own earlier flag); if not, `git show 9dc480f -- frontend` has the
-  original scaffold.
-- [ ] Domain-resolution middleware calls Phase 25's `domain_resolution` endpoint (not a
-  reimplementation of `Hosting::Resolver`'s logic in TypeScript) — short-TTL in-memory/edge cache
-  (e.g. 60s) so this doesn't add a round-trip per request.
-- [ ] Client-credentials token fetch/refresh — server-only (route handlers/server actions), per
-  this doc's BFF description; never shipped to the browser bundle.
-- [ ] Event page: `fetch(eventShowUrl, { next: { tags: [`event:${slug}`], revalidate: 300 } })`,
-  rendered in a **Server Component**. Split `content_html` on the `{{register_form}}` sentinel
-  constant (shared/duplicated from Phase 25.5's Ruby constant — keep the two in sync, e.g. via a
-  small generated/shared constants file or just a code comment cross-referencing both sides) and
-  render three pieces in order: first HTML half (`dangerouslySetInnerHTML`), `<RegistrationForm />`
-  (Client Component), second HTML half.
-- [ ] `<RegistrationForm />`: renders from the event-show response's `registration_schema` (passed
-  down as a prop from the Server Component that already fetched it — no second fetch of the same
-  data just to hand it to the form). Respects existing dedupe/uniqueness rules
-  (`RegistrationForm::UNIQUENESS_FIELDS`) and capacity/waitlist behavior — no new rules invented
-  client-side, this component is a renderer for rules Rails already enforces server-side.
-  Basic accessibility pass here specifically (existing Phase 26 DoD item).
-- [ ] **RTK Query for the registration form's data layer** (confirmed): a small Redux store scoped
-  to the registration island only (not the whole app — most of the page is plain server-rendered
-  content with nothing to put in a client store), created via `createApi`/`fetchBaseQuery`, one
-  `registerParticipant` mutation endpoint. Two things this must get right:
-  - **`baseUrl` points at a Next.js-hosted route handler** (e.g. `/api/register`), never at Rails'
-    OAuth-protected endpoint directly — the browser must keep going through the BFF exactly as
-    everywhere else in this design; that Next.js route handler is what actually holds the
-    client-credentials token server-side and forwards the call to Rails' register-participant
-    endpoint. Pointing RTK Query straight at Rails from the browser would both break the BFF
-    invariant and require shipping a bearer token into client JS — don't do that.
-  - **Scope it to the mutation, not the initial page data** — `content_html` and
-    `registration_schema` stay on the Server Component's plain `fetch` + Next cache-tag path
-    already described above; don't also wire an RTK Query `useQuery` to refetch the same payload
-    client-side; that's a second, competing cache for data the page already has server-rendered.
-  - RTK Query's built-in `isLoading`/`isError`/`isSuccess` states drive the form's submit button
-    and surface Rails' own validation errors (duplicate registration, sold-out category → waitlist
-    routing) directly from the mutation's error payload — no separate hand-rolled fetch/state
-    juggling.
-  - `invalidatesTags`/manual re-fetch on a successful submit can drive an optimistic client-side
-    bump to a displayed seat count as an immediate-feedback nicety; the real-time ticker below
-    stays the authoritative live number via Action Cable regardless, RTK Query isn't a
-    replacement for that push channel, only for the request/response mutation lifecycle.
-- [ ] `generateMetadata`: sourced from the event-show response's plain structured fields (name,
-  description, banner), not parsed out of `content_html`.
-- [ ] `POST /api/register` route handler: RTK Query's `baseUrl` target — holds/refreshes the
-  client-credentials token server-side (same token logic the event-page fetch already uses),
-  forwards the request body to Rails' register-participant endpoint, passes its response/status
-  straight back. Thin proxy, no business logic of its own.
-- [ ] `POST /api/revalidate` route handler: verifies Phase 25's shared secret, calls
-  `revalidateTag(`event:${slug}`)`.
-- [ ] Public live "seats remaining" ticker: `@rails/actioncable` subscription to
-  `PublicEventLiveChannel`, same sentinel-split technique if your team wants it embedded inline in
-  the custom template rather than in a fixed page slot.
-- [ ] `TenantDomain` custom-domain flow made real end-to-end: admin console form to add a domain →
-  `TenantDomain(kind: :custom)` row + DNS target shown → background job polls DNS → `verified_at`
-  set → Caddy on-demand TLS asks Rails to confirm verification before issuing a cert (both apex and
-  subdomain-shaped domains handled identically, per Phase 25's `domain_resolution` above).
+### Definition of Done (additive/changed)
+- [x] **Manually verified live** (not an automated E2E suite — no Playwright/Cypress is set up in
+  `frontend/` at all yet, so none of this doc's original "E2E spec" DoD items below have a real
+  automated test backing them, only the live verification described here): created a real event,
+  set custom `content_html` including a `<script>` tag, confirmed it executes unmodified in the
+  actual rendered response (no-sanitization decision genuinely in effect); confirmed the
+  unpublished → `<DefaultEventPage />`-no-button / published-no-html → default-page-with-button /
+  published-with-html → custom-page-with-button branching all render correctly; edited
+  `EventPage#html` via the admin console and confirmed the Sidekiq-processed webhook actually
+  invalidated the Next.js cache (`POST /api/revalidate 200` observed, followed by the updated
+  content on next request, all without a redeploy); submitted a real registration through the full
+  browser → Next.js `/api/register` → Rails pipeline and confirmed a real `Participant` was created
+  (`source: client_api`) with the event's own dedupe rule correctly rejecting a repeat submission
+  and the capacity check correctly rejecting once a category filled.
+- [ ] Not verified: the subdomain-shaped custom domain path (`TenantDomain` E2E) — no custom domain
+  flow exists yet (see above).
+- [x] Manual check: confirmed no OAuth token/secret appears anywhere in a browser-facing response —
+  every request from the client goes to this app's own `/api/register`, never directly to Rails
+  (`lib/server/rails.ts` is a server-only module; `RAILS_APEX_URL`/`PUBLIC_SITE_SHARED_SECRET` are
+  never `NEXT_PUBLIC_`-prefixed and are never imported from a `"use client"` file).
 
-### Definition of Done (additive to existing Phase 26 DoD)
-- [ ] E2E spec: a template-driven event page renders the hand-authored HTML correctly with the
-  registration form appearing exactly where the sentinel was placed in the source template.
-- [ ] E2E spec: editing a shared `EventPageTemplate` and hitting the revalidation webhook updates
-  the live public page within the test's own polling window, without a full redeploy.
-- [ ] E2E spec: the same event resolves identically on the shared subdomain+slug path and on a
-  mock **subdomain-shaped** custom domain (e.g. `events.mock-tenant.test`), not just an apex one.
-- [ ] Security spec/manual check: an organizer-entered `<script>` in the event description (Phase
-  25.5's own sanitization) never executes when the page is loaded in a real browser — the one test
-  that actually proves the `dangerouslySetInnerHTML` boundary holds, not just that the Ruby-side
-  sanitizer runs.
-- [ ] E2E spec: submitting via the RTK Query mutation creates a real `Participant`, visible in the
-  admin console — same assertion the existing Phase 26 DoD already has, now specifically exercising
-  the RTK Query path rather than a generic form submit.
-- [ ] E2E spec: a duplicate/sold-out registration attempt surfaces Rails' actual validation error
-  in the UI via the mutation's error state, not a generic/swallowed failure.
-- [ ] Manual check: confirm no OAuth token or secret is ever visible in the browser's network tab
-  — every request the browser makes goes to `/api/register` (this app's own origin), never
-  directly to Rails.
+**Real bug caught and fixed during live verification, worth flagging for anyone touching this
+later:** a browser's `Host` header includes a port on any non-default port (`xaniel.lvh.me:5173`
+locally) — Rails' `Hosting::Resolver`/`TenantDomain` lookups assume a bare hostname (`request.host`
+strips the port automatically everywhere else in the app; a raw `?host=` query param does not).
+This silently 404ed every single request until fixed on both sides: `lib/server/rails.ts#resolveDomain`
+strips the port before calling Rails, and `DomainResolutionsController#show` also strips it
+independently (defense in depth — any future caller passing a port shouldn't have to know this).
 
 ## Suggested build order
 
-1. Phase 25.5 (template library + `EventHtmlParser`) — pure Rails, testable via request specs with
-   no frontend dependency at all, same reasoning the existing Phase 25 doc already gives for why
-   Phase 25 comes before Phase 26.
-2. Phase 25 revision (API surface + `domain_resolution` + revalidation contract) — still pure
-   Rails/`curl`-testable.
-3. Decide the `frontend/` restoration question (this doc's open question #1) — blocks Phase 26
-   specifically, nothing before it.
-4. Phase 26 revision (Next.js) — the only phase that needs a second runtime at all.
-5. Caddy/infra wiring for custom domains — can happen in parallel with (4) once Phase 25's
-   `domain_resolution` endpoint exists to point it at.
+**Steps 1–3 shipped 2026-07-30 (see the "Shipped" phase sections above); step 4 remains.**
+
+1. Phase 25.5 (revision 2) — pure Rails: model, admin nav item + editor, authorization. Fully
+   testable with no frontend dependency at all.
+2. Phase 25 (revision 2) — API surface returning `content_html` + `published` + `registration_schema`.
+   Still `curl`-testable.
+3. Phase 26 (revision 2) — Next.js: `frontend/` already restored, nothing blocking this now.
+   `<DefaultEventPage />`, "Register" button + modal, RTK Query mutation, revalidation webhook.
+4. Custom-domain/Caddy wiring — unchanged from the "Custom domain handling" section above, can run
+   in parallel with (3) once Phase 25's `domain_resolution` endpoint exists to point it at.
+
+## Note on the sections above
+
+The "Tenant-customizable show/registration HTML" and "Feasibility check" sections earlier in this
+doc describe the first draft's shared-library, sentinel-embedded, sanitize-on-substitution design.
+They're superseded by the Implementation Plan above for anything actually being built, and kept
+in place only as the reasoning trail — the security-model discussion there (what's trusted vs.
+not) is still relevant background even though the concrete mechanism changed.

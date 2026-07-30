@@ -311,6 +311,20 @@ CREATE TABLE public.event_live_stats (
 
 
 --
+-- Name: event_pages; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.event_pages (
+    id uuid NOT NULL,
+    account_id uuid NOT NULL,
+    event_id uuid NOT NULL,
+    html text DEFAULT ''::text NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: event_staff_assignments; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1064,6 +1078,14 @@ ALTER TABLE ONLY public.event_live_stats
 
 
 --
+-- Name: event_pages event_pages_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.event_pages
+    ADD CONSTRAINT event_pages_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: event_staff_assignments event_staff_assignments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1614,6 +1636,20 @@ CREATE INDEX index_event_live_stats_on_account_id ON public.event_live_stats USI
 --
 
 CREATE UNIQUE INDEX index_event_live_stats_on_event_id ON public.event_live_stats USING btree (event_id);
+
+
+--
+-- Name: index_event_pages_on_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_event_pages_on_account_id ON public.event_pages USING btree (account_id);
+
+
+--
+-- Name: index_event_pages_on_event_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_event_pages_on_event_id ON public.event_pages USING btree (event_id);
 
 
 --
@@ -2465,6 +2501,14 @@ ALTER TABLE ONLY public.accounts
 
 
 --
+-- Name: event_pages fk_rails_3947e483b4; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.event_pages
+    ADD CONSTRAINT fk_rails_3947e483b4 FOREIGN KEY (event_id) REFERENCES public.events(id);
+
+
+--
 -- Name: agency_memberships fk_rails_3bdac11d3b; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2830,6 +2874,14 @@ ALTER TABLE ONLY public.scan_events
 
 ALTER TABLE ONLY public.invoices
     ADD CONSTRAINT fk_rails_aa64c7515d FOREIGN KEY (event_id) REFERENCES public.events(id);
+
+
+--
+-- Name: event_pages fk_rails_aafef80576; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.event_pages
+    ADD CONSTRAINT fk_rails_aafef80576 FOREIGN KEY (account_id) REFERENCES public.accounts(id);
 
 
 --
@@ -3454,6 +3506,7 @@ ALTER TABLE public.ticket_reservations ENABLE ROW LEVEL SECURITY;
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260730170000'),
 ('20260730150000'),
 ('20260719080100'),
 ('20260719080000'),

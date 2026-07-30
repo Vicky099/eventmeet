@@ -184,6 +184,18 @@ RSpec.describe "Admin Console events", type: :request do
       expect(event.reload.name).to eq("Renamed")
     end
 
+    it "enqueues a public-site revalidation when a CONTENT_ATTRIBUTES field changes, doc/public_event_site_options.md's own webhook contract" do
+      Current.account = account
+      event = create(:event, account: account, name: "Original Name")
+
+      expect {
+        patch admin_event_path(event), params: {
+          step: "basic_info",
+          event: { name: "Renamed", mode: "on_site", starts_at: event.starts_at, ends_at: event.ends_at, address: event.address }
+        }
+      }.to have_enqueued_job(PublicSiteRevalidationJob).with(event.id)
+    end
+
     # Phase 14 — Reporting, Import/Export & Analytics (requirement.md §5.11): "Scheduled report
     # delivery (emailed weekly/daily summary to organizers)" — organizer opt-in.
     it "saves the scheduled_report_frequency setting" do
@@ -390,6 +402,8 @@ RSpec.describe "Admin Console events", type: :request do
       expect(response.body).to include(admin_event_registration_forms_path(event))
       expect(response.body).to include(admin_event_participants_path(event))
       expect(response.body).to include(admin_event_scan_events_path(event))
+      expect(response.body).to include("Event Page")
+      expect(response.body).to include(edit_admin_event_event_page_path(event))
     end
 
     # Same "back to the list" pattern shopmate-backend's own sidebar uses once a tenant is

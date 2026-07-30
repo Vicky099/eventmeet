@@ -85,6 +85,9 @@ class Event < ApplicationRecord
   has_many :scan_events
   has_many :attendances
   has_one :event_live_stats, dependent: :destroy
+  # Phase 25.5 — Public Event Site (doc/public_event_site_options.md) — this event's own public
+  # page HTML, edited via Admin::EventPagesController's "Event Page" workspace tab.
+  has_one :event_page, dependent: :destroy
   has_many :import_files, dependent: :destroy
   has_many :export_files, dependent: :destroy
   # requirement.md revisit: "we will upload that [government ID] list, this will be stored in
@@ -153,6 +156,14 @@ class Event < ApplicationRecord
   # category needs clearing too, not just the event's own seat_limit.
   before_validation :clear_category_total_counts_unless_seat_limited
   before_save :revert_to_draft_if_published_content_changed
+  # Phase 25 — Public Event Site API (doc/public_event_site_options.md). Best-effort on-demand
+  # cache invalidation, scoped to what actually changes what the public page shows: publish state
+  # and CONTENT_ATTRIBUTES. Not wired to every model that theoretically feeds the public payload
+  # (RegistrationForm/CustomField changes, say) — deliberately scoped down for this pass; the
+  # Next.js side's own 5-minute `revalidate: 300` TTL is the fallback for anything not covered
+  # here, same "best-effort, not the only path to freshness" reasoning PublicSiteRevalidator's own
+  # comment gives.
+  after_commit :notify_public_site_change, if: -> { saved_change_to_published_at? || (CONTENT_ATTRIBUTES & saved_changes.keys).any? }
   # Fixed-hierarchy pivot (requirement.md revisit): runs after agency_contract_must_be_active has
   # already passed (a before_create callback, not before_validation — this must never fire on a
   # record that's about to be rejected anyway, same "validate first, mutate second" ordering every
@@ -342,6 +353,10 @@ class Event < ApplicationRecord
   end
 
   private
+
+  def notify_public_site_change
+    PublicSiteRevalidationJob.perform_later(id)
+  end
 
   # Fixed-hierarchy pivot (requirement.md revisit): the sole gate on event creation now.
   # `account.agency` nil covers the legacy-standalone-tenant edge case (§2's own comment — Super

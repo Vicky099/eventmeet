@@ -38,6 +38,10 @@ module AdminHelper
       # the page has always actually been.
       { path: admin_event_path(event), icon: "bx-line-chart", label: "Analytics" },
       { path: admin_event_registration_forms_path(event), icon: "bx-list-check", label: "Design Registration Form" },
+      # Phase 25.5 — Public Event Site (doc/public_event_site_options.md, Confirmed decision #3):
+      # per-event public page HTML, alongside the other registration-experience configuration
+      # entries above/below, not the account-level nav.
+      { path: edit_admin_event_event_page_path(event), icon: "bx-globe", label: "Event Page" },
       # Phase 13 — Communications, revisited (requirement.md §3.10): "Custom email will be new
       # sidebar menu" — confirmed per-event, so it lives in this event-workspace nav, alongside the
       # other registration-experience configuration entries, not the account-level nav above.
