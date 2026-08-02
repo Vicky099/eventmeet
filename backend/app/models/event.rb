@@ -86,7 +86,9 @@ class Event < ApplicationRecord
   has_many :attendances
   has_one :event_live_stats, dependent: :destroy
   # Phase 25.5 — Public Event Site (doc/public_event_site_options.md) — this event's own public
-  # page HTML, edited via Admin::EventPagesController's "Event Page" workspace tab.
+  # page (a numbered template assignment, or raw "Custom HTML"). Edited via
+  # AgencyConsole::EventPagesController (doc/event_page_templates_plan.md, Stage 3) — moved off
+  # the tenant Admin Console's own "Event Page" workspace tab entirely, not just relabeled.
   has_one :event_page, dependent: :destroy
   has_many :import_files, dependent: :destroy
   has_many :export_files, dependent: :destroy

@@ -52,6 +52,16 @@ class RegistrationForm < ApplicationRecord
   validates :uniqueness_fields, presence: { message: "select at least one field to detect duplicates by" }
   validate :uniqueness_fields_recognized
 
+  # Event's own identical hook (app/models/event.rb) only watches Event's own columns — its
+  # comment there admits catalog_fields/custom_fields edits here were "deliberately scoped down
+  # for this pass," left to self-heal on the 5-minute revalidate: 300 TTL. That gap is exactly
+  # what let a real organizer's field edit (enabling/disabling a catalog field) go unreflected on
+  # the public register page — fixing it the same way EventPage's own hook does: unconditional,
+  # since an admin editing a form is low-frequency and the job itself is a cheap no-op when
+  # PUBLIC_SITE_REVALIDATE_URL isn't configured. Also covers custom_fields nested-attributes saves
+  # (accepts_nested_attributes_for above) — those always go through this record's own #save too.
+  after_commit :notify_public_site_change
+
   # Reader override, not an after_initialize callback — a callback only fires once, at
   # construction, so it can't paper over a *partial* hash assigned later via a plain `catalog_fields
   # = {...}`/`update!(catalog_fields: {...})` (exactly how FactoryBot's attribute-by-attribute
@@ -89,5 +99,9 @@ class RegistrationForm < ApplicationRecord
     return if unrecognized.empty?
 
     errors.add(:uniqueness_fields, "includes an unrecognized field: #{unrecognized.to_sentence}")
+  end
+
+  def notify_public_site_change
+    PublicSiteRevalidationJob.perform_later(event_id)
   end
 end

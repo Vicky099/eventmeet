@@ -236,6 +236,33 @@ body[data-sidebar-size="sm"] {
   pointer-events: none;
 }
 
+/* Agency Console's Event Page screen (agency_console/event_pages/edit.html.erb,
+   doc/event_page_templates_plan.md Stage 3): "Custom HTML" is the select's blank option
+   (EventPage#template_key nil) — its textarea/preview only make sense when that's what's chosen,
+   same :has()-off-live-DOM-state technique as .seat-limit-fields above. `.event-page-template-block`
+   sits on the whole row, not just the <form> — the Preview column is a sibling of the form, not a
+   descendant, and :has() can only reach descendants of whatever element carries the class. */
+.custom-html-fields {
+  display: none;
+}
+
+.event-page-template-block:has(#event_page_template_key option[value=""]:checked) .custom-html-fields {
+  display: block;
+}
+
+/* Same screen's template thumbnails — one per numbered option (Stage 6 fills in the real
+   screenshots; the rule itself doesn't need to change once they exist), only the one matching the
+   select's current value shows. */
+.template-thumbnail {
+  display: none;
+}
+
+.event-page-template-block:has(#event_page_template_key option[value="template_1"]:checked) .template-thumbnail[data-template="template_1"],
+.event-page-template-block:has(#event_page_template_key option[value="template_2"]:checked) .template-thumbnail[data-template="template_2"],
+.event-page-template-block:has(#event_page_template_key option[value="template_3"]:checked) .template-thumbnail[data-template="template_3"] {
+  display: block;
+}
+
 /* Event dashboard analytics (admin/events/show.html.erb) — plain CSS bars, not a JS charting
    library, consistent with this app's general "avoid a second JS framework" ethos and this
    specific page's low data volume/cardinality (a handful of ticket categories, one status

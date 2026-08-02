@@ -53,12 +53,30 @@ RSpec.describe "Public event API", type: :request do
       expect(body["content_html"]).to eq("<h1>Hi</h1><script>alert(1)</script>")
       expect(body["published"]).to be true
       expect(body["name"]).to eq(event.name)
+      expect(body["template_key"]).to be_nil
       category_json = body["registration_schema"].find { |c| c["id"] == category.id }
       expect(category_json["name"]).to eq("General")
       expect(category_json["catalog_fields"]).to include("first_name")
     end
 
-    it "resolves a draft event with published: false and no content_html required" do
+    # doc/event_page_templates_plan.md, Stage 4 — one of "template_1".."template_3", reported
+    # exactly like content_html always has been: whatever this event's own EventPage row actually
+    # holds, with no separate draft-state branching in this controller (see the next example —
+    # the `published` gate alone is what Next.js keys its own fallback-page decision off of).
+    it "returns the assigned template_key when a numbered template is chosen instead of Custom HTML" do
+      event = create_event(status: :up_coming)
+      Current.account = account
+      event.update!(published_at: Time.current)
+      create(:event_page, event: event, account: account, template_key: :template_3)
+
+      get public_event_path(event.slug), headers: auth_headers
+
+      body = response.parsed_body
+      expect(body["template_key"]).to eq("template_3")
+      expect(body["content_html"]).to eq("")
+    end
+
+    it "resolves a draft event with published: false and no content_html/template_key required" do
       event = create_event(status: :draft)
 
       get public_event_path(event.slug), headers: auth_headers
@@ -66,6 +84,19 @@ RSpec.describe "Public event API", type: :request do
       expect(response).to have_http_status(:ok)
       expect(response.parsed_body["published"]).to be false
       expect(response.parsed_body["content_html"]).to be_nil
+      expect(response.parsed_body["template_key"]).to be_nil
+    end
+
+    it "reports a real template_key even on a still-draft event — the API doesn't gate on published, Next.js does" do
+      event = create_event(status: :draft)
+      Current.account = account
+      create(:event_page, event: event, account: account, template_key: :template_1)
+
+      get public_event_path(event.slug), headers: auth_headers
+
+      body = response.parsed_body
+      expect(body["published"]).to be false
+      expect(body["template_key"]).to eq("template_1")
     end
 
     it "404s for an unknown slug" do

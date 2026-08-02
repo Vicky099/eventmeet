@@ -1,0 +1,91 @@
+<% content_for :page_title, "Event Page — #{@event.name}" %>
+
+<%= render layout: "shared/page_header", locals: { icon: "bx-globe",
+  crumbs: [ { label: "Tenants", path: agency_accounts_path },
+            { label: @account.name, path: agency_account_events_path(@account) },
+            { label: "Event Page" } ] } do %>
+<% end %>
+
+<%# doc/event_page_templates_plan.md, Stage 3 — moved off the tenant Admin Console entirely
+    (Admin::EventPagesController deleted this same stage). Template 1-5 + Custom HTML in one
+    dropdown; picking a numbered template clears the stored `html` server-side on save
+    (EventPage#clear_html_when_template_selected) — the two are never simultaneously "live".
+    Thumbnails are placeholders (`image_tag` calls resolving to nothing yet) until Stage 6 adds the
+    real screenshots — CSS below already has the show/hide rule wired so nothing else needs to
+    change once those files exist. %>
+<%# event-page-template-block sits on the whole row (not just the <form>) — same "widest
+    reasonable scope" reasoning application.css's own seat-limit-block comment gives — since the
+    Preview column below is a *sibling* of the form, not a descendant of it, and :has() can only
+    reach descendants of whatever element carries the class. %>
+<div class="row g-3 event-page-template-block" data-controller="event-page-preview">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-body">
+        <%= form_with model: @event_page, url: agency_account_event_event_page_path(@account, @event), method: :patch do |f| %>
+          <div class="mb-3">
+            <%= f.label :template_key, "Template", class: "form-label" %>
+            <%= f.select :template_key,
+                  options_for_select(EventPage.template_keys.keys.map { |key| [ key.humanize, key ] }, @event_page.template_key),
+                  { include_blank: "Custom HTML" }, class: "form-select" %>
+            <div class="form-text">
+              Pick one of the 5 fixed designs, or "Custom HTML" to paste this event's own raw
+              markup below. Only an agency admin can change this — a tenant's own event_admin has
+              no access to this screen.
+            </div>
+          </div>
+
+          <%# Template thumbnails — one per numbered option, CSS-driven visibility off the select's
+              own live DOM state (same :has()-off-live-DOM-state technique the Basic Info step's
+              seat-limit fields already use), so the right one shows with no JS and no window where
+              it could show the wrong one. Not image_tag — this app's config/cloudinary.yml
+              `enhance_image_tag: true` mangles any URL string fed to image_tag (confirmed live:
+              it prefixes even a local Propshaft asset path with a Cloudinary folder path and
+              404s), same trap admin/events/_review_step.html.erb's own comment already documents
+              for attachment URLs. `tag.img` + `asset_path` sidesteps image_tag entirely. %>
+          <div class="mb-3 template-thumbnails">
+            <% EventPage.template_keys.each_key do |key| %>
+              <div class="template-thumbnail" data-template="<%= key %>">
+                <%= tag.img src: asset_path("event_page_templates/#{key}.png"), alt: key.humanize, class: "img-fluid rounded border" %>
+              </div>
+            <% end %>
+          </div>
+
+          <%# Custom HTML fields — shown only when "Custom HTML" (blank template_key) is selected. %>
+          <div class="custom-html-fields">
+            <div class="mb-3">
+              <%= f.label :html, "Page HTML", class: "form-label" %>
+              <%= f.text_area :html, rows: 20, class: "#{field_error_class(@event_page, :html)} font-monospace", style: "font-size: 13px;",
+                    data: { event_page_preview_target: "html", action: "input->event-page-preview#scheduleRefresh" } %>
+              <%= field_error_feedback(@event_page, :html) %>
+              <div class="form-text">
+                Paste this event's full public page markup. Rendered exactly as written — no
+                placeholders, no processing. Saving takes effect immediately; leave blank to fall
+                back to the public site's own default page.
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex align-items-center gap-3">
+            <%= link_to "Cancel", agency_account_events_path(@account), class: "btn btn-m btn-outline-secondary" %>
+            <%= f.submit "Save Event Page", class: "btn btn-m btn-primary ms-auto" %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5 custom-html-fields">
+    <div class="card">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span class="fw-semibold">Preview</span>
+        <button type="button" class="btn btn-m btn-outline-primary" data-action="event-page-preview#refresh">
+          <i class="bx bx-refresh"></i> Refresh Preview
+        </button>
+      </div>
+      <div class="card-body p-0">
+        <iframe data-event-page-preview-target="frame" title="Event page preview"
+                style="width: 100%; height: 620px; border: 0;"></iframe>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,6 +1,14 @@
 import type { PublicEvent } from "@/lib/server/rails";
+import { eventRegisterPath } from "@/lib/event-paths";
 import { DefaultEventPage } from "./default-event-page";
-import { RegistrationModal } from "./registration-modal";
+import { RegisterCta } from "./register-cta";
+import { EVENT_PAGE_TEMPLATE_REGISTRY } from "./templates/registry";
+
+function isKnownTemplateKey(
+  key: string,
+): key is keyof typeof EVENT_PAGE_TEMPLATE_REGISTRY {
+  return key in EVENT_PAGE_TEMPLATE_REGISTRY;
+}
 
 // The actual page body, shared by both route trees:
 //   app/events/[eventSlug]/page.tsx              — a tenant's own verified custom domain
@@ -18,6 +26,20 @@ export function PublicEventPage({
   eventSlug: string;
   accountSlug?: string;
 }) {
+  // doc/event_page_templates_plan.md, Stage 5 — a numbered template always wins over Custom HTML
+  // (same priority the backend's own EventPage#clear_html_when_template_selected already
+  // enforces server-side, mirrored here rather than trusted blindly), and — same as content_html
+  // already worked before this field existed — only once the event is actually published. Each
+  // Template*EventPage owns its own full page body (styles, vendor scripts, and its own in-page
+  // "Register" links, which point at the real register route below), so it's returned directly
+  // rather than composed inside the <main> below.
+  if (event.published && event.template_key && isKnownTemplateKey(event.template_key)) {
+    const TemplateComponent = EVENT_PAGE_TEMPLATE_REGISTRY[event.template_key];
+    return (
+      <TemplateComponent event={event} eventSlug={eventSlug} accountSlug={accountSlug} />
+    );
+  }
+
   return (
     <main>
       {!event.published ? (
@@ -32,11 +54,12 @@ export function PublicEventPage({
         <DefaultEventPage event={event} />
       )}
 
+      {/* doc/event_page_templates_plan.md revisit: registration is a real route
+          (app/events/.../register/page.tsx) now, not a modal — this is a plain link, no
+          client-side "open" state left to manage. */}
       {event.published && (
-        <RegistrationModal
-          slug={eventSlug}
-          accountSlug={accountSlug}
-          eventName={event.name}
+        <RegisterCta
+          href={eventRegisterPath(eventSlug, accountSlug)}
           ticketCategories={event.registration_schema}
         />
       )}

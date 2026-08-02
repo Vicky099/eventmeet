@@ -31,6 +31,13 @@ module Api
             meeting_link: event.meeting_link,
             published: event.published?,
             content_html: event.event_page&.html,
+            # doc/event_page_templates_plan.md, Stage 4 — one of "template_1".."template_3", or
+            # nil (Custom HTML, i.e. render content_html above — unchanged priority from before
+            # this field existed). No separate draft-state branching needed here: an unpublished
+            # event's EventPage row (if any) is still whatever it is, same as content_html already
+            # reports today — Next.js's own DefaultEventPage gate is what actually withholds it,
+            # keyed off `published` alone.
+            template_key: event.event_page&.template_key,
             seats_remaining: seats_remaining(event),
             registration_schema: event.ticket_categories.map { |ticket_category| ticket_category_json(ticket_category) }
           }

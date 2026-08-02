@@ -1,5 +1,18 @@
 @import "tailwindcss";
 
+/* doc/event_page_templates_plan.md, Stage 5 — the ported eventics templates' raw HTML is stored as
+   plain string literals (components/templates/raw/*.raw.ts), each containing thousands of that
+   vendored package's own Tailwind utility classes (already compiled once, verbatim, into
+   public/templates/assets/css/output.css — a static asset, not something this app's own Tailwind
+   build needs to re-generate). Without this exclusion, Tailwind v4's content scanner treats those
+   string literals as real class candidates anyway and tries to compile them into *this app's own*
+   globals.css bundle — including several `url(../assets/img/...)`-relative arbitrary-value
+   classes that only ever resolved relative to the original static HTML file's own location, never
+   to anything under this Next.js app, breaking the production build with
+   `Module not found: Can't resolve '../assets/img/...'`. Confirmed live: removing this exclusion
+   reproduces that exact build failure. */
+@source not "../components/templates/raw/**/*.ts";
+
 :root {
   --background: #ffffff;
   --foreground: #171717;

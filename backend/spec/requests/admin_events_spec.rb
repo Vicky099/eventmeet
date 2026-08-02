@@ -402,8 +402,19 @@ RSpec.describe "Admin Console events", type: :request do
       expect(response.body).to include(admin_event_registration_forms_path(event))
       expect(response.body).to include(admin_event_participants_path(event))
       expect(response.body).to include(admin_event_scan_events_path(event))
-      expect(response.body).to include("Event Page")
-      expect(response.body).to include(edit_admin_event_event_page_path(event))
+    end
+
+    # doc/event_page_templates_plan.md, Stage 3 — "Event Page" moved off this nav entirely (and
+    # its route was deleted, not just unlinked): a tenant's own event_admin has no path to it
+    # anymore, only the Agency Console does now (spec/requests/agency_console_event_pages_spec.rb).
+    it "no longer shows an Event Page nav entry or route" do
+      Current.account = account
+      event = create(:event, account: account)
+
+      get admin_event_path(event)
+
+      expect(response.body).not_to include("Event Page")
+      expect { edit_admin_event_event_page_path(event) }.to raise_error(NoMethodError)
     end
 
     # Same "back to the list" pattern shopmate-backend's own sidebar uses once a tenant is

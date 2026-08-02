@@ -1,0 +1,51 @@
+<% content_for :page_title, "#{@account.name} — Events" %>
+
+<%# doc/event_page_templates_plan.md, Stage 2 — read-only drill-down, existing solely to reach a
+    specific event's Event Page screen (Stage 3). Everything else about event management
+    (creating/editing an event, participants, tickets, ...) still happens on the tenant's own
+    Admin Console, reached via the "Switch to this tenant" action on agency/accounts#index. %>
+<%= render layout: "shared/page_header", locals: { icon: "bx-calendar-event",
+  crumbs: [ { label: "Tenants", path: agency_accounts_path }, { label: @account.name } ] } do %>
+<% end %>
+
+<div class="card">
+  <div class="card-body">
+    <% if @events.none? %>
+      <%= render "shared/empty_state", icon: "bx-calendar-event", message: "#{@account.name} has no events yet." %>
+    <% else %>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Event</th>
+              <th>Dates</th>
+              <th>Event Page</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @events.each do |event| %>
+              <tr>
+                <td><%= event.name %></td>
+                <td><%= event.starts_at&.to_fs(:long) %></td>
+                <td>
+                  <% if event.event_page&.template_key.present? %>
+                    <span class="badge bg-primary"><%= event.event_page.template_key.humanize %></span>
+                  <% elsif event.event_page.present? %>
+                    <span class="badge bg-secondary">Custom HTML</span>
+                  <% else %>
+                    <span class="badge bg-light text-dark">Not set</span>
+                  <% end %>
+                </td>
+                <td class="text-end">
+                  <%= link_to "Event Page", edit_agency_account_event_event_page_path(@account, event),
+                        class: "btn btn-m btn-outline-primary" %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  </div>
+</div>

@@ -320,7 +320,8 @@ CREATE TABLE public.event_pages (
     event_id uuid NOT NULL,
     html text DEFAULT ''::text NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
+    updated_at timestamp(6) without time zone NOT NULL,
+    template_key integer
 );
 
 
@@ -3506,6 +3507,9 @@ ALTER TABLE public.ticket_reservations ENABLE ROW LEVEL SECURITY;
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260802154955'),
+('20260802153714'),
+('20260802120000'),
 ('20260730170000'),
 ('20260730150000'),
 ('20260719080100'),

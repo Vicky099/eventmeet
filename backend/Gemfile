@@ -88,6 +88,11 @@ gem "friendly_id"
 gem "pagy", "~> 8.6"
 # Default throttle on public endpoints — requirement.md §7.4, §4.9 item 2
 gem "rack-attack"
+# Local-dev-only convenience for exercising Api::V1::Public:: directly from a browser against
+# *.lvh.me — see config/initializers/cors.rb for why this is scoped to development and to that
+# namespace only (requirement.md §7.4/§4.9's own "never a static wildcard" warning is about
+# production, not local dev).
+gem "rack-cors"
 # Phase 7 — Participant Lifecycle (requirement.md §3.11, §5.4): bulk XLSX participant
 # import/export, ported from the baseline's own gem choices.
 gem "roo"

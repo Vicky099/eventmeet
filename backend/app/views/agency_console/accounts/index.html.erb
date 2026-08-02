@@ -39,6 +39,10 @@
                 <td><%= @participant_counts_by_account.fetch(account.id, 0) %></td>
                 <td class="text-end">
                   <div class="d-flex justify-content-end gap-2">
+                    <%# doc/event_page_templates_plan.md, Stage 2 — the only entry point into a
+                        tenant's own event list from the Agency Console; everything else about
+                        managing an event itself still happens after "Switch to this tenant". %>
+                    <%= link_to "Events", agency_account_events_path(account), class: "btn btn-m btn-outline-secondary" %>
                     <% if account.active? %>
                       <%# data-turbo="false" — same cross-subdomain reasoning as the dashboard's
                           own identical button (app/views/agency_console/dashboard/index.html.erb's

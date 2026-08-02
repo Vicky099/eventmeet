@@ -8,6 +8,12 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname),
   },
+  // This app is only ever reached in local dev via a tenant/agency subdomain of lvh.me
+  // (xaniel.lvh.me, qa-tenant.lvh.me, ...), never bare "localhost" — Next.js's own dev-server
+  // origin check (blocks cross-origin HMR/asset requests by default) doesn't know that in
+  // advance, so every subdomain otherwise trips its "Blocked cross-origin request" warning and
+  // breaks Fast Refresh. Dev-only concern (this option has no effect in production).
+  allowedDevOrigins: ["lvh.me", "*.lvh.me"],
 };
 
 export default nextConfig;

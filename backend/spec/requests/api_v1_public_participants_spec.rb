@@ -33,6 +33,19 @@ RSpec.describe "Public participant registration API", type: :request do
     create(:ticket_category, event: event, account: account, registration_form: form, **attrs)
   end
 
+  # A real multipart upload, not fixture_file_upload's own fixed spec/fixtures/files path — same
+  # Tempfile + Rack::Test::UploadedFile shape spec/requests/admin_import_export_files_spec.rb's own
+  # fixture_file_upload_xlsx already uses, generalized for arbitrary bytes/content_type/filename.
+  def fixture_upload(filename, content_type, content)
+    extension = File.extname(filename)
+    Tempfile.create([ "upload", extension ]) do |tempfile|
+      tempfile.binmode
+      tempfile.write(content)
+      tempfile.flush
+      return Rack::Test::UploadedFile.new(tempfile.path, content_type, original_filename: filename)
+    end
+  end
+
   describe "POST /api/v1/public/events/:slug/participants" do
     it "requires a valid bearer token" do
       event = create_event
@@ -115,6 +128,99 @@ RSpec.describe "Public participant registration API", type: :request do
 
       post public_event_participants_path(event.slug), headers: auth_headers,
         params: { participant: { first_name: "Alice", last_name: "Smith", ticket_category_id: SecureRandom.uuid } }
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    # requirement.md revisit: "post registration ... download button" — the Next.js BFF needs
+    # this to build the download link immediately, with no separate lookup round-trip.
+    # requirement.md revisit: "photo and document should upload on select from frontend" —
+    # frontend/src/store/registrationApi.ts switches to a real multipart FormData body whenever
+    # either file is chosen (a File can't survive JSON.stringify), keyed
+    # `participant[photo]`/`participant[document]` per Rack's own nested-param convention; this is
+    # the first real HTTP-level exercise of Api::V1::Public::ParticipantsController#apply_uploads'
+    # already-built multipart branch (attach_tenant_scoped's non-String path), previously only
+    # covered indirectly via the admin console's signed_id/direct-upload flow.
+    it "attaches a photo and document uploaded as real multipart files, not just a signed_id" do
+      event = create_event
+      form = Event.unscoped_across_tenants { create(:registration_form, account: account, event: event, catalog_fields: { "photo" => true, "document" => true }) }
+      category = create_category(event, registration_form: form)
+      photo = fixture_upload("photo.png", "image/png", "fake photo bytes")
+      document = fixture_upload("id-card.pdf", "application/pdf", "fake document bytes")
+
+      post public_event_participants_path(event.slug), headers: auth_headers,
+        params: { participant: { first_name: "Alice", last_name: "Smith", email: "alice@example.com", ticket_category_id: category.id, photo: photo, document: document } }
+
+      expect(response).to have_http_status(:created)
+      Current.account = account
+      participant = Participant.find_by!(email: "alice@example.com")
+      expect(participant.photo).to be_attached
+      expect(participant.photo.filename.to_s).to eq("photo.png")
+      expect(participant.document).to be_attached
+      expect(participant.document.filename.to_s).to eq("id-card.pdf")
+    end
+
+    it "returns the new participant's hex_id" do
+      event = create_event
+      category = create_category(event)
+
+      post public_event_participants_path(event.slug), headers: auth_headers,
+        params: { participant: { first_name: "Alice", last_name: "Smith", email: "alice@example.com", ticket_category_id: category.id } }
+
+      Current.account = account
+      participant = Participant.find_by!(email: "alice@example.com")
+      expect(response.parsed_body["hex_id"]).to eq(participant.hex_id)
+    end
+  end
+
+  describe "GET /api/v1/public/events/:slug/participants/:hex_id/invitation" do
+    it "requires a valid bearer token" do
+      event = create_event
+      participant = create(:participant, account: account, event: event)
+
+      get public_event_participant_invitation_path(event.slug, participant.hex_id)
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "streams the same PDF ParticipantMailer#confirmation attaches to the confirmation email, without sending any mail" do
+      event = create_event
+      participant = create(:participant, account: account, event: event, email: "alice@example.com")
+
+      expect {
+        get public_event_participant_invitation_path(event.slug, participant.hex_id), headers: auth_headers
+      }.not_to change { ActionMailer::Base.deliveries.count }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq("application/pdf")
+      expect(response.headers["Content-Disposition"]).to include("attachment")
+      expect(response.headers["Content-Disposition"]).to include("invitation-#{participant.hex_id}.pdf")
+      expect(response.body).to start_with("%PDF")
+    end
+
+    it "matches hex_id case-insensitively, same as check-in/QR lookup already does" do
+      event = create_event
+      participant = create(:participant, account: account, event: event)
+
+      get public_event_participant_invitation_path(event.slug, participant.hex_id.downcase), headers: auth_headers
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "404s for an unknown hex_id" do
+      event = create_event
+
+      get public_event_participant_invitation_path(event.slug, "DEADBEEF0000"), headers: auth_headers
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "404s for a participant belonging to a different event" do
+      event = create_event
+      other_event = create_event(name: "Other Event")
+      participant = create(:participant, account: account, event: other_event)
+
+      get public_event_participant_invitation_path(event.slug, participant.hex_id), headers: auth_headers
 
       expect(response).to have_http_status(:not_found)
     end

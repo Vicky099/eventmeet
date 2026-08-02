@@ -1,0 +1,26 @@
+<svg width="107" height="107" viewBox="0 0 107 107" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_6438_1537)">
+<mask id="mask0_6438_1537" style="mask-type:luminance" maskUnits="userSpaceOnUse" x="0" y="0" width="107" height="107">
+<path d="M107 107L0 107L0 0.450996L107 0.450996L107 107Z" fill="white"/>
+</mask>
+<g mask="url(#mask0_6438_1537)">
+<path d="M12.0263 105.18L1.81982 94.9732" stroke="#1260FE" stroke-width="3.63995" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1.81982 105.18L12.0263 94.9732" stroke="#1260FE" stroke-width="3.63995" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M12.0263 58.8359L1.81982 48.6149" stroke="#1260FE" stroke-width="3.63995" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1.81982 58.8359L12.0263 48.6149" stroke="#1260FE" stroke-width="3.63995" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M12.0263 12.4766L1.81982 2.26987" stroke="#1260FE" stroke-width="3.63995" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1.81982 12.4766L12.0263 2.26987" stroke="#1260FE" stroke-width="3.63995" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M58.6034 58.8359L48.397 48.6149" stroke="#1260FE" stroke-width="3.63995" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M48.397 58.8359L58.6034 48.6149" stroke="#1260FE" stroke-width="3.63995" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M58.6034 12.4766L48.397 2.26987" stroke="#1260FE" stroke-width="3.63995" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M48.397 12.4766L58.6034 2.26987" stroke="#1260FE" stroke-width="3.63995" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M105.18 12.4766L94.9736 2.26987" stroke="#1260FE" stroke-width="3.63995" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M94.9736 12.4766L105.18 2.26987" stroke="#1260FE" stroke-width="3.63995" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</g>
+<defs>
+<clipPath id="clip0_6438_1537">
+<rect width="107" height="107" fill="white" transform="matrix(1 0 0 -1 0 107)"/>
+</clipPath>
+</defs>
+</svg>

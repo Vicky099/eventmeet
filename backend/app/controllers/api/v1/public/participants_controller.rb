@@ -25,10 +25,38 @@ module Api
           apply_uploads(participant)
 
           if participant.save
-            render json: { id: participant.id, status: participant.status }, status: :created
+            # `hex_id` included so the Next.js BFF can build a download link for #invitation below
+            # immediately after a successful registration, with no session/lookup round-trip of
+            # its own — same globally-unique, already-public-facing token
+            # Participant#find_by_identifier/QR-scanning already treat as sufficient to identify
+            # one participant (see that method's own comment), not a new trust decision.
+            render json: { id: participant.id, status: participant.status, hex_id: participant.hex_id }, status: :created
           else
             render json: { error: "validation_failed", errors: participant.errors.to_hash(full_messages: true) }, status: :unprocessable_content
           end
+        rescue ActiveRecord::RecordNotFound
+          head :not_found
+        end
+
+        # requirement.md revisit: "post registration show ... a download button. That button will
+        # download the invitation PDF, which we are sending when we register participant" — the
+        # exact same PDF `ParticipantMailer#confirmation` already attaches to the confirmation
+        # email (`RegistrationPdfService`-rendered HTML, `registration-#{hex_id}.pdf`), just never
+        # previously retrievable outside that one email send. Deliberately reuses the mailer
+        # itself rather than re-implementing "which HTML/template applies" (custom EmailTemplate
+        # vs. the built-in view) a second time: `ParticipantMailer.confirmation(participant).message`
+        # builds the real `Mail::Message` (running the exact same branch, attaching the exact same
+        # PDF bytes) without delivering it — no email is sent by hitting this endpoint, confirmed
+        # against ActionMailer::Base's own `MessageDelivery#message` (renders/builds only, `#deliver_now`/
+        # `#deliver_later` are separate, never-called steps here).
+        def invitation
+          event = Current.account.events.friendly.find(params[:slug])
+          participant = event.participants.find_by!(hex_id: params[:hex_id].to_s.upcase)
+
+          message = ParticipantMailer.confirmation(participant).message
+          pdf = message.attachments["registration-#{participant.hex_id}.pdf"].body.raw_source
+
+          send_data pdf, filename: "invitation-#{participant.hex_id}.pdf", type: "application/pdf", disposition: "attachment"
         rescue ActiveRecord::RecordNotFound
           head :not_found
         end

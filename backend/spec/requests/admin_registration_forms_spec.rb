@@ -190,6 +190,20 @@ RSpec.describe "Admin Console registration forms", type: :request do
       expect(response.body).not_to include("isn&#39;t assigned to any ticket category yet")
     end
 
+    # The public register page's field list is served from Next.js's 5-minute fetch cache
+    # (frontend's own eventCacheTag) — without this, an organizer's catalog-field edit here
+    # silently doesn't show up on the public site until that TTL expires. See
+    # RegistrationForm#notify_public_site_change.
+    it "enqueues a public-site revalidation for the form's event" do
+      event = create_event
+
+      expect {
+        post admin_event_registration_forms_path(event), params: {
+          registration_form: { name: "VIP Form", uniqueness_fields: [ "email" ] }
+        }
+      }.to have_enqueued_job(PublicSiteRevalidationJob).with(event.id)
+    end
+
     it "re-renders with errors, preserving the attempted custom field, when the form is invalid" do
       event = create_event
 
@@ -256,6 +270,18 @@ RSpec.describe "Admin Console registration forms", type: :request do
         expect(form.reload.catalog_fields["position"]).to be false # the organizer's own raw config
         expect(category.reload.effective_catalog_fields["position"]).to be true # still enforced
       end
+    end
+
+    it "enqueues a public-site revalidation for the form's event" do
+      event = create_event
+      Current.account = account
+      form = create(:registration_form, account: account, event: event)
+
+      expect {
+        patch admin_event_registration_form_path(event, form), params: {
+          registration_form: { name: form.name, catalog_fields: [ "company" ], uniqueness_fields: [ "email" ] }
+        }
+      }.to have_enqueued_job(PublicSiteRevalidationJob).with(event.id)
     end
   end
 

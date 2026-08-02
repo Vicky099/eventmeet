@@ -75,6 +75,13 @@ Rails.application.routes.draw do
     # participant. Flat `:slug` segment (not a nested `resources :events`), same shape the
     # checkin scope above already takes for an analogous event-scoped-by-slug public action.
     post "api/v1/public/events/:slug/participants", to: "api/v1/public/participants#create", as: :public_event_participants
+    # requirement.md revisit: "post registration ... download button ... invitation PDF" — the
+    # participant's own copy of the exact PDF `ParticipantMailer#confirmation` already emails
+    # them, fetchable on demand instead of only ever existing as a transient email attachment. Flat
+    # `:hex_id` segment (not `resources :participants`) — same shape the two routes above already
+    # use for this whole namespace, and this is the one and only participant-scoped action here.
+    get "api/v1/public/events/:slug/participants/:hex_id/invitation",
+      to: "api/v1/public/participants#invitation", as: :public_event_participant_invitation
 
     # Named user_root (not admin_root) deliberately: Devise's signed_in_root_path/
     # after_sign_in_path_for looks for "#{scope}_root_path" — for the :user scope that's
@@ -264,13 +271,10 @@ Rails.application.routes.draw do
         # the Admin::EventsController wizard/STEPS — reached from the event workspace's own
         # "Design Registration Form" nav entry instead (§5.14), never from event creation/editing.
         resources :registration_forms, controller: "admin/registration_forms", except: [ :show ]
-        # Phase 25.5 — Public Event Site (doc/public_event_site_options.md, Confirmed decisions
-        # #2-#4). Singular resource — one EventPage per Event (has_one), find-or-initialize on
-        # #edit so the form works identically whether a row exists yet or not, same "edit is the
-        # workspace, no separate create step" shape :email_templates/:badges already take. No
-        # :show, no preview route — the live preview pane is plain client-side JS (nothing to
-        # substitute server-side, unlike email_templates' own token-substituted #preview).
-        resource :event_page, controller: "admin/event_pages", only: [ :edit, :update ]
+        # Phase 25.5 introduced this as a tenant-level route (Admin::EventPagesController) — moved
+        # entirely to the Agency Console (doc/event_page_templates_plan.md, Stage 3): a tenant's
+        # own event_admin no longer has any path to this screen, by URL or by nav. See
+        # `agency_console/event_pages` below, nested under `agency/accounts/:account_id/events`.
         # Phase 10 — Print Agent (Electron) Integration (requirement.md §5.5.1, §8). The
         # admin-facing management surface: create a station, generate/regenerate its pairing
         # code, revoke a paired agent, plus the event-wide auto-print/default-station settings
@@ -344,6 +348,16 @@ Rails.application.routes.draw do
           post :switch
           patch :suspend
           patch :reinstate
+        end
+
+        # doc/event_page_templates_plan.md, Stage 2 — the Event Page screen (moved off the tenant
+        # Admin Console, requirement: a tenant's own event_admin shouldn't be able to touch this at
+        # all) needs somewhere to reach a specific event from, which the Agency Console had no path
+        # to at all before this — every other event-management action still happens on the
+        # tenant's own Admin Console, reached via #switch above. :index only, deliberately
+        # read-only/narrow: this is not a general tenant event-management surface.
+        resources :events, controller: "agency_console/events", only: [ :index ] do
+          resource :event_page, controller: "agency_console/event_pages", only: [ :edit, :update ]
         end
       end
       # Invoices moved to the Agency Console entirely (requirement.md revisit) — every Invoice

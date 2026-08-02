@@ -49,6 +49,10 @@ export interface PublicEvent {
   meeting_link: string | null;
   published: boolean;
   content_html: string | null;
+  // doc/event_page_templates_plan.md, Stage 4/5 — one of "template_1".."template_3", or null
+  // (Custom HTML — render content_html above instead, unchanged priority from before this field
+  // existed). See components/templates/registry.tsx for the lookup this drives.
+  template_key: string | null;
   seats_remaining: number | null;
   registration_schema: TicketCategorySchema[];
 }
@@ -201,11 +205,12 @@ export interface RegisterParticipantResult {
 }
 
 // Used by app/api/register/route.ts (the RTK Query mutation's own BFF target) — a thin proxy, no
-// business logic of its own (doc's own description of that route handler's job). JSON body only
-// for this pass — photo/document/file-type custom fields need a real multipart relay or a public
-// direct-upload endpoint, neither built yet (see Api::V1::Public::ParticipantsController's own
-// comment on the backend for the same scope note); a required file-type field just surfaces
-// Rails' normal "can't be blank" validation error today, not a broken endpoint.
+// business logic of its own (doc's own description of that route handler's job). `body` is either
+// a plain JSON-able object or a FormData (photo/document uploads, already keyed
+// `participant[field]` per Rack's nested-param convention by registrationApi.ts's own toFormData)
+// — relayed to Rails exactly as received either way. A FormData body must NOT get an explicit
+// Content-Type header here: fetch needs to generate its own multipart boundary from the FormData
+// instance, which a manually-set header would clobber.
 export async function registerParticipant(
   resolution: DomainResolution,
   slug: string,
@@ -223,6 +228,8 @@ export async function registerParticipant(
     };
   }
 
+  const isFormData = body instanceof FormData;
+
   const response = await fetch(
     new URL(
       `/api/v1/public/events/${slug}/participants`,
@@ -230,11 +237,10 @@ export async function registerParticipant(
     ),
     {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
+      headers: isFormData
+        ? { Authorization: `Bearer ${token}` }
+        : { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: isFormData ? body : JSON.stringify(body),
       cache: "no-store",
     },
   );
@@ -244,4 +250,41 @@ export async function registerParticipant(
     status: response.status,
     body: await response.json().catch(() => null),
   };
+}
+
+export interface InvitationPdfResult {
+  ok: boolean;
+  status: number;
+  // Present only when ok — the raw PDF bytes, streamed straight through by
+  // app/api/invitation/route.ts to the browser. No `body: unknown` fallback shape here (unlike
+  // registerParticipant above) since a failure just means "no PDF to show," not JSON worth
+  // surfacing to the registrant.
+  bytes?: ArrayBuffer;
+}
+
+// Used by app/api/invitation/route.ts — same BFF shape as registerParticipant above: this app's
+// own hard rule (this file's own top comment) is that the browser never calls Rails directly, so
+// even a plain "download this PDF" link has to proxy through a Next.js route handler that holds
+// the bearer token server-side, not a direct link to Rails' own URL.
+export async function fetchInvitationPdf(
+  resolution: DomainResolution,
+  slug: string,
+  hexId: string,
+): Promise<InvitationPdfResult> {
+  const token = await getAccessToken(resolution);
+  if (!token) return { ok: false, status: 502 };
+
+  const response = await fetch(
+    new URL(
+      `/api/v1/public/events/${slug}/participants/${hexId}/invitation`,
+      tenantBaseUrl(resolution.account_slug),
+    ),
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) return { ok: false, status: response.status };
+
+  return { ok: true, status: response.status, bytes: await response.arrayBuffer() };
 }

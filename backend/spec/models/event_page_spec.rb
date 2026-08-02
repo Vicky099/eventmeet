@@ -25,4 +25,25 @@ RSpec.describe EventPage, type: :model do
 
     expect(event_page.reload.html).to eq(raw)
   end
+
+  # doc/event_page_templates_plan.md, Stage 1 — nil is the existing default for every row created
+  # before this column existed, and still means "Custom HTML" (the html column), not a new state.
+  describe "template_key" do
+    it "defaults to nil (Custom HTML) for the factory defaults" do
+      expect(build(:event_page, event: event, account: account).template_key).to be_nil
+    end
+
+    it "accepts each of the 4 template values" do
+      EventPage.template_keys.each_key do |key|
+        event_page = build(:event_page, event: event, account: account, template_key: key)
+
+        expect(event_page).to be_valid
+        expect(event_page.template_key).to eq(key)
+      end
+    end
+
+    it "rejects a template_key outside the known values" do
+      expect { build(:event_page, template_key: "not_a_real_template") }.to raise_error(ArgumentError)
+    end
+  end
 end
