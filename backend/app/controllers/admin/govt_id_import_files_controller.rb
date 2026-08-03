@@ -9,6 +9,9 @@ module Admin
   # permissions.
   class GovtIdImportFilesController < BaseController
     include EventScoped
+    # Account::STAFF_PERMISSION_CATALOG — Admin::BaseController#require_staff_permission! own
+    # comment has the full "why an opt-in before_action, not a blanket one" reasoning.
+    before_action { require_staff_permission!(:govt_ids) }
     before_action :set_govt_id_import_file, only: [ :show ]
 
     def new

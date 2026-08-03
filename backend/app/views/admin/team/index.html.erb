@@ -1,0 +1,85 @@
+<%# requirement.md revisit: "at client portal show the new sidebar menu as team and inside it list
+    down the admin and staff name and against staff show the action as suspended" —
+    Admin::TeamController#index's own comment has the full "why separate from the Agency Console's
+    own roster management" reasoning. Read-only for everyone; Suspend/Reinstate only rendered for
+    the viewer's own event_admin role (Admin::TeamController#require_event_admin! is the real,
+    server-side gate this just mirrors on the read side). %>
+<% content_for :page_title, "Team" %>
+
+<%= render "shared/page_header", icon: "bx-group", crumbs: [ { label: "Team" } ] %>
+
+<% viewer_membership = current_user.account_membership_for(Current.account) %>
+<% admins, staff = @account_memberships.partition(&:event_admin?) %>
+
+<div class="row g-3">
+  <div class="col-xl-6">
+    <div class="card mb-0">
+      <div class="card-header"><span class="fw-semibold">Admins</span></div>
+      <div class="card-body">
+        <ul class="list-group list-group-flush mb-0">
+          <% admins.each do |membership| %>
+            <li class="list-group-item d-flex align-items-center justify-content-between px-0">
+              <div>
+                <%= membership.user.email %>
+                <span class="badge bg-info-subtle text-info ms-1">Admin</span>
+                <% if membership.user.must_reset_password? %>
+                  <span class="badge bg-warning-subtle text-warning ms-1">Invite pending</span>
+                <% end %>
+              </div>
+            </li>
+          <% end %>
+          <% if admins.none? %>
+            <li class="list-group-item px-0 text-muted">No admins yet.</li>
+          <% end %>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-6">
+    <div class="card mb-0">
+      <div class="card-header"><span class="fw-semibold">Staff</span></div>
+      <div class="card-body">
+        <ul class="list-group list-group-flush mb-0">
+          <% staff.each do |membership| %>
+            <li class="list-group-item d-flex align-items-center justify-content-between px-0">
+              <div>
+                <%= membership.user.email %>
+                <span class="badge bg-light text-dark ms-1">Staff</span>
+                <% if membership.suspended? %>
+                  <span class="badge bg-danger-subtle text-danger ms-1">Suspended</span>
+                <% elsif membership.user.must_reset_password? %>
+                  <span class="badge bg-warning-subtle text-warning ms-1">Invite pending</span>
+                <% end %>
+              </div>
+              <% if viewer_membership&.event_admin? %>
+                <div class="d-flex gap-2">
+                  <% if membership.suspended? %>
+                    <%= button_to admin_reinstate_team_membership_path(membership), method: :patch,
+                          class: "btn btn-m btn-outline-success", title: "Reinstate" do %>
+                      <i class="bx bx-play-circle"></i>
+                    <% end %>
+                  <% else %>
+                    <%= button_to admin_suspend_team_membership_path(membership), method: :patch,
+                          class: "btn btn-m btn-outline-danger", title: "Suspend",
+                          data: {
+                            action: "click->confirm-dialog#show",
+                            title: "Suspend Staff",
+                            message: "Suspend #{membership.user.email}? They won't be able to sign in until reinstated.",
+                            danger: "true"
+                          } do %>
+                      <i class="bx bx-pause-circle"></i>
+                    <% end %>
+                  <% end %>
+                </div>
+              <% end %>
+            </li>
+          <% end %>
+          <% if staff.none? %>
+            <li class="list-group-item px-0 text-muted">No staff yet.</li>
+          <% end %>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>

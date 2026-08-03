@@ -14,6 +14,16 @@ class EventPolicy < ApplicationPolicy
   # (Admin::EventsController#publish authorizes via :update?) — moot in practice, since
   # Event#publish! only ever fires on a still-draft event and nothing here un-publishes a
   # completed one anyway, but keeps the one true "can this event still be changed" check in one place.
+  #
+  # requirement.md revisit: "client also create event but event created by client requires a
+  # agency approval" — deliberately does NOT also gate on `approval_pending?`/`approval_rejected?`
+  # here, unlike EventScoped#require_event_approved!'s own blanket block on the operational
+  # surfaces (Participants/Export/Check-in/...): the client has to be able to actually *build* the
+  # event — Basic Info through Review, Sessions/Speaker/Schedule/Badges — before the agency has
+  # anything real to review at all, and (for a rejected one) to fix whatever was flagged and
+  # resubmit. Admin::EventsController#publish is the real approval gate for the wizard side —
+  # blocked separately there, not through this policy, so a `pending`/`rejected` event still
+  # renders the same "Continue Setup" flow every other draft does, right up until Publish itself.
   def update? = event_admin? && !record.completed?
   def destroy? = event_admin?
 

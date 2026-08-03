@@ -8,6 +8,9 @@ module Admin
   # registration forms is part of setting the event up, not a separate permission.
   class RegistrationFormsController < BaseController
     include EventScoped
+    # Account::STAFF_PERMISSION_CATALOG — Admin::BaseController#require_staff_permission! own
+    # comment has the full "why an opt-in before_action, not a blanket one" reasoning.
+    before_action { require_staff_permission!(:registration_form) }
 
     def index
       authorize @event, :update?

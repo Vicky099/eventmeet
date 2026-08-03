@@ -8,6 +8,9 @@ module Admin
   # — a read-only profile/activity/badge view, distinct from #edit (the manual-entry form).
   class ParticipantsController < BaseController
     include EventScoped
+    # Account::STAFF_PERMISSION_CATALOG — Admin::BaseController#require_staff_permission! own
+    # comment has the full "why an opt-in before_action, not a blanket one" reasoning.
+    before_action { require_staff_permission!(:participants) }
     before_action :set_participant, only: [ :show, :edit, :update, :destroy, :approve, :badge, :print, :resend, :document ]
 
     # requirement.md §5.4: "Admin search/filter across identifier fields; paginated listing."

@@ -15,15 +15,60 @@
   <% if @event.published? %>
     <span class="badge bg-success-subtle text-success"><i class="bx bx-check-circle"></i> Published</span>
   <% end %>
+  <%# requirement.md revisit: "client also create event but event created by client requires a
+      agency approval" — only the two states worth their own badge; `not_required`/`approved` are
+      the common "nothing to see here" case, same reasoning the Published badge above follows. %>
+  <% if @event.approval_pending? %>
+    <span class="badge bg-warning-subtle text-warning"><i class="bx bx-time-five"></i> Pending Agency Approval</span>
+  <% elsif @event.approval_rejected? %>
+    <span class="badge bg-danger-subtle text-danger"><i class="bx bx-x-circle"></i> Changes Requested</span>
+  <% end %>
   <%# requirement.md revisit: "once event complete the tenant can not able to edit the event" —
-      EventPolicy#update? is the real gate; this just keeps "Continue Setup" from linking
-      somewhere a completed event would immediately bounce back from. %>
+      EventPolicy#update? is the real gate (unaffected by approval_status — that policy method's
+      own comment on why the wizard has to stay open regardless); this just keeps "Edit Event"
+      from linking somewhere a completed event would immediately bounce back from.
+      policy(@event).update_reason — not a hardcoded string — so this stays accurate if that
+      policy ever grows a second business-rule gate again. %>
   <% if policy(@event).update? %>
-    <%= link_to "Continue Setup", edit_admin_event_path(@event), class: "btn btn-m btn-outline-primary ms-auto" %>
+    <%= link_to edit_admin_event_path(@event), class: "btn btn-m btn-outline-primary ms-auto" do %>
+      <i class="bx bx-edit"></i> Edit Event
+    <% end %>
   <% else %>
-    <button type="button" class="btn btn-m btn-outline-primary ms-auto" disabled title="Completed events can no longer be edited">Continue Setup</button>
+    <button type="button" class="btn btn-m btn-outline-primary ms-auto" disabled title="<%= policy(@event).update_reason %>">
+      <i class="bx bx-edit"></i> Edit Event
+    </button>
   <% end %>
 </div>
+
+<%# requirement.md revisit: "client also create event but event created by client requires a
+    agency approval. post that client will proceed with event management (registration, checkin
+    and all)" — explains why the sidebar just lost most of its links (AdminHelper#event_nav_items
+    own filter) and why Publish/Participants/Check-in/... all bounce back here. `rejected` gets
+    the reason plus the one way forward (Admin::EventsController#resubmit_for_approval); `pending`
+    is just a status, nothing to *do* here but wait. %>
+<% if @event.approval_pending? %>
+  <div class="card mb-3 border-warning">
+    <div class="card-header bg-warning-subtle"><span class="fw-semibold">Pending Agency Approval</span></div>
+    <div class="card-body">
+      <p class="mb-0 font-size-13">
+        This event needs your agency's approval before it can be published or opened for registration and check-in. You can keep configuring it in the meantime — Sessions, Speakers, Tickets, Badge, and everything else on the Continue Setup wizard stays available.
+      </p>
+    </div>
+  </div>
+<% elsif @event.approval_rejected? %>
+  <div class="card mb-3 border-danger">
+    <div class="card-header bg-danger-subtle"><span class="fw-semibold">Changes Requested</span></div>
+    <div class="card-body">
+      <p class="font-size-13 mb-2">Your agency reviewed this event and sent it back:</p>
+      <p class="mb-3"><%= @event.rejection_reason %></p>
+      <%= button_to resubmit_for_approval_admin_event_path(@event), method: :post, class: "btn btn-m btn-warning",
+            data: { action: "click->confirm-dialog#show", title: "Resubmit for Approval",
+                    message: "Resubmit \"#{@event.name}\" for your agency's approval?" } do %>
+        <i class="bx bx-refresh"></i> Resubmit for Approval
+      <% end %>
+    </div>
+  </div>
+<% end %>
 
 <%# requirement.md revisit ("make sure all the values of dashboard are correct ... admin should
     understand how many participant came event in realtime") — this landing page didn't

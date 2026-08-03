@@ -26,7 +26,12 @@ module Admin
     # step besides Basic Info with a real form here, same "Next saves it" shape.
     STEPS = %w[basic_info sessions speaker event_schedule tickets badge review].freeze
 
-    before_action :set_event, only: [ :show, :edit, :update, :duplicate, :publish ]
+    before_action :set_event, only: [ :show, :edit, :update, :duplicate, :publish, :resubmit_for_approval ]
+    # Account::STAFF_PERMISSION_CATALOG — Admin::BaseController#require_staff_permission! own
+    # comment has the full "why an opt-in before_action, not a blanket one" reasoning. Only :show
+    # (the Analytics landing page) — every other action here is already event_admin-only via its
+    # own `authorize` call, so admin_staff can never reach them regardless of this toggle.
+    before_action(only: [ :show ]) { require_staff_permission!(:analytics) }
 
     def index
       authorize Event
@@ -43,6 +48,12 @@ module Admin
 
     def create
       @event = Current.account.events.build(event_params)
+      # requirement.md revisit: "client also create event but event created by client requires a
+      # agency approval" — Account#creator_requires_approval?'s own comment has the full "how do
+      # we tell an agency admin switched in from the client's own genuine admin" reasoning. Set
+      # before #save, not a model callback — the model has no reliable way to know *who's* saving
+      # it without threading current_user through, and this controller already has it for free.
+      @event.approval_status = Current.account.creator_requires_approval?(current_user) ? :pending : :not_required
       authorize @event
 
       if @event.save
@@ -118,11 +129,18 @@ module Admin
     # The Review step's Publish button — moves the event out of Draft via Event#publish!.
     # Fixed-hierarchy pivot (requirement.md revisit): no more Super Admin approval gate — every
     # event that exists at all already cleared Agency#contract_active? at creation time
-    # (Event#agency_contract_must_be_active), so the only thing left to check is the content itself.
+    # (Event#agency_contract_must_be_active), so the only thing left to check is the content itself
+    # — plus, now, agency approval (requirement.md revisit: "client also create event but event
+    # created by client requires a agency approval"). The wizard itself stays open regardless
+    # (EventPolicy#update?'s own comment on why), but Publish — the step that actually makes an
+    # event live/publicly reachable — is where that approval gate really bites: a `pending`/
+    # `rejected` event can be fully built, just not switched on, until the agency signs off.
     def publish
       authorize @event, :update?
 
-      if @event.basic_info_complete?
+      if @event.approval_pending? || @event.approval_rejected?
+        redirect_to edit_admin_event_path(@event, step: "review"), alert: "This event needs agency approval before it can be published."
+      elsif @event.basic_info_complete?
         @event.publish!
         redirect_to edit_admin_event_path(@event, step: "review"), notice: "#{@event.name} published."
       else
@@ -149,10 +167,32 @@ module Admin
         meeting_link: @event.meeting_link,
         map_url: @event.map_url,
         banner_orientation: @event.banner_orientation,
-        participant_fields: @event.participant_fields
+        participant_fields: @event.participant_fields,
+        # A duplicate is a brand-new event in its own right (same "status/published_at reset to
+        # their defaults" reasoning this method's own comment already gives for those two) — its
+        # own fresh approval check, same as #create's, never inherited from whatever the source
+        # event's own approval_status happened to be.
+        approval_status: Current.account.creator_requires_approval?(current_user) ? :pending : :not_required
       )
       clone.save!
       redirect_to edit_admin_event_path(clone), notice: "Duplicated as \"#{clone.name}\"."
+    end
+
+    # The client's own way out of a rejection (EventPolicy#update?'s own comment on why a
+    # rejected event stays editable) — flips back to `pending` so the agency's own Events queue
+    # picks it up again. Guarded to that one starting state specifically, not just "any event this
+    # event_admin may currently edit" (`authorize @event, :update?` already covers the broader
+    # permission check) — resubmitting a `not_required`/`approved` event makes no sense.
+    def resubmit_for_approval
+      authorize @event, :update?
+
+      unless @event.approval_rejected?
+        redirect_to admin_event_path(@event), alert: "#{@event.name} isn't awaiting resubmission."
+        return
+      end
+
+      @event.resubmit_for_approval!
+      redirect_to admin_event_path(@event), notice: "#{@event.name} resubmitted for agency approval."
     end
 
     private

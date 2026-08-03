@@ -11,16 +11,10 @@
       <i class="bx bx-plus"></i> New Event
     <% end %>
   <% else %>
-    <button type="button" class="btn btn-m btn-primary" disabled title="<%= @agency.nil? ? "This tenant has no agency" : (@agency.annual? ? "Your agency's annual contract hasn't been paid yet" : "No event slots remaining — ask the Super Admin to grant more") %>">
+    <button type="button" class="btn btn-m btn-primary" disabled title="<%= @agency.nil? ? "This client has no agency" : (@agency.annual? ? "Your agency's annual contract hasn't been paid yet" : "No event slots remaining — contact your agency") %>">
       <i class="bx bx-plus"></i> New Event
     </button>
   <% end %>
-<% end %>
-
-<% if @agency&.per_event? %>
-  <p class="text-muted mb-3"><%= @agency.name %>'s event pool: <%= @agency.events_used %> used / <%= @agency.events_granted %> granted (<%= @agency.events_remaining %> remaining).</p>
-<% elsif @agency&.annual? %>
-  <p class="text-muted mb-3"><%= @agency.name %>'s annual contract — unlimited events.</p>
 <% end %>
 
 <div class="mb-3">
@@ -52,20 +46,33 @@
               <td><%= link_to event.name, admin_event_path(event) %></td>
               <td><%= event.mode.humanize %></td>
               <td><%= event.starts_at.to_fs(:short) %></td>
-              <td><span class="badge bg-info-subtle text-info"><%= event.status.humanize %></span></td>
+              <td>
+                <span class="badge bg-info-subtle text-info"><%= event.status.humanize %></span>
+                <%# requirement.md revisit: "client also create event but event created by client
+                    requires a agency approval" — only the two states worth their own badge, same
+                    "don't clutter the good state" reasoning admin/events/show.html.erb's own
+                    badge row follows. %>
+                <% if event.approval_pending? %>
+                  <span class="badge bg-warning-subtle text-warning">Pending Approval</span>
+                <% elsif event.approval_rejected? %>
+                  <span class="badge bg-danger-subtle text-danger">Changes Requested</span>
+                <% end %>
+              </td>
               <td class="text-end">
                 <div class="d-flex justify-content-end gap-2">
                   <%# requirement.md revisit: "once event complete the tenant can not able to edit
                       the event" — EventPolicy#update? is the real, server-side gate (also covers
                       every wizard step and Sessions/Speaker/Schedule/Badge sub-resource, all of
                       which authorize through this same Event); this just keeps a completed row
-                      from showing a link that would only ever redirect back with "not authorized." %>
+                      from showing a link that would only ever redirect back with "not authorized."
+                      policy(event).update_reason — not a hardcoded string — same reasoning
+                      admin/events/show.html.erb's own identical button just took. %>
                   <% if policy(event).update? %>
                     <%= link_to edit_admin_event_path(event), class: "btn btn-m btn-outline-primary", title: "Edit" do %>
                       <i class="bx bx-edit"></i>
                     <% end %>
                   <% else %>
-                    <button type="button" class="btn btn-m btn-outline-primary" disabled title="Completed events can no longer be edited">
+                    <button type="button" class="btn btn-m btn-outline-primary" disabled title="<%= policy(event).update_reason %>">
                       <i class="bx bx-edit"></i>
                     </button>
                   <% end %>

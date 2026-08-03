@@ -70,7 +70,7 @@ class AccountProvisioning
     if success
       Current.set(account: account) do
         Notifier.email(
-          mailer_class: AccountMailer, mailer_method: :welcome, mailer_args: [ admin_user, account, temp_password ],
+          mailer_class: AccountMailer, mailer_method: :welcome, mailer_args: [ admin_user, account, temp_password, "event_admin" ],
           notifiable: account, account: account, to: admin_user.email, subject: "Welcome to xEvent — #{account.name} is ready"
         )
       end

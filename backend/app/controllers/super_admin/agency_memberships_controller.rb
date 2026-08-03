@@ -10,7 +10,7 @@ module SuperAdmin
   # AgencyMembershipProvisioning's own comment already flags for the *adding* side).
   class AgencyMembershipsController < BaseController
     before_action :set_agency
-    before_action :set_membership, only: [ :destroy, :resend_invite ]
+    before_action :set_membership, only: [ :destroy, :resend_invite, :send_reset_password_instructions ]
 
     def create
       email = params[:email].to_s.strip.downcase
@@ -63,6 +63,35 @@ module SuperAdmin
       AuditLog.record!(actor: current_platform_staff, action: "agency_membership.resend_invite", target: @agency,
         metadata: { email: @membership.user.email })
       redirect_to platform_agency_path(@agency), notice: "Invite resent to #{@membership.user.email}."
+    end
+
+    # "Send reset password instructions" — the exact gap #resend_invite's own comment calls out
+    # ("a Super Admin who wants to reset an *active* admin's password has no path here on
+    # purpose"): an already-onboarded agency_admin who's simply forgotten their real password has
+    # no self-service path from here — Devise's ordinary "forgot password?" form lives on each
+    # tenant/agency's own subdomain login page, not the apex Platform Console. This triggers the
+    # same Devise reset-token email on their behalf. Guarded to the opposite state #resend_invite
+    # guards to — a still-pending invite has no real password yet to reset, and this would just
+    # be a confusing second email on top of the welcome one.
+    #
+    # User#send_devise_notification (the actual mailer trigger, inside
+    # #send_reset_password_instructions below) builds the reset link's host off `Current.agency` —
+    # normally set by TenantResolvable when a request arrives on the agency's own subdomain, which
+    # this apex-domain Super Admin request never does (`Current.platform_request` is set instead).
+    # `Current.set` scopes `Current.agency` to just this one call so the mailer still resolves to
+    # #{@agency.subdomain_slug}.#{platform_domain} (ApplicationMailer#default_url_options's own
+    # `elsif @tenant_agency` branch) instead of falling back to the apex host, where
+    # Admin::PasswordsController#edit isn't even routable at all.
+    def send_reset_password_instructions
+      if @membership.user.must_reset_password?
+        redirect_to platform_agency_path(@agency), alert: "#{@membership.user.email} hasn't signed in yet — use Resend Invite instead."
+        return
+      end
+
+      Current.set(agency: @agency) { @membership.user.send_reset_password_instructions }
+      AuditLog.record!(actor: current_platform_staff, action: "agency_membership.send_reset_password_instructions", target: @agency,
+        metadata: { email: @membership.user.email })
+      redirect_to platform_agency_path(@agency), notice: "Password reset instructions sent to #{@membership.user.email}."
     end
 
     private

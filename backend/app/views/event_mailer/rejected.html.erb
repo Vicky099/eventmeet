@@ -1,0 +1,11 @@
+<%= render "shared/mailer/heading", title: "Event needs changes", subtitle: @event.name %>
+
+<div style="color:#686868;padding-top:16px;font-size:13px;line-height:1.6;">
+  Your agency reviewed <strong style="color:#1f1f1f;"><%= @event.name %></strong> and sent it back:
+</div>
+
+<%= render "shared/mailer/notice", tone: :danger, body: @event.rejection_reason %>
+
+<div style="padding-top:20px;">
+  <%= render "shared/mailer/button", url: admin_event_url(@event), label: "Review & Resubmit →" %>
+</div>

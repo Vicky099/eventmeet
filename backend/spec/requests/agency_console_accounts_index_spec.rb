@@ -29,7 +29,7 @@ RSpec.describe "Agency Console tenant list", type: :request do
     get agency_accounts_path
 
     expect(response).to have_http_status(:ok)
-    expect(response.body).to include("No tenants yet")
+    expect(response.body).to include("No clients yet")
   end
 
   it "shows each tenant's own event/participant counts, isolated per tenant" do

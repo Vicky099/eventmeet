@@ -74,8 +74,10 @@
                 </td>
                 <td class="text-end">
                   <div class="d-flex justify-content-end gap-2">
-                    <%= button_to "Generate code", generate_pairing_code_admin_event_print_station_path(@event, station),
-                          method: :post, class: "btn btn-m btn-outline-secondary" %>
+                    <%= button_to generate_pairing_code_admin_event_print_station_path(@event, station),
+                          method: :post, class: "btn btn-m btn-outline-secondary", title: "Generate code" do %>
+                      <i class="bx bx-key"></i>
+                    <% end %>
                     <% if station.current_agent %>
                       <%= button_to "Revoke", revoke_admin_event_print_station_path(@event, station), method: :post,
                             class: "btn btn-m btn-outline-warning",

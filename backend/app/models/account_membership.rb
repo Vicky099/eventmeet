@@ -19,6 +19,16 @@ class AccountMembership < ApplicationRecord
   # db/migrate/20260719050300_remap_account_membership_roles.rb for the data migration.
   enum :role, { event_admin: 0, admin_staff: 1 }
 
+  # requirement.md revisit: "at client portal show the new sidebar menu as team and inside it list
+  # down the admin and staff name and against staff show the action as suspended" — a suspended
+  # membership blocks sign-in to *this one* Account only (User#authorized_for_current_host? is the
+  # actual enforcement point), same "status blocks access, scoped to the one tenant it's set on"
+  # shape Account/Agency's own `enum :status, { active:, suspended: }` already establish one and
+  # two tiers up. Deliberately only ever set on an admin_staff membership (Admin::TeamController
+  # #suspend/#reinstate's own comment on why event_admin — the tenant's own full-control owner
+  # tier — is never suspendable this way).
+  enum :status, { active: 0, suspended: 1 }
+
   belongs_to :user
   belongs_to :account
 

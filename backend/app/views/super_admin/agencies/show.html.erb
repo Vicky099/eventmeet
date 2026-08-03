@@ -12,7 +12,7 @@
     that's safe), never the per-currency breakdown the Platform dashboard needs across agencies. %>
 <div class="row g-3 mb-4">
   <div class="col-md-6 col-xl-3">
-    <%= render "shared/stat_widget", label: "Tenants", value: @accounts.size, icon: "bx-buildings", color: "primary" %>
+    <%= render "shared/stat_widget", label: "Clients", value: @accounts.size, icon: "bx-buildings", color: "primary" %>
   </div>
   <div class="col-md-6 col-xl-3">
     <%= render "shared/stat_widget", label: "Events", value: @events.size, icon: "bx-calendar-event", color: "info" %>
@@ -22,6 +22,14 @@
   </div>
   <div class="col-md-6 col-xl-3">
     <%= render "shared/stat_widget", label: "Total Paid", value: money(@total_paid, @agency.currency), icon: "bx-wallet", color: "success" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <%# requirement.md revisit: "platform is charging agency and not the client ... add the
+        payment/revenue related analytics in platform agency show" — this Platform↔Agency billing
+        relationship (Invoice.for_agency) is the real one; the per-client tiles this replaced
+        (formerly on agency_console/accounts/show.html.erb) never belonged there since the Agency,
+        not the Platform, is who bills each client, entirely outside this app. %>
+    <%= render "shared/stat_widget", label: "Outstanding", value: money(@outstanding, @agency.currency), icon: "bx-error-circle", color: @outstanding.positive? ? "danger" : "secondary" %>
   </div>
   <div class="col-md-6 col-xl-3">
     <%# requirement.md revisit: "overall how much messages used by agency" — the sum of every
@@ -46,7 +54,7 @@
                   data: {
                     action: "click->confirm-dialog#show",
                     title: "Suspend Agency",
-                    message: "Suspend #{@agency.name}? This does not suspend its tenants.",
+                    message: "Suspend #{@agency.name}? This does not suspend its clients.",
                     danger: "true"
                   } do %>
               <i class="bx bx-pause-circle"></i>
@@ -111,11 +119,6 @@
           <dd class="col-sm-8">
             <span class="badge <%= @agency.active? ? "bg-success" : "bg-secondary" %>"><%= @agency.status.humanize %></span>
           </dd>
-
-          <% if @outstanding.positive? %>
-            <dt class="col-sm-4">Outstanding</dt>
-            <dd class="col-sm-8 text-warning fw-semibold"><%= money(@outstanding, @agency.currency) %></dd>
-          <% end %>
         </dl>
       </div>
     </div>
@@ -161,9 +164,19 @@
                         class: "btn btn-m btn-outline-warning", title: "Impersonate", form: { data: { turbo: false } } do %>
                     <i class="bx bx-shield-quarter"></i>
                   <% end %>
+                  <%# requirement.md revisit: "Send reset password instructions feature for agency
+                      admins" — SuperAdmin::AgencyMembershipsController#send_reset_password_instructions's
+                      own comment has the full "why this needed Current.set" story. Opposite gate
+                      from Resend Invite just below: an already-onboarded admin has a real password
+                      to reset; a still-pending invite doesn't. %>
+                  <%= button_to send_reset_password_instructions_platform_agency_agency_membership_path(@agency, membership), method: :post,
+                        class: "btn btn-m btn-outline-secondary", title: "Send Reset Password Instructions" do %>
+                    <i class="bx bx-lock-alt"></i>
+                  <% end %>
                 <% end %>
                 <%# Only offered pre-onboarding — see the controller action's own comment for why
-                    an already-active admin has no "resend" path at all. %>
+                    an already-active admin has no "resend" path at all (Send Reset Password
+                    Instructions above is that admin's own equivalent instead). %>
                 <% if membership.user.must_reset_password? %>
                   <%= button_to resend_invite_platform_agency_agency_membership_path(@agency, membership), method: :post,
                         class: "btn btn-m btn-outline-secondary", title: "Resend Invite" do %>
@@ -175,7 +188,7 @@
                       data: {
                         action: "click->confirm-dialog#show",
                         title: "Remove Agency Admin",
-                        message: "Remove #{membership.user.email} from #{@agency.name}'s agency admins? Their existing tenant access isn't revoked.",
+                        message: "Remove #{membership.user.email} from #{@agency.name}'s agency admins? Their existing client access isn't revoked.",
                         danger: "true"
                       } do %>
                   <i class="bx bx-x"></i>
@@ -204,20 +217,25 @@
         breakdown lives in its own Events table below instead of nested three levels deep here. %>
     <div class="card">
       <div class="card-header bg-white">
-        <h5 class="card-title mb-0">Tenants</h5>
+        <h5 class="card-title mb-0">Clients</h5>
       </div>
       <div class="card-body">
         <% if @accounts.none? %>
-          <%= render "shared/empty_state", icon: "bx-buildings", message: "No tenants yet — agency admins create these from their own console." %>
+          <%= render "shared/empty_state", icon: "bx-buildings", message: "No clients yet — agency admins create these from their own console." %>
         <% else %>
           <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
               <thead>
                 <tr>
-                  <th>Tenant</th>
+                  <th>Client</th>
                   <th>Status</th>
                   <th>Events</th>
                   <th>Participants</th>
+                  <%# Billed — per_event agencies only (SuperAdmin::AgenciesController#show's own
+                      comment on why an annual agency's own Invoice can't be attributed per client). %>
+                  <% if @agency.per_event? %>
+                    <th>Billed</th>
+                  <% end %>
                 </tr>
               </thead>
               <tbody>
@@ -236,6 +254,9 @@
                     <td><span class="badge <%= account.active? ? "bg-success" : "bg-secondary" %>"><%= account.status.humanize %></span></td>
                     <td><%= account_events.size %></td>
                     <td><%= account_events.sum { |event| @participant_counts_by_event.fetch(event.id, 0) } %></td>
+                    <% if @agency.per_event? %>
+                      <td><%= money(@billed_by_account.fetch(account.id, 0), @agency.currency) %></td>
+                    <% end %>
                   </tr>
                 <% end %>
               </tbody>
@@ -262,7 +283,7 @@
               <thead>
                 <tr>
                   <th>Event</th>
-                  <th>Tenant</th>
+                  <th>Client</th>
                   <th>Status</th>
                   <th>Starts</th>
                   <th>Participants</th>

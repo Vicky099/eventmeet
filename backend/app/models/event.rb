@@ -42,6 +42,16 @@ class Event < ApplicationRecord
   # nil) is invisible to that job and stays `draft` indefinitely regardless of its schedule. See
   # `publish!` / `published_at` below — the wizard's Review step is what calls it.
   enum :status, { draft: 0, up_coming: 1, live: 2, completed: 3 }
+  # requirement.md revisit: "client also create event but event created by client requires a
+  # agency approval." Independent of `status` above (a temporal/scheduling lifecycle) — this is
+  # who's allowed to actually *use* the event at all. `not_required` (default) covers both an
+  # event an agency admin creates directly while switched into a client's own console (the
+  # agency IS the approver, nothing to gate) and every event created before this feature existed
+  # (a real migration default, not a data backfill — see this column's own migration comment).
+  # `prefix: :approval` — `event.pending?`/`event.approved?` alone would read as ambiguous next to
+  # `status`'s own draft/up_coming/live/completed (none of which happen to collide today, but
+  # "approved" in particular reads easily confusable with a *published* event otherwise).
+  enum :approval_status, { not_required: 0, pending: 1, approved: 2, rejected: 3 }, prefix: :approval
   enum :banner_orientation, { landscape: 0, portrait: 1 }
   # Phase 14 — Reporting, Import/Export & Analytics (requirement.md §5.11): "Scheduled report
   # delivery (emailed weekly/daily summary to organizers)." Organizer opt-in, off (`none`) by
@@ -123,6 +133,11 @@ class Event < ApplicationRecord
   # is given (PrintTriggerService) — optional, since a station can exist without being the
   # default yet (or ever, if the org prints the same way it does today via PDF download).
   belongs_to :default_print_station, class_name: "PrintStation", optional: true
+  # requirement.md revisit: "client also create event but event created by client requires a
+  # agency approval" — whichever agency admin called #approve!/#reject! (Admin::EventsController
+  # has no path to either; only AgencyConsole::EventsController does). Same shape Invoice's own
+  # verified_by already takes.
+  belongs_to :approved_by, class_name: "User", optional: true
   has_many :print_stations, dependent: :destroy
   has_many :print_jobs, dependent: :destroy
   has_many :bulk_print_runs, dependent: :destroy
@@ -230,6 +245,27 @@ class Event < ApplicationRecord
   # (Admin::EventsController#publish's own basic_info_complete? check).
   def publish!
     update!(published_at: Time.current, status: computed_status)
+  end
+
+  # requirement.md revisit: "client also create event but event created by client requires a
+  # agency approval" — AgencyConsole::EventsController#approve/#reject are the only callers.
+  # `rejection_reason: nil` on #approve! — same "clear any stale reason from a previous round" as
+  # Invoice#verify! already does for its own identical column pair.
+  def approve!(by:)
+    update!(approval_status: :approved, approved_by: by, approved_at: Time.current, rejection_reason: nil)
+  end
+
+  def reject!(reason:, by:)
+    update!(approval_status: :rejected, approved_by: by, approved_at: Time.current, rejection_reason: reason)
+  end
+
+  # The client's own side of a rejection — Admin::EventsController#resubmit_for_approval.
+  # Deliberately does NOT clear `rejection_reason`/`approved_by` (same "one slot, not a history,
+  # the next terminal state overwrites both anyway" reasoning Invoice#reject_payment!'s own
+  # comment gives for its analogous fields) — the agency reviewing again can still see what was
+  # wrong with the *previous* attempt until they act on this one.
+  def resubmit_for_approval!
+    update!(approval_status: :pending)
   end
 
   # Phase 7 (requirement.md §5.4): what a brand-new Participant's status should start as —

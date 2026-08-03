@@ -36,7 +36,7 @@ RSpec.describe "Platform Console agency provisioning", type: :request do
       get platform_agency_path(agency)
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include("Tenants")
+      expect(response.body).to include("Clients")
       expect(response.body).to include("Acme Tenant")
       expect(response.body).to include("Events")
       expect(response.body).to include("Paid Event")

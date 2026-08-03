@@ -1,0 +1,7 @@
+<%= render "shared/mailer/heading", title: "You've been added to #{@account.name}" %>
+
+<div style="color:#686868;padding-top:16px;font-size:13px;line-height:1.6;">
+  You're now <%= @role_phrase %> for <strong style="color:#1f1f1f;"><%= @account.name %></strong> on xEvent — sign in with your existing xEvent credentials.
+</div>
+
+<%= render "shared/mailer/button", url: new_user_session_url, label: "Sign in to xEvent →" %>

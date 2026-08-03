@@ -11,7 +11,7 @@
     default), but never silently wrong if an agency is billed in USD/EUR/GBP instead. %>
 <div class="row g-3 mb-4">
   <div class="col-md-6 col-xl-3">
-    <%= render "shared/stat_widget", label: "Tenants", value: @tenant_count, icon: "bx-buildings", color: "primary" %>
+    <%= render "shared/stat_widget", label: "Clients", value: @tenant_count, icon: "bx-buildings", color: "primary" %>
   </div>
   <div class="col-md-6 col-xl-3">
     <%= render "shared/stat_widget", label: "Agencies", value: @agency_count, icon: "bx-briefcase", color: "warning" %>
@@ -97,16 +97,23 @@
                   </td>
                   <td class="text-end">
                     <div class="d-flex justify-content-end gap-2">
+                      <%# Icon-only, `title:` for the accessible/hover label — same shape every
+                          other action-column icon button in this app already uses (e.g. agency/
+                          accounts#index's Edit/Suspend/Reinstate). %>
                       <% if invoice.draft? %>
-                        <%= button_to "Send", deliver_platform_invoice_path(invoice), method: :post,
-                              class: "btn btn-m btn-primary",
+                        <%= button_to deliver_platform_invoice_path(invoice), method: :post,
+                              class: "btn btn-m btn-primary", title: "Send Invoice",
                               data: { action: "click->confirm-dialog#show", title: "Send Invoice",
-                                      message: "Send this #{money(invoice.amount, invoice.currency)} invoice to #{invoice_recipient_label(invoice)}? They'll be notified by email#{" and WhatsApp" if invoice.account.present?}." } %>
+                                      message: "Send this #{money(invoice.amount, invoice.currency)} invoice to #{invoice_recipient_label(invoice)}? They'll be notified by email#{" and WhatsApp" if invoice.account.present?}." } do %>
+                          <i class="bx bx-send"></i>
+                        <% end %>
                       <% else %>
-                        <%= button_to "Verify", verify_platform_invoice_path(invoice), method: :post,
-                              class: "btn btn-m btn-success",
+                        <%= button_to verify_platform_invoice_path(invoice), method: :post,
+                              class: "btn btn-m btn-success", title: "Verify Payment",
                               data: { action: "click->confirm-dialog#show", title: "Verify Payment",
-                                      message: "Confirm the #{money(invoice.amount, invoice.currency)} transfer (UTR: #{invoice.utr_reference}) has been received? This marks the invoice paid." } %>
+                                      message: "Confirm the #{money(invoice.amount, invoice.currency)} transfer (UTR: #{invoice.utr_reference}) has been received? This marks the invoice paid." } do %>
+                          <i class="bx bx-check-circle"></i>
+                        <% end %>
                       <% end %>
                       <%= link_to platform_invoice_path(invoice), class: "btn btn-m btn-outline-primary", title: "View" do %>
                         <i class="bx bx-show"></i>

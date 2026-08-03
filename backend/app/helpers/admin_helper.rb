@@ -19,6 +19,13 @@ module AdminHelper
     [
       { path: user_root_path, icon: "bx-home-alt", label: "Dashboard" },
       { path: admin_events_path, icon: "bx-calendar-event", label: "Events" },
+      # requirement.md revisit: "at client portal show the new sidebar menu as team and inside it
+      # list down the admin and staff name and against staff show the action as suspended" —
+      # Admin::TeamController's own class comment has the full "read-only for everyone, Suspend/
+      # Reinstate only for an event_admin" reasoning; visible to both roles here, same "admin_staff
+      # can view everything, just can't create/edit/destroy" shape this app already establishes
+      # elsewhere (AccountMembership's own role-split comment).
+      { path: admin_team_path, icon: "bx-group", label: "Team" },
       { path: admin_profile_path, icon: "bx-user-circle", label: "Profile" }
     ]
   end
@@ -36,31 +43,62 @@ module AdminHelper
       # remaining views (registrations-over-time, session popularity, a deeper engagement funnel)
       # on the same page rather than splitting a second one off, so the nav label now says what
       # the page has always actually been.
-      { path: admin_event_path(event), icon: "bx-line-chart", label: "Analytics" },
-      { path: admin_event_registration_forms_path(event), icon: "bx-list-check", label: "Design Registration Form" },
+      { path: admin_event_path(event), icon: "bx-line-chart", label: "Analytics", permission: "analytics" },
+      { path: admin_event_registration_forms_path(event), icon: "bx-list-check", label: "Design Registration Form", permission: "registration_form" },
       # "Event Page" (Phase 25.5) moved off this nav entirely (doc/event_page_templates_plan.md,
       # Stage 3) — a tenant's own event_admin no longer has any path to that screen, by URL or by
       # nav; only the Agency Console (AgencyConsole::EventPagesController) can reach it now.
       # Phase 13 — Communications, revisited (requirement.md §3.10): "Custom email will be new
       # sidebar menu" — confirmed per-event, so it lives in this event-workspace nav, alongside the
       # other registration-experience configuration entries, not the account-level nav above.
-      { path: admin_event_email_templates_path(event), icon: "bx-envelope", label: "Email Templates" },
-      { path: admin_event_participants_path(event), icon: "bx-group", label: "Participants" },
+      { path: admin_event_email_templates_path(event), icon: "bx-envelope", label: "Email Templates", permission: "email_templates" },
+      { path: admin_event_participants_path(event), icon: "bx-group", label: "Participants", permission: "participants" },
       # requirement.md revisit: "Export sidebar button will provide a UI where admin can select
       # the fields which he wants to export" — Admin::ExportFilesController#new is now that
       # standalone field-picker page (previously this linked to the Participants index itself,
       # back when the only "Export" trigger was a plain button embedded there).
-      { path: new_admin_event_export_file_path(event), icon: "bx-download", label: "Export" },
-      { path: new_admin_event_import_file_path(event), icon: "bx-upload", label: "Import" },
+      { path: new_admin_event_export_file_path(event), icon: "bx-download", label: "Export", permission: "export" },
+      { path: new_admin_event_import_file_path(event), icon: "bx-upload", label: "Import", permission: "import" },
       # requirement.md revisit: "in upload we should have a separate sample xlsx file to upload
       # the govtID" — its own upload flow, its own nav entry, same as Import/Export above.
-      { path: new_admin_event_govt_id_import_file_path(event), icon: "bx-id-card", label: "Govt IDs" },
-      { path: admin_event_scan_events_path(event), icon: "bx-barcode", label: "Check In" },
+      { path: new_admin_event_govt_id_import_file_path(event), icon: "bx-id-card", label: "Govt IDs", permission: "govt_ids" },
+      { path: admin_event_scan_events_path(event), icon: "bx-barcode", label: "Check In", permission: "check_in" },
       # Phase 10 — Print Agent (Electron) Integration (requirement.md §5.5.1): pairing/printer
       # management, plus the auto-print/default-station settings.
-      { path: admin_event_print_stations_path(event), icon: "bx-printer", label: "Print Stations" },
+      { path: admin_event_print_stations_path(event), icon: "bx-printer", label: "Print Stations", permission: "print_stations" },
       # Phase 10 revisit — Bulk Print (requirement.md §3.6/§5.5's baseline "bulk print queue").
-      { path: new_admin_event_bulk_print_run_path(event), icon: "bx-layer", label: "Bulk Print" }
-    ]
+      { path: new_admin_event_bulk_print_run_path(event), icon: "bx-layer", label: "Bulk Print", permission: "bulk_print" }
+    ].select { |item| staff_permission_visible?(item[:permission]) }
+     .select { |item| event_approved_or_analytics?(event, item) }
+  end
+
+  private
+
+  # requirement.md revisit: "client also create event but event created by client requires a
+  # agency approval. post that client will proceed with event management (registration, checkin
+  # and all)" — the read side of EventScoped#require_event_approved!'s own server-side block: no
+  # reason to offer a link every one of these controllers would immediately bounce back from while
+  # the event itself is pending/rejected. "analytics" is the one exception, kept visible for
+  # *every* role (not gated by #staff_permission_visible? either, since Admin::EventsController
+  # isn't `EventScoped`) — it's where the pending/rejected banner itself lives, so there has to
+  # stay a way back to see *why* everything else vanished.
+  def event_approved_or_analytics?(event, item)
+    return true unless event.approval_pending? || event.approval_rejected?
+
+    item[:permission] == "analytics"
+  end
+
+  # requirement.md revisit: "agency will define the client staff permission by toggle on or off
+  # and then based on permission staff will see the options in the client portal" — the read side
+  # of the same check Admin::BaseController#require_staff_permission! enforces server-side; this
+  # is what keeps the sidebar from even offering a link an admin_staff teammate would immediately
+  # get bounced back from. `event_admin?` (or no membership at all — shouldn't happen for an
+  # authenticated tenant session, but fails open the same defensive way the controller-side check
+  # does) always sees every item, same "this toggle only ever restricts admin_staff" rule.
+  def staff_permission_visible?(key)
+    membership = current_user&.account_membership_for(Current.account)
+    return true unless membership&.admin_staff?
+
+    Current.account.staff_permission?(key)
   end
 end

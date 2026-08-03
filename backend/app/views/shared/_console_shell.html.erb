@@ -168,3 +168,19 @@
 
 <%= render "shared/flash" %>
 <%= render "shared/confirm_dialog" %>
+
+<%# Same reason shared/confirm_dialog just above renders out here rather than inside
+    #layout-wrapper (that partial's own render-order comment) — application.css's
+    `body.impersonating #layout-wrapper { transform: ... }` makes #layout-wrapper the containing
+    block for its OWN `position: fixed` descendants (a standard CSS effect of any transform, not
+    a bug in that rule itself), which silently breaks any Bootstrap `.modal` nested inside it: the
+    modal backdrop still shows full-screen (Bootstrap appends `.modal-backdrop` straight to
+    `<body>`, unaffected), but the `.modal` dialog itself renders "fixed" relative to
+    #layout-wrapper's own box instead of the viewport — invisible off-screen the moment the page
+    was scrolled before the modal opened, confirmed live as "only a grey screen appears" while
+    impersonating. A page-level modal that (like confirm_dialog) only needs plain
+    data-bs-toggle="modal"/data-bs-target markup — no Stimulus target scoping requiring it stay
+    inside #layout-wrapper the way shared/download_progress_modal's own comment explains — should
+    render into this yield (wrap it in a content_for :modals block) instead of inline in the
+    page body. %>
+<%= yield :modals %>

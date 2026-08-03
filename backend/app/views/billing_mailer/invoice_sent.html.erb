@@ -7,7 +7,7 @@
 
 <%= render "shared/mailer/details_table", rows: (
   if @invoice.event
-    [ [ "Tenant", @invoice.account.name ], [ "Event", @invoice.event.name ], [ "Amount", money(@invoice.amount, @invoice.currency) ] ]
+    [ [ "Client", @invoice.account.name ], [ "Event", @invoice.event.name ], [ "Amount", money(@invoice.amount, @invoice.currency) ] ]
   else
     [ [ "Agency", @invoice.agency.name ], [ "Amount", money(@invoice.amount, @invoice.currency) ] ]
   end

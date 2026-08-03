@@ -6,6 +6,14 @@ module Admin
   # #create moved there with it; this controller has no write action left at all.
   class ScanEventsController < BaseController
     include EventScoped
+    # Account::STAFF_PERMISSION_CATALOG — Admin::BaseController#require_staff_permission! own
+    # comment has the full "why an opt-in before_action, not a blanket one" reasoning. Gates only
+    # this in-console live dashboard/index, not the standalone check-in kiosk (CheckinController,
+    # deliberately outside Admin:: entirely — that app/controllers/concerns comment's own
+    # "requirement: check-in should be out of admin panel" reasoning) — a client disabling this
+    # nav entry is hiding the *dashboard view*, not revoking the actual scan capability the kiosk
+    # itself still uses (ScanEventPolicy already covers who's authorized to submit a scan there).
+    before_action { require_staff_permission!(:check_in) }
 
     def index
       authorize @event, policy_class: ScanEventPolicy

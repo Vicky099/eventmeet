@@ -108,6 +108,51 @@ class Account < ApplicationRecord
     account_memberships.event_admin.includes(:user).map(&:user)
   end
 
+  # requirement.md revisit: "client also create event but event created by client requires a
+  # agency approval ... agency can login into client portal and then create the event and manage
+  # on behalf of client" — those two are the same AccountMembership role (`event_admin`) on this
+  # Account, structurally indistinguishable from one another *except* by asking whether the
+  # signed-in user is ALSO one of this Account's own Agency's agency_admins (true for someone who
+  # got here via "Switch to this tenant," false for the client's own genuine admin — every
+  # agency_admin already gets an event_admin AccountMembership backfilled onto every one of their
+  # agency's Accounts, AccountProvisioning/AgencyMembershipProvisioning's own comments, so this
+  # never has a false negative for an agency admin who's actually switched in). No new "how did
+  # you get here" column needed — this is a pure derived check off memberships that already exist.
+  # `agency.nil?` (a legacy standalone Account, requirement.md revisit's own "left alone, not
+  # migrated" carve-out) has no agency to approve anything, so nothing to gate.
+  def creator_requires_approval?(user)
+    agency.present? && !user.agency_memberships.exists?(agency: agency)
+  end
+
+  # requirement.md revisit: "agency will define the client staff permission by toggle on or off
+  # and then based on permission staff will see the options in the client portal" — the fixed
+  # catalog of togglable Admin:: nav sections, one entry per AdminHelper#event_nav_items row (same
+  # keys, same order, so the Agency Console's own toggle panel and the tenant sidebar it's gating
+  # read as the same list). `event_admin` is never gated by any of this — only an `admin_staff`
+  # AccountMembership is (see Admin::BaseController#require_staff_permission! and
+  # AdminHelper#event_nav_items, the write and read sides of the same check).
+  STAFF_PERMISSION_CATALOG = {
+    "analytics" => "Analytics",
+    "registration_form" => "Design Registration Form",
+    "email_templates" => "Email Templates",
+    "participants" => "Participants",
+    "export" => "Export",
+    "import" => "Import",
+    "govt_ids" => "Govt IDs",
+    "check_in" => "Check In",
+    "print_stations" => "Print Stations",
+    "bulk_print" => "Bulk Print"
+  }.freeze
+
+  # `.fetch(key, true)`, not a bare `staff_permissions[key]` — a key this Account's own stored
+  # jsonb hash has never seen (a brand-new Account, or an older one from before some future
+  # catalog addition) defaults to visible/allowed, same "adding a new toggle never silently
+  # restricts an existing tenant's staff out of something they already had" reasoning this
+  # column's own migration comment gives.
+  def staff_permission?(key)
+    staff_permissions.fetch(key.to_s, true)
+  end
+
   def attach_logo(uploaded_file)
     return if uploaded_file.blank?
 

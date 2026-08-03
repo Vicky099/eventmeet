@@ -25,7 +25,7 @@ RSpec.describe "Agency Console dashboard", type: :request do
     get agency_root_path
 
     expect(response).to have_http_status(:ok)
-    expect(response.body).to include("No tenants yet")
+    expect(response.body).to include("No clients yet")
   end
 
   it "renders each tenant's own event/participant counts without raising TenantScoped::MissingTenantContextError" do
@@ -113,8 +113,8 @@ RSpec.describe "Agency Console dashboard", type: :request do
     expect(response.body).to include(">View all<")
     expect(response.body).not_to include(oldest.name)
 
-    # The stat row's own Tenants count still reflects all 11, not just the previewed 10.
-    tenants_label = Nokogiri::HTML(response.body).css("h6").find { |h6| h6.text.strip == "Tenants" }
+    # The stat row's own Clients count still reflects all 11, not just the previewed 10.
+    tenants_label = Nokogiri::HTML(response.body).css("h6").find { |h6| h6.text.strip == "Clients" }
     expect(tenants_label.parent.at_css("h4").text).to include("11")
   end
 

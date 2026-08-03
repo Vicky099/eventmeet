@@ -2,10 +2,10 @@
 
 <%= render layout: "shared/page_header", locals: { icon: "bx-briefcase", crumbs: [ { label: @agency.name } ] } do %>
   <% if @agency.contract_active? %>
-    <%= link_to "New Tenant", new_agency_account_path, class: "btn btn-m btn-primary" %>
+    <%= link_to "New Client", new_agency_account_path, class: "btn btn-m btn-primary" %>
   <% else %>
     <button type="button" class="btn btn-m btn-primary" disabled title="Your annual contract hasn't been paid yet">
-      New Tenant
+      New Client
     </button>
   <% end %>
 <% end %>
@@ -18,7 +18,7 @@
     is why that's always safe here, unlike the Platform Console's multi-agency dashboard. %>
 <div class="row g-3 mb-4">
   <div class="col-md-6 col-xl-3">
-    <%= render "shared/stat_widget", label: "Tenants", value: @accounts.size, icon: "bx-buildings", color: "primary" %>
+    <%= render "shared/stat_widget", label: "Clients", value: @accounts.size, icon: "bx-buildings", color: "primary" %>
   </div>
   <div class="col-md-6 col-xl-3">
     <%= render "shared/stat_widget", label: "Live Events Now", value: @live_event_count, icon: "bx-broadcast", color: "danger" %>
@@ -72,7 +72,7 @@
         </dl>
 
         <% if @agency.annual? && !@agency.contract_active? %>
-          <p class="text-muted small mt-3 mb-0">A Super Admin needs to send and verify payment on your annual contract invoice before you can create tenants or events.</p>
+          <p class="text-muted small mt-3 mb-0">A Super Admin needs to send and verify payment on your annual contract invoice before you can create clients or events.</p>
         <% end %>
       </div>
     </div>
@@ -103,7 +103,9 @@
                   <td><%= invoice.event ? "#{invoice.account.name} — #{invoice.event.name}" : "Annual Contract" %></td>
                   <td><%= money(invoice.amount, invoice.currency) %></td>
                   <td class="text-end">
-                    <%= link_to "Pay Now", agency_invoice_path(invoice), class: "btn btn-m btn-primary" %>
+                    <%= link_to agency_invoice_path(invoice), class: "btn btn-m btn-primary", title: "Pay Now" do %>
+                      <i class="bx bx-credit-card"></i>
+                    <% end %>
                   </td>
                 </tr>
               <% end %>
@@ -120,16 +122,16 @@
       have view all link" — @recent_accounts is already capped to 10
       (AgencyConsole::DashboardController#index's own comment); agency_accounts_path is the full,
       paginated list (AgencyConsole::AccountsController#index). %>
-  <%= render layout: "shared/card", locals: { title: "Tenants", icon: "bx-buildings",
+  <%= render layout: "shared/card", locals: { title: "Clients", icon: "bx-buildings",
     actions: (link_to "View all", agency_accounts_path, class: "btn btn-m btn-outline-secondary") } do %>
     <% if @recent_accounts.none? %>
-      <%= render "shared/empty_state", icon: "bx-buildings", message: "No tenants yet — create your first one to get started." %>
+      <%= render "shared/empty_state", icon: "bx-buildings", message: "No clients yet — create your first one to get started." %>
     <% else %>
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
           <thead>
             <tr>
-              <th>Tenant</th>
+              <th>Client</th>
               <th>Status</th>
               <th>Events</th>
               <th>Participants</th>
@@ -139,7 +141,7 @@
           <tbody>
             <% @recent_accounts.each do |account| %>
               <tr>
-                <td><%= account.name %> <small class="text-muted">(<%= account.subdomain_slug %>)</small></td>
+                <td><%= link_to account.name, agency_account_path(account) %> <small class="text-muted">(<%= account.subdomain_slug %>)</small></td>
                 <td><span class="badge <%= account.active? ? "bg-success" : "bg-secondary" %>"><%= account.status.humanize %></span></td>
                 <td><%= @events_by_account.fetch(account.id, []).size %></td>
                 <td><%= @participant_counts_by_account.fetch(account.id, 0) %></td>
@@ -152,8 +154,11 @@
                           own comment): Turbo's fetch()-based form submission can't follow a
                           cross-origin redirect, confirmed live ("TypeError: Failed to fetch") — a
                           real full-page form submission handles it correctly. %>
-                      <%= button_to "Switch to this tenant", switch_agency_account_path(account), method: :post,
-                            class: "btn btn-m btn-outline-primary", form: { data: { turbo: false } } %>
+                      <%= button_to switch_agency_account_path(account), method: :post,
+                            class: "btn btn-m btn-outline-primary", title: "Switch to this client",
+                            form: { data: { turbo: false } } do %>
+                        <i class="bx bx-log-in-circle"></i>
+                      <% end %>
                       <%# requirement.md revisit: "same action here as well for tenants" — the
                           dashboard's own Tenants preview gets the identical Suspend/Reinstate pair
                           agency_console/accounts/index.html.erb's own table already has (that
@@ -162,7 +167,7 @@
                             class: "btn btn-m btn-outline-danger", title: "Suspend",
                             data: {
                               action: "click->confirm-dialog#show",
-                              title: "Suspend Tenant",
+                              title: "Suspend Client",
                               message: "Suspend #{account.name}? Its own admins won't be able to sign in until reinstated.",
                               danger: "true"
                             } do %>

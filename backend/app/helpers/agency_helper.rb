@@ -13,8 +13,8 @@ module AgencyHelper
       { path: agency_root_path, icon: "bx-home-alt", label: "Dashboard" },
       # requirement.md revisit: "a sidebar which will have all the tenants with pagination" — the
       # full list, distinct from the dashboard's own "latest 10" preview card.
-      { path: agency_accounts_path, icon: "bx-buildings", label: "Tenants" },
-      { path: new_agency_account_path, icon: "bx-plus-circle", label: "New Tenant" },
+      { path: agency_accounts_path, icon: "bx-buildings", label: "Clients" },
+      { path: new_agency_account_path, icon: "bx-plus-circle", label: "New Client" },
       { path: agency_invoices_path, icon: "bx-credit-card", label: "Invoices" }
     ]
   end

@@ -5,7 +5,7 @@
 <div id="agency-live-pulse">
   <%= render layout: "shared/card", locals: { title: "Live Pulse", icon: "bx-pulse" } do %>
     <% if pulse[:live_event_count].zero? %>
-      <%= render "shared/empty_state", icon: "bx-pulse", message: "No events are currently live across any of your tenants." %>
+      <%= render "shared/empty_state", icon: "bx-pulse", message: "No events are currently live across any of your clients." %>
     <% else %>
       <div class="row g-3">
         <div class="col-md-6 col-xl-3">

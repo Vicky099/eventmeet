@@ -377,7 +377,7 @@ RSpec.describe "Admin Console events", type: :request do
     end
 
     # requirement.md revisit: "once event complete the tenant can not able to edit the event" —
-    # the workspace landing page's own "Continue Setup" link back into the wizard.
+    # the workspace landing page's own "Edit Event" link back into the wizard.
     it "disables Continue Setup for a completed event" do
       Current.account = account
       event = create(:event, account: account, status: :completed)
@@ -386,7 +386,7 @@ RSpec.describe "Admin Console events", type: :request do
 
       doc = Nokogiri::HTML(response.body)
       expect(doc.at_css("a[href='#{edit_admin_event_path(event)}']")).to be_nil
-      expect(doc.css("button").map(&:text)).to include("Continue Setup")
+      expect(doc.css("button").map { |b| b.text.strip }).to include("Edit Event")
     end
 
     # requirement.md §5.14 v12: "once inside an event's own workspace, the sidebar switches to

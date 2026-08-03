@@ -1,7 +1,7 @@
 <% content_for :page_title, "Event Page — #{@event.name}" %>
 
 <%= render layout: "shared/page_header", locals: { icon: "bx-globe",
-  crumbs: [ { label: "Tenants", path: agency_accounts_path },
+  crumbs: [ { label: "Clients", path: agency_accounts_path },
             { label: @account.name, path: agency_account_events_path(@account) },
             { label: "Event Page" } ] } do %>
 <% end %>

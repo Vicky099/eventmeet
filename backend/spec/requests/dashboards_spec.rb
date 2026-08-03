@@ -80,11 +80,11 @@ RSpec.describe "Dashboards", type: :request do
       get platform_staff_root_path
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include("Tenants")
+      expect(response.body).to include("Clients")
       expect(response.body).to include(Account.count.to_s)
       expect(response.body).to include("Agencies")
       expect(response.body).to include(Agency.count.to_s)
-      expect(response.body).to include("Cross-Tenant Live Pulse")
+      expect(response.body).to include("Cross-Client Live Pulse")
     end
 
     # requirement.md revisit: "generate the proper analytics for super admin. earning and all.

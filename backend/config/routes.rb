@@ -118,6 +118,10 @@ Rails.application.routes.draw do
         member do
           post :duplicate
           post :publish
+          # requirement.md revisit: "client also create event but event created by client requires
+          # a agency approval" — the client's own way out of a rejection, Admin::EventsController
+          # #resubmit_for_approval's own comment has the full "why."
+          post :resubmit_for_approval
         end
 
         # Phase 6 — Ticketing (requirement.md §5.3). TicketCategory itself has no routes of its
@@ -315,6 +319,16 @@ Rails.application.routes.draw do
       resource :profile, only: [ :show, :update ], controller: "admin/profiles" do
         patch :password, on: :member
       end
+
+      # requirement.md revisit: "at client portal show the new sidebar menu as team and inside it
+      # list down the admin and staff name and against staff show the action as suspended" —
+      # Admin::TeamController's own class comment has the full "why separate from
+      # AgencyConsole::AccountMembershipsController" reasoning. Plain `get`/`patch` (not
+      # `resource :team`) — a singular resource has no :id segment at all, but #suspend/#reinstate
+      # each need one (the target AccountMembership, not "team" itself).
+      get "team", to: "admin/team#index", as: :team
+      patch "team/:id/suspend", to: "admin/team#suspend", as: :suspend_team_membership
+      patch "team/:id/reinstate", to: "admin/team#reinstate", as: :reinstate_team_membership
     end
 
     # Fixed-hierarchy pivot (requirement.md revisit, confirmed with the user): the Agency
@@ -329,13 +343,26 @@ Rails.application.routes.draw do
     # — the dashboard's own Tenants card is a preview now, not the full list; #index is that full,
     # paginated list, its own sidebar nav entry (AgencyHelper#agency_nav_items).
     #
+    # requirement.md revisit: "we should have tenant edit option" — #edit/#update let an agency
+    # admin fix a tenant's own contact/timezone details after provisioning (most importantly
+    # Account#time_zone — TenantResolvable#with_tenant_time_zone's own comment has the full "why
+    # this matters" for every date/time this app renders). Deliberately no :subdomain_slug or
+    # :admin_email field on that form (AgencyConsole::AccountsController#account_update_params) —
+    # both are #new/#create-only concerns (a tenant's own hosting identity, and the one-time
+    # initial-admin invite), not something this edit surface reopens.
+    #
+    # requirement.md revisit: "a client show page and some performance analytics of client ...
+    # also has option to invite the client admin" — #show is that page: cross-event KPIs/charts
+    # for this one Account (AgencyConsole::AccountsController#show's own comment has the query
+    # shape) plus its own admin roster (:account_memberships below).
+    #
     # Controller module is AgencyConsole:: (not Agency::) — Agency is already a top-level model
     # class, and Zeitwerk can't resolve a name as both a class and a controller namespace module.
     # Route path/name (as: "agency", agency_root_path etc.) are independent of the controller
     # module name and stay as they were designed.
     get "agency", to: "agency_console/dashboard#index", as: :agency_root
     scope path: "agency", as: "agency" do
-      resources :accounts, controller: "agency_console/accounts", only: [ :index, :new, :create ] do
+      resources :accounts, controller: "agency_console/accounts", only: [ :index, :show, :new, :create, :edit, :update ] do
         # Agency → Tenant account switch (requirement.md revisit): mints a one-time
         # AccountSwitch and redirects straight to that tenant's own admin/switch — the SSO
         # handoff itself lives on the Admin:: side (see the top-level redeem_account_switch
@@ -350,14 +377,52 @@ Rails.application.routes.draw do
           patch :reinstate
         end
 
+        # requirement.md revisit: "a client show page ... option to invite the client admin" —
+        # #show's own admin roster (AgencyConsole::AccountMembershipsController), same shape
+        # SuperAdmin::AgencyMembershipsController already takes one tier up for an Agency's own
+        # admin roster (that resource's own comment has the full reasoning for each action).
+        resources :account_memberships, controller: "agency_console/account_memberships", only: [ :create, :destroy ] do
+          member do
+            post :resend_invite
+            post :send_reset_password_instructions
+            # requirement.md revisit: "agency can suspend client admin and client admin staff" —
+            # the Agency's own oversight of this Account's full roster (both roles, unlike the
+            # tenant's own Team page — Admin::TeamController's class comment on why that one never
+            # lets a staff-tier viewer suspend an event_admin peer; the Agency sits above both
+            # roles, so no such restriction applies here).
+            patch :suspend
+            patch :reinstate
+          end
+        end
+
         # doc/event_page_templates_plan.md, Stage 2 — the Event Page screen (moved off the tenant
         # Admin Console, requirement: a tenant's own event_admin shouldn't be able to touch this at
         # all) needs somewhere to reach a specific event from, which the Agency Console had no path
         # to at all before this — every other event-management action still happens on the
-        # tenant's own Admin Console, reached via #switch above. :index only, deliberately
-        # read-only/narrow: this is not a general tenant event-management surface.
-        resources :events, controller: "agency_console/events", only: [ :index ] do
+        # tenant's own Admin Console, reached via #switch above. :index + :show, deliberately
+        # read-only/narrow: this is not a general tenant event-management surface. #show is the
+        # agency-level "view this tenant's event details" drill-down (index's row-level detail
+        # link), still no create/edit/destroy here — #approve/#reject (requirement.md revisit:
+        # "client also create event but event created by client requires a agency approval") are
+        # the one deliberate exception, AgencyConsole::EventsController's own class comment has
+        # the full "why."
+        resources :events, controller: "agency_console/events", only: [ :index, :show ] do
+          member do
+            patch :approve
+            patch :reject
+          end
           resource :event_page, controller: "agency_console/event_pages", only: [ :edit, :update ]
+
+          # #show's own Badges card (read-only) needs somewhere for its preview-in-modal iframe to
+          # point at — same "sample participant, standalone document" shape as
+          # Admin::BadgesController#preview (that action's own comment has the full reasoning), just
+          # this console's own copy (AgencyConsole::BadgesController), same "own copy" pattern
+          # AgencyConsole::DirectUploadsController already takes on Admin::DirectUploadsController's
+          # route. No :index/:show/:edit — this namespace never manages a badge, only ever previews
+          # one already designed on the tenant's own Admin Console.
+          resources :badges, controller: "agency_console/badges", only: [] do
+            get :preview, on: :member
+          end
         end
       end
       # Invoices moved to the Agency Console entirely (requirement.md revisit) — every Invoice
@@ -472,6 +537,11 @@ Rails.application.routes.draw do
         resources :agency_memberships, controller: "super_admin/agency_memberships", only: [ :create, :destroy ] do
           member do
             post :resend_invite
+            # requirement.md revisit: "Send reset password instructions feature for agency
+            # admins" — #resend_invite's own comment explicitly left this gap ("a Super Admin who
+            # wants to reset an *active* admin's password has no path here on purpose"); this is
+            # that path, for the opposite (already-onboarded) state.
+            post :send_reset_password_instructions
           end
         end
         # requirement.md revisit: "super admin should have option to impersonate agency and login

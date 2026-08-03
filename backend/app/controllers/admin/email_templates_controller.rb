@@ -10,7 +10,18 @@ module Admin
   # EventPolicy, same shortcut Admin::BadgesController/TicketCategory's controller already take for
   # Event-child resources.
   class EmailTemplatesController < BaseController
-    before_action :set_event
+    # EventScoped (not this controller's own former bespoke `set_event`, byte-identical to that
+    # concern's own version — folded in here so this also picks up its own
+    # #require_event_approved! before_action, requirement.md revisit: "client also create event
+    # but event created by client requires a agency approval," for free).
+    include EventScoped
+    # Account::STAFF_PERMISSION_CATALOG — Admin::BaseController#require_staff_permission! own
+    # comment has the full "why an opt-in before_action, not a blanket one" reasoning. Every
+    # action here already requires `:update?` regardless (event_admin-only, this controller's own
+    # class comment), so this toggle can never grant an admin_staff anything Pundit wouldn't
+    # already block — it only lets an agency hide the nav entry / short-circuit to a clearer
+    # redirect before that Pundit check runs.
+    before_action { require_staff_permission!(:email_templates) }
     before_action :set_email_template, only: [ :edit, :update, :destroy, :preview ]
 
     def index
@@ -89,10 +100,6 @@ module Admin
     end
 
     private
-
-    def set_event
-      @event = Event.friendly.find(params[:event_id])
-    end
 
     # A kind is offered in "Quick Email Send" when it's either always-sendable (has real,
     # built-in-view content even with no row — EmailTemplate::ALWAYS_SENDABLE_KINDS) or has an

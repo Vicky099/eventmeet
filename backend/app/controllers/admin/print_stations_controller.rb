@@ -5,6 +5,9 @@ module Admin
   # event-wide auto-print toggle + default-station picker.
   class PrintStationsController < BaseController
     include EventScoped
+    # Account::STAFF_PERMISSION_CATALOG — Admin::BaseController#require_staff_permission! own
+    # comment has the full "why an opt-in before_action, not a blanket one" reasoning.
+    before_action { require_staff_permission!(:print_stations) }
     before_action :set_print_station, only: [ :edit, :update, :destroy, :generate_pairing_code, :revoke ]
 
     def index

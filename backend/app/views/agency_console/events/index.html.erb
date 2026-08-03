@@ -1,11 +1,13 @@
 <% content_for :page_title, "#{@account.name} — Events" %>
 
-<%# doc/event_page_templates_plan.md, Stage 2 — read-only drill-down, existing solely to reach a
-    specific event's Event Page screen (Stage 3). Everything else about event management
-    (creating/editing an event, participants, tickets, ...) still happens on the tenant's own
-    Admin Console, reached via the "Switch to this tenant" action on agency/accounts#index. %>
+<%# doc/event_page_templates_plan.md, Stage 2 — read-only drill-down. "View" reaches this event's
+    own read-only details (#show), which is in turn where the Event Page screen (Stage 3) is
+    reached from now — this index row no longer links there directly. Everything else about event
+    management (creating/editing an event, participants, tickets, ...) still happens on the
+    tenant's own Admin Console, reached via the "Switch to this tenant" action on
+    agency/accounts#index. %>
 <%= render layout: "shared/page_header", locals: { icon: "bx-calendar-event",
-  crumbs: [ { label: "Tenants", path: agency_accounts_path }, { label: @account.name } ] } do %>
+  crumbs: [ { label: "Clients", path: agency_accounts_path }, { label: @account.name } ] } do %>
 <% end %>
 
 <div class="card">
@@ -19,6 +21,13 @@
             <tr>
               <th>Event</th>
               <th>Dates</th>
+              <%# requirement.md revisit: "client also create event but event created by client
+                  requires a agency approval" — a Pending/Rejected badge here is what lets an
+                  agency spot its own review queue across every one of a client's events without
+                  opening each row's own #show page; blank for the common not_required/approved
+                  case, same "don't clutter the good state" reasoning agency_console/events/
+                  show.html.erb's own badge row already follows. %>
+              <th>Approval</th>
               <th>Event Page</th>
               <th class="text-end">Actions</th>
             </tr>
@@ -29,6 +38,13 @@
                 <td><%= event.name %></td>
                 <td><%= event.starts_at&.to_fs(:long) %></td>
                 <td>
+                  <% if event.approval_pending? %>
+                    <span class="badge bg-warning-subtle text-warning">Pending</span>
+                  <% elsif event.approval_rejected? %>
+                    <span class="badge bg-danger-subtle text-danger">Rejected</span>
+                  <% end %>
+                </td>
+                <td>
                   <% if event.event_page&.template_key.present? %>
                     <span class="badge bg-primary"><%= event.event_page.template_key.humanize %></span>
                   <% elsif event.event_page.present? %>
@@ -38,7 +54,7 @@
                   <% end %>
                 </td>
                 <td class="text-end">
-                  <%= link_to "Event Page", edit_agency_account_event_event_page_path(@account, event),
+                  <%= link_to "View", agency_account_event_path(@account, event),
                         class: "btn btn-m btn-outline-primary" %>
                 </td>
               </tr>

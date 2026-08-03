@@ -1,0 +1,356 @@
+<% content_for :page_title, @event.name %>
+
+<%# doc/event_page_templates_plan.md, Stage 2 — the read-only "view this tenant's event" drill-down
+    off the index row's new "View" link. Deliberately no edit/publish/manage entry points here
+    (Admin::EventsController#show's "Continue Setup" button has no counterpart on this page) — every
+    real event-management action stays on the tenant's own Admin Console, reached only via the
+    "Switch to this tenant" action on agency/accounts#index. %>
+<%= render "shared/page_header", icon: "bx-calendar-event",
+  crumbs: [ { label: "Clients", path: agency_accounts_path },
+            { label: @account.name, path: agency_account_events_path(@account) },
+            { label: @event.name } ] %>
+
+<div class="mb-3 d-flex align-items-center gap-2">
+  <span class="badge bg-info-subtle text-info"><%= @event.status.humanize %></span>
+  <% if @event.published? %>
+    <span class="badge bg-success-subtle text-success"><i class="bx bx-check-circle"></i> Published</span>
+  <% end %>
+  <%# requirement.md revisit: "client also create event but event created by client requires a
+      agency approval" — only the two states actually worth calling out with their own badge;
+      `not_required`/`approved` are the "nothing to see here" common case, same "don't clutter
+      the good state" reasoning the Published badge above already follows. %>
+  <% if @event.approval_pending? %>
+    <span class="badge bg-warning-subtle text-warning"><i class="bx bx-time-five"></i> Pending Your Approval</span>
+  <% elsif @event.approval_rejected? %>
+    <span class="badge bg-danger-subtle text-danger"><i class="bx bx-x-circle"></i> Rejected</span>
+  <% end %>
+  <% if @event.event_page&.template_key.present? %>
+    <span class="badge bg-primary"><%= @event.event_page.template_key.humanize %></span>
+  <% elsif @event.event_page.present? %>
+    <span class="badge bg-secondary">Custom HTML</span>
+  <% else %>
+    <span class="badge bg-light text-dark">Event Page not set</span>
+  <% end %>
+  <%= link_to "Event Page", edit_agency_account_event_event_page_path(@account, @event),
+        class: "btn btn-m btn-outline-primary ms-auto" %>
+</div>
+
+<%# requirement.md revisit: "client also create event but event created by client requires a
+    agency approval" — the review queue's own action pair
+    (AgencyConsole::EventsController#approve/#reject). Only rendered for the two states that need
+    it: `pending` gets the real Approve/Reject actions, `rejected` gets a read-only look at why (no
+    "un-reject" — Admin::EventsController#resubmit_for_approval, the client's own way back, is what
+    puts it in front of this card again). Nothing renders for `not_required`/`approved`. %>
+<% if @event.approval_pending? %>
+  <div class="card mb-3 border-warning">
+    <div class="card-header bg-warning-subtle">
+      <span class="fw-semibold">Awaiting Your Approval</span>
+    </div>
+    <div class="card-body">
+      <p class="text-muted font-size-13 mb-3">
+        <%= @account.name %>'s own admin created this event directly — it won't be usable for registration, check-in, or any other setup until you approve it.
+      </p>
+      <div class="d-flex gap-2">
+        <%= button_to approve_agency_account_event_path(@account, @event), method: :patch,
+              class: "btn btn-m btn-success",
+              data: { action: "click->confirm-dialog#show", title: "Approve Event",
+                      message: "Approve \"#{@event.name}\"? #{@account.name} will be notified and can proceed with setup." } do %>
+          <i class="bx bx-check"></i> Approve
+        <% end %>
+        <button type="button" class="btn btn-m btn-outline-danger" data-bs-toggle="modal" data-bs-target="#reject-event-modal">
+          <i class="bx bx-x"></i> Reject
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <%# shared/_console_shell.html.erb's own `yield :modals` — same reasoning as this page's own
+      Badges preview modal (that comment has the full "why": a plain page-body modal renders
+      off-screen the moment the page was scrolled while impersonating). %>
+  <% content_for :modals do %>
+    <div class="modal fade" id="reject-event-modal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+          <%= form_with url: reject_agency_account_event_path(@account, @event), method: :patch, local: true do %>
+            <div class="modal-header border-0 pb-0">
+              <h5 class="modal-title fw-semibold">Reject "<%= @event.name %>"</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <%= label_tag :rejection_reason, "Reason", class: "form-label" %>
+              <%= text_area_tag :rejection_reason, nil, class: "form-control", rows: 3, required: true %>
+              <small class="text-muted">Shared with <%= @account.name %> so they know what to fix before resubmitting.</small>
+            </div>
+            <div class="modal-footer border-0 pt-3">
+              <button type="button" class="btn btn-outline-secondary btn-m" data-bs-dismiss="modal">Cancel</button>
+              <%= submit_tag "Reject", class: "btn btn-danger btn-m" %>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  <% end %>
+<% elsif @event.approval_rejected? %>
+  <div class="card mb-3 border-danger">
+    <div class="card-header bg-danger-subtle">
+      <span class="fw-semibold">Rejected</span>
+    </div>
+    <div class="card-body">
+      <p class="mb-0"><%= @event.rejection_reason %></p>
+      <p class="text-muted font-size-12 mt-2 mb-0">Waiting on <%= @account.name %> to make changes and resubmit.</p>
+    </div>
+  </div>
+<% end %>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <%= render "shared/stat_widget", label: "Participants", value: @participant_count, icon: "bx-group", color: "primary" %>
+  </div>
+  <div class="col-md-3">
+    <%= render "shared/stat_widget", label: "Confirmed", value: @participant_status_counts["confirmed"], icon: "bx-check-circle", color: "success" %>
+  </div>
+  <div class="col-md-3">
+    <%= render "shared/stat_widget", label: "Pending", value: @participant_status_counts["pending"], icon: "bx-time-five", color: "warning" %>
+  </div>
+  <div class="col-md-3">
+    <%= render "shared/stat_widget", label: "Checked In", value: @checked_in_count, icon: "bx-barcode", color: "info" %>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><span class="fw-semibold">Event Details</span></div>
+  <div class="card-body">
+    <dl class="row mb-0">
+      <% if @event.description.present? %>
+        <dt class="col-sm-3">Description</dt>
+        <dd class="col-sm-9"><%= @event.description %></dd>
+      <% end %>
+
+      <dt class="col-sm-3">Mode</dt>
+      <dd class="col-sm-9"><%= @event.mode.humanize %></dd>
+
+      <dt class="col-sm-3">Dates</dt>
+      <dd class="col-sm-9">
+        <% if @event.starts_at && @event.ends_at %>
+          <%= @event.starts_at.to_fs(:long) %> &rarr; <%= @event.ends_at.to_fs(:long) %>
+        <% else %>
+          <span class="text-muted">Not set</span>
+        <% end %>
+      </dd>
+
+      <dt class="col-sm-3">Location</dt>
+      <dd class="col-sm-9">
+        <% if @event.address.present? %><div><%= @event.address %></div><% end %>
+        <% if @event.meeting_link.present? %><div><%= external_link_to @event.meeting_link, @event.meeting_link %></div><% end %>
+        <% if @event.map_url.present? %><div><%= external_link_to @event.map_url, @event.map_url %></div><% end %>
+        <% if @event.address.blank? && @event.meeting_link.blank? && @event.map_url.blank? %><span class="text-muted">Not set</span><% end %>
+      </dd>
+
+      <dt class="col-sm-3">Registration</dt>
+      <dd class="col-sm-9">
+        <%= @event.is_paid? ? "Paid" : "Free" %>
+        &middot; Approval <%= @event.participant_approval_required? ? "required" : "not required" %>
+        <% if @event.has_seat_limit? %>
+          &middot; Seat limit: <%= @event.seat_limit %>
+        <% end %>
+      </dd>
+
+      <dt class="col-sm-3">Report Emails</dt>
+      <dd class="col-sm-9 mb-0"><%= @event.scheduled_report_frequency.humanize %></dd>
+    </dl>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><span class="fw-semibold">Ticket Categories</span></div>
+  <div class="card-body">
+    <% if @ticket_categories.none? %>
+      <p class="text-muted mb-0">No ticket categories yet.</p>
+    <% else %>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Registered</th>
+              <th>Capacity</th>
+              <th>Document Required</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @ticket_categories.each do |category| %>
+              <tr>
+                <td><%= category.name %></td>
+                <td><%= @category_participant_counts[category.id] || 0 %></td>
+                <td><%= category.total_count || "Unlimited" %></td>
+                <td><%= category.document_required? ? "Yes" : "No" %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  </div>
+</div>
+
+<%# Read-only counterpart to admin/events/_sessions_step.html.erb's own table — no New/Edit/
+    Remove column, and a plain seat_limit/"Unlimited" reading in place of that step's own
+    session_live_stats occupancy widget (a real-time, tenant-side-scan-broadcast concern this
+    read-only agency page has no business subscribing to). %>
+<div class="card mb-3">
+  <div class="card-header"><span class="fw-semibold">Sessions</span></div>
+  <div class="card-body">
+    <% if @sessions.none? %>
+      <p class="text-muted mb-0">No sessions yet.</p>
+    <% else %>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Track</th>
+              <th>Room</th>
+              <th>Time</th>
+              <th>Capacity</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @sessions.each do |session| %>
+              <tr>
+                <td><%= session.name %></td>
+                <td><%= session.track.presence || "—" %></td>
+                <td><%= session.room.presence || "—" %></td>
+                <td><%= session.starts_at.strftime("%b %-d, %H:%M") %>&ndash;<%= session.ends_at.strftime("%H:%M") %></td>
+                <td><%= session.seat_limit || "Unlimited" %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  </div>
+</div>
+
+<%# Read-only counterpart to admin/events/_event_schedule_step.html.erb's own agenda —
+    sessions grouped by day, then track, each showing its own talks (title, speaker, time); talks
+    with no session sit in their own "Other Talks" list below, same shape that step uses. No New
+    Talk/Edit/Remove controls — every real agenda edit still happens on the tenant's own Admin
+    Console. %>
+<div class="card mb-3">
+  <div class="card-header"><span class="fw-semibold">Event Schedule</span></div>
+  <div class="card-body">
+    <% if @schedule_days.empty? && @unscheduled_talks.none? %>
+      <p class="text-muted mb-0">No talks scheduled yet.</p>
+    <% else %>
+      <% @schedule_days.sort.each do |day, sessions_for_day| %>
+        <% tracks = sessions_for_day.group_by { |session| session.track.presence || "General" } %>
+        <h6 class="text-muted text-uppercase font-size-12 mt-2"><%= day.strftime("%A, %B %-d") %></h6>
+        <div class="row g-3 mb-3">
+          <% tracks.sort.each do |track, sessions_for_track| %>
+            <div class="col-md-<%= [ 12 / tracks.size, 3 ].max %>">
+              <h6 class="text-muted font-size-11 text-uppercase"><%= track %></h6>
+              <% sessions_for_track.sort_by(&:starts_at).each do |session| %>
+                <% talks = @talks_by_session_id[session.id] || [] %>
+                <div class="border rounded p-2 mb-2">
+                  <div class="fw-semibold font-size-13"><%= session.name %></div>
+                  <div class="text-muted font-size-12">
+                    <%= session.starts_at.strftime("%H:%M") %>&ndash;<%= session.ends_at.strftime("%H:%M") %>
+                  </div>
+                  <% if talks.any? %>
+                    <ul class="list-unstyled mt-2 mb-0 font-size-13">
+                      <% talks.each do |schedule| %>
+                        <li><%= schedule.title %> &mdash; <%= schedule.speaker.name %> (<%= schedule.starts_at.strftime("%H:%M") %>)</li>
+                      <% end %>
+                    </ul>
+                  <% end %>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+
+      <% if @unscheduled_talks.any? %>
+        <h6 class="text-muted text-uppercase font-size-12 mt-3">Other Talks (no session)</h6>
+        <ul class="list-unstyled mb-0">
+          <% @unscheduled_talks.each do |schedule| %>
+            <li><%= schedule.title %> &mdash; <%= schedule.speaker.name %> (<%= schedule.starts_at.strftime("%b %-d, %H:%M") %>)</li>
+          <% end %>
+        </ul>
+      <% end %>
+    <% end %>
+  </div>
+</div>
+
+<%# Read-only counterpart to admin/badges/_badges_table.html.erb's eye-icon preview — no
+    Edit/Copy/Remove column here (every real badge-management action still happens on the
+    tenant's own Admin Console), just the same "iframe onto a sample-participant preview, in a
+    modal" pattern, this console's own AgencyConsole::BadgesController#preview endpoint. %>
+<div class="card">
+  <div class="card-header"><span class="fw-semibold">Badges</span></div>
+  <div class="card-body">
+    <% if @badges.none? %>
+      <p class="text-muted mb-0">No badges designed yet for this event.</p>
+    <% else %>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Badge</th>
+              <th>Applies to</th>
+              <th>Type</th>
+              <th>Size (cm)</th>
+              <th class="text-end">Preview</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @badges.each do |badge| %>
+              <tr>
+                <td><%= badge.name %></td>
+                <td><%= badge.ticket_category&.name || "Default (every other participant)" %></td>
+                <td><%= badge.output_type.humanize %></td>
+                <td><%= badge.width_cm %> &times; <%= badge.height_cm %></td>
+                <td class="text-end">
+                  <button type="button" class="btn btn-m btn-outline-secondary" title="Preview"
+                          data-bs-toggle="modal" data-bs-target="#badge-preview-modal-<%= badge.id %>">
+                    <i class="bx bx-show"></i>
+                  </button>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+
+      <%# shared/_console_shell.html.erb's own `yield :modals` — not rendered inline here — is
+          what keeps this Bootstrap modal's `position: fixed` dialog anchored to the real
+          viewport instead of #layout-wrapper's own box while impersonating (that yield point's
+          own comment has the full "why"; confirmed live: without this, the modal opened but only
+          ever showed a full-screen grey backdrop, the dialog itself rendered off-screen the
+          moment the page had been scrolled first). %>
+      <% content_for :modals do %>
+        <% @badges.each do |badge| %>
+          <div class="modal fade" id="badge-preview-modal-<%= badge.id %>" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+              <div class="modal-content border-0 shadow">
+                <div class="modal-header border-0 pb-0">
+                  <h5 class="modal-title fw-semibold"><%= badge.name %></h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body d-flex justify-content-center align-items-center pt-2">
+                  <iframe src="<%= preview_agency_account_event_badge_path(@account, @event, badge) %>"
+                          style="width: <%= (badge.width_cm * 96 / 2.54).round %>px; height: <%= (badge.height_cm * 96 / 2.54).round %>px; max-width: 100%; border: 1px solid var(--bs-border-color);"
+                          title="<%= badge.name %> preview"></iframe>
+                </div>
+                <div class="modal-footer border-0 pt-3">
+                  <p class="text-muted font-size-12 me-auto mb-0">Preview uses sample participant data — QR/barcode and photo won't match a real attendee.</p>
+                  <button type="button" class="btn btn-secondary btn-m" data-bs-dismiss="modal">Close</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      <% end %>
+    <% end %>
+  </div>
+</div>

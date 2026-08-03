@@ -68,6 +68,30 @@ module Admin
       redirect_to agency_root_path if Current.agency
     end
 
+    # requirement.md revisit: "agency will define the client staff permission by toggle on or off
+    # and then based on permission staff will see the options in the client portal." A subclass
+    # opts in with `before_action { require_staff_permission!(:key) }` — deliberately not a
+    # blanket before_action here (unlike authenticate_user!/redirect_agency_context_to_agency_console
+    # above, which apply to literally every Admin:: request) since which key applies is different
+    # per controller (Account::STAFF_PERMISSION_CATALOG's own comment has the full key list) and
+    # some Admin:: controllers (Dashboard, Profile, the wizard's own Events#new/#edit/#update, ...)
+    # aren't gated by this feature at all.
+    #
+    # `event_admin?` bypasses entirely — this toggle only ever restricts the `admin_staff` tier,
+    # matching AccountMembership's own role split (event_admin already has full access to
+    # everything by construction; there is no "even less than admin_staff" tier to gate further).
+    # A missing/nil membership (shouldn't happen for an authenticated tenant session — User
+    # #authorized_for_current_host? already requires one to sign in at all — but defensively) also
+    # passes through unrestricted, same "fail open on an impossible state, fail closed on a real
+    # admin_staff/disabled-toggle combination" shape every other role check in this app already takes.
+    def require_staff_permission!(key)
+      membership = current_user.account_membership_for(Current.account)
+      return unless membership&.admin_staff?
+      return if Current.account.staff_permission?(key)
+
+      redirect_to authorization_fallback_path, alert: "Your account doesn't have access to that section — ask your agency to enable it."
+    end
+
     def authorization_fallback_path
       user_root_path
     end

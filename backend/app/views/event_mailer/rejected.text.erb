@@ -1,0 +1,7 @@
+Event needs changes — <%= @event.name %>
+
+Your agency reviewed <%= @event.name %> and sent it back:
+
+<%= @event.rejection_reason %>
+
+Review & resubmit at <%= admin_event_url(@event) %>

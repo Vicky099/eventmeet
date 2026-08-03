@@ -45,6 +45,14 @@ module SuperAdmin
       @total_paid = agency_invoices.paid.sum(:amount)
       @outstanding = agency_invoices.where(status: [ :awaiting_payment, :under_review ]).sum(:amount)
 
+      # Per-client billed total (requirement.md revisit: "platform is charging agency and not the
+      # client ... add the payment/revenue related analytics in platform agency show") — the
+      # Platform's own view of how much of this agency's billing each client's events account for.
+      # Only meaningful for a per_event agency: an annual agency's own Invoice belongs directly to
+      # the Agency (Agency#invoice), never to any one Event, so there's nothing to attribute
+      # per-client here (the view only renders this column when @agency.per_event?).
+      @billed_by_account = @events.each_with_object(Hash.new(0)) { |event, hash| hash[event.account_id] += event.invoice.amount if event.invoice }
+
       # requirement.md revisit: "if event has used the whatsApp messages for invitation then show
       # the messages sent via whatsApp count ... overall how much messages used by agency." The
       # only WhatsApp sends this app ever makes are Super-Admin-to-agency invoice notifications

@@ -18,7 +18,7 @@
       <%= f.text_field :subdomain_slug, class: field_error_class(agency, :subdomain_slug) %>
       <span class="input-group-text">.<%= Rails.application.config.x.platform_domain %></span>
     </div>
-    <small class="text-muted">Where the agency signs in and manages its own tenants.</small>
+    <small class="text-muted">Where the agency signs in and manages its own clients.</small>
     <%= field_error_feedback(agency, :subdomain_slug) %>
   </div>
 
@@ -85,7 +85,7 @@
     <div class="mb-3">
       <%= label_tag "agency_admin_email", "Initial agency admin email", class: "form-label" %>
       <%= text_field_tag "agency[admin_email]", @admin_email, class: "form-control" %>
-      <small class="text-muted">They'll receive a temporary password, and get access to each tenant provisioned under this agency automatically.</small>
+      <small class="text-muted">They'll receive a temporary password, and get access to each client provisioned under this agency automatically.</small>
     </div>
   <% end %>
 

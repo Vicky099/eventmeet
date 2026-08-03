@@ -7,6 +7,12 @@ module AgencyConsole
   # agency_admin, in one transaction, welcome email on success. This action only translates its
   # Result into a redirect or a re-rendered form.
   class AccountsController < BaseController
+    # #show renders this Account's own dates (event/registration timestamps) in its own time_zone
+    # — same "must stay in effect through view rendering, not just the action body" reasoning
+    # AgencyConsole::EventsController#apply_account_time_zone's own comment gives, just keyed off
+    # `params[:id]` (a flat member route) instead of that controller's nested `params[:account_id]`.
+    around_action :apply_account_time_zone, only: [ :show ]
+
     # requirement.md revisit: "show only latest 10 tenants and top right corner of tenant will
     # have view all link and also have a sidebar which will have all the tenants with
     # pagination." — the dashboard's own Tenants card (AgencyConsole::DashboardController#index)
@@ -60,6 +66,70 @@ module AgencyConsole
       end
     end
 
+    # requirement.md revisit: "a client show page and some performance analytics of client and
+    # some catchy analytis" — cross-event KPIs/charts for this one Account, read-only, same
+    # visual language admin/events/show.html.erb's own event-level workspace already established
+    # (shared/_stat_widget, .status-bar/.status-bar-segment, .bar-track/.bar-fill, .arrival-bars) —
+    # reused verbatim rather than inventing new chart markup, just aggregated across every one of
+    # this Account's events instead of one event's own sessions/ticket-categories.
+    #
+    # Event.unscoped_across_tenants — same escape hatch/reasoning as #index's own comment: this
+    # request runs under Current.agency, not Current.account, so Event/Participant's own
+    # TenantScoped default_scope has nothing to recognize otherwise. Every derived value below is
+    # read to a plain value (Array/Hash/Integer) *inside* the block, for the same "a CollectionProxy
+    # re-evaluates default_scope the moment it's touched again outside it" reason #index's own
+    # comment already gives — @events in particular is a plain Array, never re-queried by the view.
+    def show
+      Event.unscoped_across_tenants do
+        @events = @account.events.order(starts_at: :desc).to_a
+        @event_status_counts = Event.statuses.keys.index_with { |status| @events.count { |event| event.status == status } }
+        @checked_in_count = @events.sum(&:checked_in_participant_count)
+        @registrations_by_day = Participant.where(account: @account).pluck(:created_at).map(&:to_date).tally
+        @participant_status_counts = Participant.statuses.keys.index_with { |status| Participant.where(account: @account).public_send(status).count }
+        @participant_counts_by_event = Participant.where(account: @account).group(:event_id).count
+      end
+
+      @participant_count = @participant_status_counts.values.sum
+      @live_event_count = @event_status_counts["live"]
+
+      # This Account's own admin roster — AccountMembership deliberately has no TenantScoped
+      # default_scope at all (that model's own comment), so no escape hatch needed here either.
+      @account_memberships = @account.account_memberships.includes(:user).order(:created_at)
+    end
+
+    # requirement.md revisit: "we should have tenant edit option" — contact/timezone upkeep after
+    # provisioning, most importantly Account#time_zone (TenantResolvable#with_tenant_time_zone's
+    # own comment has the full "why every date/time this app renders depends on getting this
+    # right"). `Current.agency.accounts.find` — same authorization boundary #switch/#suspend/
+    # #reinstate above already use: an agency can only ever edit one of its own tenants.
+    def edit
+      @account = Current.agency.accounts.find(params[:id])
+    end
+
+    def update
+      @account = Current.agency.accounts.find(params[:id])
+
+      # `params[:staff_permissions_form]` — a bare hidden marker outside the `account[...]` nest
+      # (agency_console/accounts/show.html.erb's own Staff Permissions card), not
+      # `params[:account][:staff_permissions].present?` — an agency turning every single toggle
+      # off submits no `account[staff_permissions][...]` checkbox params at all (unchecked HTML
+      # checkboxes never submit), which would otherwise be indistinguishable from the *other*
+      # form on this same action (#edit's plain name/contact/timezone fields, which never send
+      # `staff_permissions` either) — and silently no-op exactly the update the agency just made.
+      attrs = account_update_params
+      attrs = attrs.merge(staff_permissions: staff_permissions_params) if params[:staff_permissions_form].present?
+
+      # redirect_back (not a fixed path) — same two-possible-trigger-page shape #suspend/
+      # #reinstate's own comment already establishes: this action now backs both the plain Edit
+      # form (agency_accounts_path is the sensible fallback there) and the Show page's own Staff
+      # Permissions card (which wants to land back on itself, not the list).
+      if @account.update(attrs)
+        redirect_back fallback_location: agency_accounts_path, notice: "#{@account.name} updated."
+      else
+        render :edit, status: :unprocessable_content
+      end
+    end
+
     # Agency → Tenant account switch (requirement.md revisit: "agency will controlled all the
     # event using single sign-in as switch account") — mints a one-time AccountSwitch and hands
     # the browser straight to that tenant's own admin/switch, its own subdomain, to redeem it.
@@ -101,6 +171,14 @@ module AgencyConsole
 
     private
 
+    # Time.use_zone (not a bare `Time.zone = ...`) — same "must never leak into the next request
+    # served on this connection" reasoning AgencyConsole::EventsController#apply_account_time_zone's
+    # own comment already gives. Sets `@account` too, so #show itself doesn't look it up again.
+    def apply_account_time_zone(&block)
+      @account = Current.agency.accounts.find(params[:id])
+      Time.use_zone(@account.time_zone, &block)
+    end
+
     # Fixed-hierarchy pivot (requirement.md revisit): "for per year, agency has to pay all the
     # amount in advance to begin with event management" — an annual agency whose one upfront
     # contract Invoice isn't paid yet can't create a tenant at all. A per_event agency has no
@@ -112,6 +190,23 @@ module AgencyConsole
 
     def account_params
       params.require(:account).permit(:name, :subdomain_slug, :admin_email, :contact_email, :contact_num, :sender_email, :time_zone)
+    end
+
+    # #update's own permitted set — deliberately narrower than #account_params above:
+    # :subdomain_slug (this tenant's own hosting identity/login URL) and :admin_email (a one-time
+    # provisioning-only concept, not a real Account attribute at all) both stay #new/#create-only.
+    def account_update_params
+      params.require(:account).permit(:name, :contact_email, :contact_num, :sender_email, :time_zone)
+    end
+
+    # requirement.md revisit: "agency will define the client staff permission by toggle on or
+    # off" — every catalog key gets an explicit true/false (not just the ones present in params),
+    # since an unchecked HTML checkbox never submits at all: a key's *absence* from
+    # `params[:account][:staff_permissions]` means "this toggle is off," not "leave it alone" (the
+    # `params[:staff_permissions_form]` marker in #update above is what already establishes this
+    # form was submitted at all, so every catalog key is meant to be set here).
+    def staff_permissions_params
+      Account::STAFF_PERMISSION_CATALOG.keys.index_with { |key| params.dig(:account, :staff_permissions, key).present? }
     end
   end
 end

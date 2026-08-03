@@ -1,9 +1,16 @@
-<%# Locals: account (Account, new) — create-only, mirrors super_admin/accounts/_form.html.erb's
-    own original create branch (no agency picker needed here — implicit, always Current.agency).
-    No live slug-check Turbo Frame (super_admin/accounts/_form.html.erb's own
+<%# Locals: account (Account, new or persisted) — shared by #new/#create and #edit/#update
+    (requirement.md revisit: "we should have tenant edit option"), mirrors super_admin/accounts/
+    _form.html.erb's own original create branch (no agency picker needed here — implicit, always
+    Current.agency). No live slug-check Turbo Frame (super_admin/accounts/_form.html.erb's own
     data-controller="slug-check" wiring) — that endpoint is gated to platform_staff auth, not
     reachable from this console; a failed #create just re-renders with a real inline validation
-    error instead, same as any other field on this form. %>
+    error instead, same as any other field on this form.
+
+    Subdomain (this tenant's own hosting identity/login URL) and the one-time initial-admin invite
+    only ever render on the #new/#create pass — `account.persisted?` is what tells the two apart,
+    same as this partial's own submit-label switch at the bottom. Neither is in
+    AgencyConsole::AccountsController#account_update_params, so posting either from an edit would
+    be silently dropped anyway; hiding them here just keeps the form honest about that. %>
 <%= form_with model: [ :agency, account ], local: true do |f| %>
   <div class="mb-3">
     <%= f.label :name, class: "form-label" %>
@@ -11,14 +18,21 @@
     <%= field_error_feedback(account, :name) %>
   </div>
 
-  <div class="mb-3">
-    <%= f.label :subdomain_slug, "Subdomain", class: "form-label" %>
-    <div class="input-group">
-      <%= f.text_field :subdomain_slug, class: field_error_class(account, :subdomain_slug) %>
-      <span class="input-group-text">.<%= Rails.application.config.x.platform_domain %></span>
+  <% if account.persisted? %>
+    <div class="mb-3">
+      <span class="form-label d-block">Subdomain</span>
+      <p class="mb-0"><%= account.subdomain_slug %>.<%= Rails.application.config.x.platform_domain %></p>
     </div>
-    <%= field_error_feedback(account, :subdomain_slug) %>
-  </div>
+  <% else %>
+    <div class="mb-3">
+      <%= f.label :subdomain_slug, "Subdomain", class: "form-label" %>
+      <div class="input-group">
+        <%= f.text_field :subdomain_slug, class: field_error_class(account, :subdomain_slug) %>
+        <span class="input-group-text">.<%= Rails.application.config.x.platform_domain %></span>
+      </div>
+      <%= field_error_feedback(account, :subdomain_slug) %>
+    </div>
+  <% end %>
 
   <div class="row g-3 mb-3">
     <div class="col-md-6">
@@ -48,11 +62,13 @@
     </div>
   </div>
 
-  <div class="mb-3">
-    <%= label_tag "account_admin_email", "Initial admin email", class: "form-label" %>
-    <%= text_field_tag "account[admin_email]", @admin_email, class: "form-control" %>
-    <small class="text-muted">They'll receive a temporary password and be forced to reset it on first login.</small>
-  </div>
+  <% unless account.persisted? %>
+    <div class="mb-3">
+      <%= label_tag "account_admin_email", "Initial admin email", class: "form-label" %>
+      <%= text_field_tag "account[admin_email]", @admin_email, class: "form-control" %>
+      <small class="text-muted">They'll receive a temporary password and be forced to reset it on first login.</small>
+    </div>
+  <% end %>
 
-  <%= f.submit "Provision Tenant", class: "btn btn-m btn-primary" %>
+  <%= f.submit (account.persisted? ? "Save Changes" : "Provision Client"), class: "btn btn-m btn-primary" %>
 <% end %>

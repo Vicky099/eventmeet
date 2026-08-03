@@ -37,7 +37,8 @@ CREATE TABLE public.account_memberships (
     account_id uuid NOT NULL,
     role integer DEFAULT 0 NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
+    updated_at timestamp(6) without time zone NOT NULL,
+    status integer DEFAULT 0 NOT NULL
 );
 
 
@@ -73,7 +74,8 @@ CREATE TABLE public.accounts (
     contact_num character varying,
     sender_email character varying,
     time_zone character varying DEFAULT 'UTC'::character varying NOT NULL,
-    agency_id uuid
+    agency_id uuid,
+    staff_permissions jsonb DEFAULT '{}'::jsonb NOT NULL
 );
 
 
@@ -369,7 +371,11 @@ CREATE TABLE public.events (
     scheduled_report_frequency integer DEFAULT 0 NOT NULL,
     last_report_sent_at timestamp(6) without time zone,
     auto_print_enabled boolean DEFAULT false NOT NULL,
-    default_print_station_id uuid
+    default_print_station_id uuid,
+    approval_status integer DEFAULT 0 NOT NULL,
+    approved_by_id uuid,
+    approved_at timestamp(6) without time zone,
+    rejection_reason text
 );
 
 
@@ -1693,6 +1699,13 @@ CREATE INDEX index_events_on_account_id ON public.events USING btree (account_id
 --
 
 CREATE UNIQUE INDEX index_events_on_account_id_and_slug ON public.events USING btree (account_id, slug);
+
+
+--
+-- Name: index_events_on_approved_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_events_on_approved_by_id ON public.events USING btree (approved_by_id);
 
 
 --
@@ -3110,6 +3123,14 @@ ALTER TABLE ONLY public.custom_fields
 
 
 --
+-- Name: events fk_rails_eb6a58ca43; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.events
+    ADD CONSTRAINT fk_rails_eb6a58ca43 FOREIGN KEY (approved_by_id) REFERENCES public.users(id);
+
+
+--
 -- Name: bulk_print_runs fk_rails_edf7da98ee; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3190,6 +3211,12 @@ ALTER TABLE public.email_templates ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.event_live_stats ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: event_pages; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.event_pages ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: event_staff_assignments; Type: ROW SECURITY; Schema: public; Owner: -
@@ -3346,6 +3373,13 @@ CREATE POLICY tenant_isolation ON public.email_templates USING ((account_id = (c
 --
 
 CREATE POLICY tenant_isolation ON public.event_live_stats USING ((account_id = (current_setting('app.current_account_id'::text, true))::uuid));
+
+
+--
+-- Name: event_pages tenant_isolation; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY tenant_isolation ON public.event_pages USING ((account_id = (current_setting('app.current_account_id'::text, true))::uuid));
 
 
 --
@@ -3507,6 +3541,9 @@ ALTER TABLE public.ticket_reservations ENABLE ROW LEVEL SECURITY;
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260804090000'),
+('20260803174800'),
+('20260803170200'),
 ('20260802154955'),
 ('20260802153714'),
 ('20260802120000'),

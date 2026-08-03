@@ -33,7 +33,9 @@
     <span class="fw-semibold">Participants</span>
     <div class="d-flex gap-2">
       <%# Phase 13 — Communications (requirement.md §3.10): "send to all pending batch job." %>
-      <%= button_to "Send to Pending", send_to_pending_admin_event_participants_path(@event), method: :post, class: "btn btn-m btn-outline-primary" %>
+      <%= button_to send_to_pending_admin_event_participants_path(@event), method: :post, class: "btn btn-m btn-outline-primary" do %>
+        <i class="bx bx-send"></i> Send to Pending
+      <% end %>
       <button type="submit" form="participants-bulk-form" class="btn btn-m btn-outline-danger"
         data-action="click->confirm-dialog#show" data-title="Remove Selected Participants"
         data-message="Remove every selected participant? This can't be undone." data-danger="true">
@@ -116,11 +118,12 @@
         </tbody>
       </table>
     </div>
+    <% if @participants.any? %>
+      <div class="d-flex justify-content-center mt-3">
+        <%== pagy_bootstrap_nav(@pagy) %>
+      </div>
+    <% end %>
   </div>
-</div>
-
-<div class="d-flex justify-content-end mt-3">
-  <%== pagy_nav(@pagy) if @participants.any? %>
 </div>
 
 <script>

@@ -5,9 +5,9 @@
     Locals: pulse — Hash from LiveDashboard.platform_pulse
       (:live_event_count, :registered_count, :checked_in_count, :occupancy_count) %>
 <div id="platform-live-pulse">
-  <%= render layout: "shared/card", locals: { title: "Cross-Tenant Live Pulse", icon: "bx-pulse" } do %>
+  <%= render layout: "shared/card", locals: { title: "Cross-Client Live Pulse", icon: "bx-pulse" } do %>
     <% if pulse[:live_event_count].zero? %>
-      <%= render "shared/empty_state", icon: "bx-pulse", message: "No events are currently live across any tenant." %>
+      <%= render "shared/empty_state", icon: "bx-pulse", message: "No events are currently live across any client." %>
     <% else %>
       <div class="row g-3">
         <div class="col-md-6 col-xl-3">

@@ -35,8 +35,9 @@
               <td class="text-end">
                 <div class="d-flex justify-content-end gap-2">
                   <% if invoice.awaiting_payment? %>
-                    <button type="button" class="btn btn-m btn-primary" data-bs-toggle="modal" data-bs-target="#mark-as-paid-<%= invoice.id %>">
-                      Mark as Paid
+                    <button type="button" class="btn btn-m btn-primary" title="Mark as Paid"
+                            data-bs-toggle="modal" data-bs-target="#mark-as-paid-<%= invoice.id %>">
+                      <i class="bx bx-check-circle"></i>
                     </button>
                   <% end %>
                   <%= link_to agency_invoice_path(invoice), class: "btn btn-m btn-outline-primary", title: "View" do %>

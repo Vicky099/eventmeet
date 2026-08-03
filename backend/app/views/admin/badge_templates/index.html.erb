@@ -49,10 +49,9 @@
           </tbody>
         </table>
       </div>
+      <div class="d-flex justify-content-center mt-3">
+        <%== pagy_bootstrap_nav(@pagy) %>
+      </div>
     <% end %>
   </div>
-</div>
-
-<div class="d-flex justify-content-end mt-3">
-  <%== pagy_nav(@pagy) if @badge_templates.any? %>
 </div>

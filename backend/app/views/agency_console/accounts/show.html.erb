@@ -1,0 +1,315 @@
+<% content_for :page_title, @account.name %>
+
+<%# requirement.md revisit: "a client show page and some performance analytics of client and
+    some catchy analytis. also has option to invite the client admin" —
+    AgencyConsole::AccountsController#show's own comment has the full query shape; every chart
+    below reuses admin/events/show.html.erb's own visual language verbatim (shared/_stat_widget,
+    .status-bar/.status-bar-segment, .bar-track/.bar-fill, .arrival-bars) rather than inventing
+    new chart markup, just aggregated across this Account's own events instead of one event's own
+    sessions/ticket-categories. %>
+<%= render "shared/page_header", icon: "bx-buildings",
+  crumbs: [ { label: "Clients", path: agency_accounts_path }, { label: @account.name } ] %>
+
+<div class="mb-3 d-flex align-items-center gap-2">
+  <span class="badge <%= @account.active? ? "bg-success" : "bg-secondary" %>"><%= @account.status.humanize %></span>
+  <span class="text-muted font-size-13"><%= @account.subdomain_slug %>.<%= Rails.application.config.x.platform_domain %></span>
+  <div class="ms-auto d-flex gap-2">
+    <%= link_to agency_account_events_path(@account), class: "btn btn-m btn-outline-secondary", title: "Events" do %>
+      <i class="bx bx-calendar-event"></i>
+    <% end %>
+    <%= link_to edit_agency_account_path(@account), class: "btn btn-m btn-outline-secondary", title: "Edit" do %>
+      <i class="bx bx-edit"></i>
+    <% end %>
+    <% if @account.active? %>
+      <%= button_to switch_agency_account_path(@account), method: :post,
+            class: "btn btn-m btn-outline-primary", title: "Switch to this client",
+            form: { data: { turbo: false } } do %>
+        <i class="bx bx-log-in-circle"></i>
+      <% end %>
+    <% end %>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Events", value: @events.size, icon: "bx-calendar-event", color: "primary" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Live Now", value: @live_event_count, icon: "bx-broadcast", color: "danger" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Participants", value: @participant_count, icon: "bx-group", color: "info" %>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <%= render "shared/stat_widget", label: "Checked In", value: @checked_in_count, icon: "bx-barcode", color: "warning" %>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <%# Registration status — same stacked-bar shape admin/events/show.html.erb's own "attractive
+      analytics" widget already established for one event; this is that same proportion, just
+      summed across every one of this client's events instead of one. %>
+  <div class="col-lg-6">
+    <div class="card h-100 mb-0">
+      <div class="card-header"><span class="fw-semibold">Registration Status</span></div>
+      <div class="card-body">
+        <% total_participants = @participant_status_counts.values.sum %>
+        <% if total_participants.zero? %>
+          <p class="text-muted mb-0">No participants registered yet.</p>
+        <% else %>
+          <% confirmed = @participant_status_counts["confirmed"] %>
+          <% pending = @participant_status_counts["pending"] %>
+          <div class="status-bar" role="img" aria-label="<%= confirmed %> confirmed, <%= pending %> pending, out of <%= total_participants %> total">
+            <% if confirmed.positive? %>
+              <div class="status-bar-segment" style="width: <%= (confirmed.to_f / total_participants * 100).round(2) %>%; background: #0ca30c;" title="Confirmed: <%= confirmed %>"></div>
+            <% end %>
+            <% if pending.positive? %>
+              <div class="status-bar-segment" style="width: <%= (pending.to_f / total_participants * 100).round(2) %>%; background: #fab219;" title="Pending: <%= pending %>"></div>
+            <% end %>
+          </div>
+          <div class="d-flex gap-4 mt-2 font-size-13">
+            <span><span class="legend-dot" style="background: #0ca30c;"></span>Confirmed — <strong><%= confirmed %></strong></span>
+            <span><span class="legend-dot" style="background: #fab219;"></span>Pending — <strong><%= pending %></strong></span>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+  <%# Event status breakdown — same stacked-bar shape, one tier up: where this client's own
+      events sit in their lifecycle. Fixed qualitative colors reused from this app's own existing
+      status-badge palette (bg-secondary/bg-info/bg-danger/bg-success), not new hex picks, so a
+      reader who already knows "blue badge = Up Coming" elsewhere in this console recognizes the
+      same mapping here. %>
+  <div class="col-lg-6">
+    <div class="card h-100 mb-0">
+      <div class="card-header"><span class="fw-semibold">Event Status</span></div>
+      <div class="card-body">
+        <% total_events = @events.size %>
+        <% if total_events.zero? %>
+          <p class="text-muted mb-0">No events yet.</p>
+        <% else %>
+          <% status_colors = { "draft" => "#adb5bd", "up_coming" => "#0d6efd", "live" => "#dc3545", "completed" => "#0ca30c" } %>
+          <div class="status-bar" role="img" aria-label="<%= @event_status_counts.map { |status, count| "#{count} #{status.humanize}" }.join(", ") %>">
+            <% @event_status_counts.each do |status, count| %>
+              <% next unless count.positive? %>
+              <div class="status-bar-segment" style="width: <%= (count.to_f / total_events * 100).round(2) %>%; background: <%= status_colors[status] %>;" title="<%= status.humanize %>: <%= count %>"></div>
+            <% end %>
+          </div>
+          <div class="d-flex gap-3 mt-2 font-size-13 flex-wrap">
+            <% @event_status_counts.each do |status, count| %>
+              <span><span class="legend-dot" style="background: <%= status_colors[status] %>;"></span><%= status.humanize %> — <strong><%= count %></strong></span>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <%# Registrations over time — same .arrival-bars vertical column chart
+      admin/events/show.html.erb's own "Registrations Over Time" widget already uses, summed
+      across every one of this client's events rather than one. %>
+  <div class="col-lg-6">
+    <div class="card h-100 mb-0">
+      <div class="card-header"><span class="fw-semibold">Registrations Over Time</span></div>
+      <div class="card-body">
+        <% if @registrations_by_day.blank? %>
+          <p class="text-muted mb-0">No registrations yet.</p>
+        <% else %>
+          <% max_count = [ @registrations_by_day.values.max.to_i, 1 ].max %>
+          <div class="arrival-bars">
+            <% @registrations_by_day.sort.each do |date, count| %>
+              <div class="arrival-bar-col" tabindex="0"
+                   data-tooltip="<%= date.strftime("%B %-d") %>: <%= count %> registration<%= count == 1 ? "" : "s" %>">
+                <span class="arrival-bar-value"><%= count if count.positive? %></span>
+                <div class="arrival-bar" style="height: <%= (count.to_f / max_count * 100).clamp(0, 100).round(2) %>%;"></div>
+                <span class="arrival-bar-label"><%= date.strftime("%b %-d") %></span>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+  <%# Top events by participants — same .bar-track/.bar-fill horizontal ranking
+      admin/events/show.html.erb's own "Session Popularity" widget already uses, one series
+      (registrant count), single categorical hue — identity comes from each row's own label. %>
+  <div class="col-lg-6">
+    <div class="card h-100 mb-0">
+      <div class="card-header"><span class="fw-semibold">Top Events by Participants</span></div>
+      <div class="card-body">
+        <% top_events = @events.sort_by { |event| -(@participant_counts_by_event[event.id] || 0) }.first(5) %>
+        <% if top_events.none? || top_events.all? { |event| (@participant_counts_by_event[event.id] || 0).zero? } %>
+          <p class="text-muted mb-0">No registrations yet.</p>
+        <% else %>
+          <% max_registered = [ top_events.map { |event| @participant_counts_by_event[event.id] || 0 }.max, 1 ].max %>
+          <% top_events.each do |event| %>
+            <% registered = @participant_counts_by_event[event.id] || 0 %>
+            <% percent = (registered.to_f / max_registered * 100).clamp(0, 100) %>
+            <div class="mb-3">
+              <div class="d-flex justify-content-between font-size-13 mb-1">
+                <span><%= link_to event.name, agency_account_event_path(@account, event) %></span>
+                <span class="text-muted"><%= registered %> registered</span>
+              </div>
+              <div class="bar-track" title="<%= event.name %>: <%= registered %> registered">
+                <div class="bar-fill" style="width: <%= percent.round(2) %>%;"></div>
+              </div>
+            </div>
+          <% end %>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold">Recent Events</span>
+    <%= link_to "View all", agency_account_events_path(@account), class: "btn btn-m btn-outline-secondary" %>
+  </div>
+  <div class="card-body">
+    <% if @events.none? %>
+      <%= render "shared/empty_state", icon: "bx-calendar-event", message: "#{@account.name} has no events yet." %>
+    <% else %>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Event</th>
+              <th>Dates</th>
+              <th>Status</th>
+              <th class="text-end">Participants</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @events.first(5).each do |event| %>
+              <tr>
+                <td><%= link_to event.name, agency_account_event_path(@account, event) %></td>
+                <td><%= event.starts_at&.to_fs(:long) %></td>
+                <td><span class="badge bg-info-subtle text-info"><%= event.status.humanize %></span></td>
+                <td class="text-end"><%= @participant_counts_by_event[event.id] || 0 %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  </div>
+</div>
+
+<%# Client admins — requirement.md revisit: "option to invite the client admin." Same shape
+    super_admin/agencies/show.html.erb's own Agency Admins card already takes, one tier down:
+    AccountMembershipProvisioning is that controller's own AgencyMembershipProvisioning, just for
+    an Account instead of an Agency (no AuditLog.record! here — AgencyConsole::AccountMembershipsController's
+    own class comment has the full "why"). %>
+<div class="card">
+  <div class="card-header bg-white">
+    <h5 class="card-title mb-0">Client Admins</h5>
+  </div>
+  <div class="card-body">
+    <ul class="list-group list-group-flush mb-3">
+      <% @account_memberships.each do |membership| %>
+        <li class="list-group-item d-flex align-items-center justify-content-between px-0">
+          <div>
+            <%= membership.user.email %>
+            <span class="badge bg-light text-dark ms-1"><%= membership.role.humanize %></span>
+            <% if membership.suspended? %>
+              <span class="badge bg-danger-subtle text-danger ms-1">Suspended</span>
+            <% elsif membership.user.must_reset_password? %>
+              <span class="badge bg-warning-subtle text-warning ms-1">Invite pending</span>
+            <% end %>
+          </div>
+          <div class="d-flex gap-2">
+            <% unless membership.user.must_reset_password? %>
+              <%= button_to send_reset_password_instructions_agency_account_account_membership_path(@account, membership), method: :post,
+                    class: "btn btn-m btn-outline-secondary", title: "Send Reset Password Instructions" do %>
+                <i class="bx bx-lock-alt"></i>
+              <% end %>
+            <% end %>
+            <% if membership.user.must_reset_password? %>
+              <%= button_to resend_invite_agency_account_account_membership_path(@account, membership), method: :post,
+                    class: "btn btn-m btn-outline-secondary", title: "Resend Invite" do %>
+                <i class="bx bx-envelope"></i>
+              <% end %>
+            <% end %>
+            <%# requirement.md revisit: "agency can suspend client admin and client admin staff" —
+                either role, mirrors the tenant's own Team page action one tier down
+                (Admin::TeamController's own comment on the one difference: that page never lets a
+                staff-tier viewer suspend an event_admin peer; the Agency sits above both roles). %>
+            <% if membership.suspended? %>
+              <%= button_to reinstate_agency_account_account_membership_path(@account, membership), method: :patch,
+                    class: "btn btn-m btn-outline-success", title: "Reinstate" do %>
+                <i class="bx bx-play-circle"></i>
+              <% end %>
+            <% else %>
+              <%= button_to suspend_agency_account_account_membership_path(@account, membership), method: :patch,
+                    class: "btn btn-m btn-outline-warning", title: "Suspend",
+                    data: {
+                      action: "click->confirm-dialog#show",
+                      title: "Suspend Client Admin",
+                      message: "Suspend #{membership.user.email}? They won't be able to sign in until reinstated.",
+                      danger: "true"
+                    } do %>
+                <i class="bx bx-pause-circle"></i>
+              <% end %>
+            <% end %>
+            <%= button_to agency_account_account_membership_path(@account, membership), method: :delete,
+                  class: "btn btn-m btn-outline-danger", title: "Remove",
+                  data: {
+                    action: "click->confirm-dialog#show",
+                    title: "Remove Client Admin",
+                    message: "Remove #{membership.user.email} from #{@account.name}'s admins?",
+                    danger: "true"
+                  } do %>
+              <i class="bx bx-x"></i>
+            <% end %>
+          </div>
+        </li>
+      <% end %>
+      <% if @account_memberships.none? %>
+        <li class="list-group-item px-0 text-muted">No admins yet.</li>
+      <% end %>
+    </ul>
+    <%= form_with url: agency_account_account_memberships_path(@account), method: :post, local: true, class: "d-flex gap-2" do %>
+      <%= email_field_tag :email, nil, class: "form-control", placeholder: "Add by email" %>
+      <%= select_tag :role, options_for_select([ [ "Admin", "event_admin" ], [ "Staff", "admin_staff" ] ], "event_admin"), class: "form-select", style: "max-width: 140px;" %>
+      <%= submit_tag "Add", class: "btn btn-m btn-outline-primary text-nowrap" %>
+    <% end %>
+  </div>
+</div>
+
+<%# requirement.md revisit: "agency will define the client staff permission by toggle on or off
+    and then based on permission staff will see the options in the client portal" —
+    Account::STAFF_PERMISSION_CATALOG's own comment has the full key list/reasoning; the read
+    side lives in AdminHelper#event_nav_items (hides the link) and
+    Admin::BaseController#require_staff_permission! (blocks the URL directly too, not just the
+    link) — this panel is the only place any of it is actually set. "Admin" (event_admin) never
+    reads any of this — every toggle here only ever restricts the "Staff" (admin_staff) tier. %>
+<div class="card mt-3">
+  <div class="card-header bg-white">
+    <h5 class="card-title mb-0">Staff Permissions</h5>
+  </div>
+  <div class="card-body">
+    <p class="text-muted font-size-13">
+      Controls which sections a <strong>Staff</strong> admin can see in <%= @account.name %>'s own console. <strong>Admin</strong> teammates always see everything.
+    </p>
+    <%= form_with url: agency_account_path(@account), method: :patch, local: true do %>
+      <%= hidden_field_tag :staff_permissions_form, "1" %>
+      <div class="row g-2 mb-3">
+        <% Account::STAFF_PERMISSION_CATALOG.each do |key, label| %>
+          <div class="col-md-4 col-lg-3">
+            <div class="form-check form-switch">
+              <%= check_box_tag "account[staff_permissions][#{key}]", "true", @account.staff_permission?(key),
+                    class: "form-check-input", role: "switch", id: "staff_permission_#{key}" %>
+              <%= label_tag "staff_permission_#{key}", label, class: "form-check-label" %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+      <%= submit_tag "Save Permissions", class: "btn btn-m btn-primary" %>
+    <% end %>
+  </div>
+</div>

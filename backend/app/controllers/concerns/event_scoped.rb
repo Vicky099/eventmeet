@@ -16,11 +16,40 @@ module EventScoped
 
   included do
     before_action :set_event
+    before_action :require_event_approved!
   end
 
   private
 
   def set_event
     @event = Event.friendly.find(params[:event_id])
+  end
+
+  # requirement.md revisit: "client also create event but event created by client requires a
+  # agency approval. post that client will proceed with event management (registration, checkin
+  # and all)" — every controller nested under an Event via this concern IS "management" in that
+  # sense (Admin::ParticipantsController/ExportFilesController/ImportFilesController/
+  # GovtIdImportFilesController/ScanEventsController/PrintStationsController/BulkPrintRunsController/
+  # RegistrationFormsController, plus the standalone check-in kiosk — CheckinController includes
+  # this concern too, this file's own class comment). Lives here, not on Admin::BaseController,
+  # specifically so CheckinController (which does NOT inherit from Admin::BaseController — its own
+  # class comment on why) gets it for free the same way it already gets set_event.
+  #
+  # Blocks every role, including event_admin — approval isn't a permission gap the way
+  # #require_staff_permission! (Admin::BaseController) restricts, it's "this event doesn't exist
+  # yet as far as *operating* it goes." Deliberately never wired into Admin::EventsController
+  # itself (not `EventScoped` — that controller sets `@event` in its own before_action, predating
+  # this concern's extraction): the wizard (#edit/#update, and every other controller that
+  # authorizes through EventPolicy#update? — Sessions/Speaker/Schedule/Badges/TicketReservations)
+  # stays open regardless of approval_status — see that policy method's own comment for why the
+  # client has to be able to keep *building* the event before the agency has anything to review,
+  # and (once rejected) to fix and resubmit. #show (Analytics/status landing page, where the
+  # pending/rejected banner lives) stays reachable too. Admin::EventsController#publish is the
+  # wizard side's own separate approval gate — the event can be fully built, just not made live,
+  # until approved.
+  def require_event_approved!
+    return unless @event.approval_pending? || @event.approval_rejected?
+
+    redirect_to admin_event_path(@event), alert: "#{@event.name} is awaiting agency approval before it can be managed."
   end
 end

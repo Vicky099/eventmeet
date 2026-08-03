@@ -7,6 +7,9 @@ module Admin
   # page that turns into a download link once ExportFile#file is attached.
   class ExportFilesController < BaseController
     include EventScoped
+    # Account::STAFF_PERMISSION_CATALOG — Admin::BaseController#require_staff_permission! own
+    # comment has the full "why an opt-in before_action, not a blanket one" reasoning.
+    before_action { require_staff_permission!(:export) }
     before_action :set_export_file, only: [ :show, :download ]
 
     def new

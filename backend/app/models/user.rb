@@ -67,7 +67,11 @@ class User < ApplicationRecord
     if Current.platform_request
       platform_staff?
     elsif Current.account
-      Current.account.active? && account_memberships.exists?(account: Current.account)
+      # status: :active — a suspended AccountMembership (requirement.md revisit: client portal's
+      # own "Team" page, Admin::TeamController#suspend) blocks sign-in to this one Account the same
+      # way Account#active? already does, without touching this User's memberships on any other
+      # tenant.
+      Current.account.active? && account_memberships.exists?(account: Current.account, status: :active)
     # Fixed-hierarchy pivot (requirement.md revisit): the Agency Console's own subdomain — same
     # enforcement point and same shape as the Current.account branch above, just checking
     # AgencyMembership/Agency#active? instead of AccountMembership/Account#active?.
@@ -76,6 +80,14 @@ class User < ApplicationRecord
     else
       true
     end
+  end
+
+  # This user's own role on one specific Account — shared lookup for the two places that need it
+  # (Admin::BaseController#require_staff_permission!, the enforcement side; AdminHelper's own
+  # event_nav_items, the "don't even show the link" side) rather than each re-deriving the same
+  # `account_memberships.find_by(account:)` query under a slightly different name.
+  def account_membership_for(account)
+    account_memberships.find_by(account: account)
   end
 
   private

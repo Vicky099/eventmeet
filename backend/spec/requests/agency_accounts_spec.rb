@@ -33,7 +33,7 @@ RSpec.describe "Agency Console tenant provisioning", type: :request do
       get new_agency_account_path
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include("New Tenant")
+      expect(response.body).to include("New Client")
     end
 
     it "creates the Account, its event_admin admin User, and sends a welcome email" do
